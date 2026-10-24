@@ -1,7 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Landmark, ShieldCheck, ExternalLink } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { DESKTOP_EARN_EXECUTION_ENABLED } from "@/lib/desktop/policy";
+import { useMemo } from "react";
+import type { Address } from "viem";
+import { useWallet } from "@/lib/txc/wallet-context";
+import { EarnAsset } from "@/components/desktop/EarnAsset";
 import { desktopHead } from "@/components/desktop/metadata";
+import { loadPairing } from "@/lib/vault-link/pairing";
 export const Route=createFileRoute("/desktop/earn")({head:()=>desktopHead("Earn","Non-custodial yield assets, starting with sUSDS, with transparent risks and review-gated execution."),component:Page});
-function Page(){return <><h1 className="text-3xl font-semibold">Earn</h1><p className="mt-3 max-w-2xl text-sm text-muted-foreground">Non-custodial yield assets. Returns vary; smart-contract, stablecoin and liquidity risks apply.</p><section className="mt-10 grid gap-8 border-y border-border py-8 lg:grid-cols-[minmax(0,1fr)_minmax(280px,1fr)]"><div><span className="flex h-12 w-12 items-center justify-center rounded-full bg-chart-2/10 text-chart-2"><Landmark className="h-6 w-6"/></span><h2 className="mt-5 text-2xl font-semibold">sUSDS</h2><p className="mt-1 text-sm text-muted-foreground">Savings USDS · Sky</p><p className="mt-5 max-w-lg text-sm leading-6 text-muted-foreground">A savings share token: yield accrues through its redemption value, rather than a guaranteed cash dividend. The savings rate can change.</p><Button asChild variant="outline" className="mt-6"><a href="https://sky.money" target="_blank" rel="noopener noreferrer">Sky <ExternalLink className="h-4 w-4"/></a></Button></div><div className="space-y-5"><div className="flex items-center gap-2 text-sm"><ShieldCheck className="h-4 w-4"/>Acquisition route awaiting review</div><dl className="divide-y divide-border text-sm"><div className="flex justify-between py-4"><dt className="text-muted-foreground">Network</dt><dd>Ethereum · proposed</dd></div><div className="flex justify-between py-4"><dt className="text-muted-foreground">Current yield</dt><dd>Not verified</dd></div><div className="flex justify-between py-4"><dt className="text-muted-foreground">Redemption</dt><dd>Subject to protocol liquidity</dd></div></dl><Button className="w-full" disabled={!DESKTOP_EARN_EXECUTION_ENABLED}>Swap to sUSDS · not yet available</Button><p className="text-xs leading-5 text-muted-foreground">No funds move from this page. Contract identity, quote validation, fees and redemption must be checked before swaps are enabled.</p></div></section></>;}
+function Page(){
+  const { seed, unlocked, activeProfileId } = useWallet();
+  const address = useMemo(() => {
+    if (unlocked?.mode === "vault") return (loadPairing(activeProfileId)?.evm?.address as Address | undefined) ?? null;
+    return null;
+  }, [unlocked?.mode, activeProfileId]);
+  return <><h1 className="text-3xl font-semibold">Earn</h1><p className="mt-3 max-w-2xl text-sm text-muted-foreground">Sky savings and Aave lending · Ethereum. Variable returns; smart-contract, stablecoin and liquidity risks apply.</p><EarnPageAssets seed={seed} vaultAddress={address}/></>;
+}
