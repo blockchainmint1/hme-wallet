@@ -48,3 +48,4 @@
 - [ ] Real-device Vault end-to-end test on a throwaway seed: pair → tiny TXC send → sign by QR → broadcast (needs the new APK + the Vault device)
 
 - [done] TXC history disappearing: root cause was mempool.texitcoin.org indexer outage (502s/timeouts); wallet made it worse by caching empty lists on failure — fixed via fetchMergedAddressTxs for all five UTXO chains, publish to deliver
+- [x] Apply final pre-publish audit fixes: fingerprint-keyed balance history cleared on wallet delete, coverage-preserving history append, desktop Swap gated behind the same "Swap LTC / DOGE" preference as phone, dead-code cleanup in DesktopData and 16 shared payment screens. 51 tests pass, build clean, auditor pack v3 saved.
