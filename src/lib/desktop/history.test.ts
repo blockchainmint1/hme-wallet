@@ -1,7 +1,22 @@
-import { describe, it, expect } from "vitest";
-import { appendBalancePoint, balanceHistoryKey } from "./history";
+import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
+import { appendBalancePoint, balanceHistoryKey, clearBalanceHistory, readBalanceHistory } from "./history";
 describe("desktop balance history", () => {
-  it("isolates two wallet profiles without changing envelope keys", () => { expect(balanceHistoryKey("default")).toBe("hme.desktop.balance-history.v1"); expect(balanceHistoryKey("second")).toBe("p:second:hme.desktop.balance-history.v1"); });
+  beforeAll(() => {
+    const store: Record<string, string> = {};
+    vi.stubGlobal("localStorage", new Proxy(store, {
+      get: (t, p) =>
+        p === "getItem" ? (k: string) => t[k] ?? null
+        : p === "setItem" ? (k: string, v: string) => { t[k] = String(v); }
+        : p === "removeItem" ? (k: string) => { delete t[k]; }
+        : p === "clear" ? () => { for (const k of Object.keys(t)) delete t[k]; }
+        : Reflect.get(t, p),
+    }));
+  });
+  beforeEach(() => localStorage.clear());
+  it("isolates two wallet profiles without changing envelope keys", () => { expect(balanceHistoryKey("default", "aa")).toBe("hme.desktop.balance-history.v1.aa"); expect(balanceHistoryKey("second", "bb")).toBe("p:second:hme.desktop.balance-history.v1.bb"); });
+  it("keys history by wallet fingerprint so a new seed never inherits old history", () => { localStorage.setItem(balanceHistoryKey("default", "oldseed"), JSON.stringify([{ at: 1, usd: 100, coverage: "btc" }])); expect(readBalanceHistory("default", "newseed")).toEqual([]); expect(readBalanceHistory("default", "oldseed")).toEqual([{ at: 1, usd: 100, coverage: "btc" }]); });
+  it("clears fingerprinted and legacy history when the wallet is deleted", () => { localStorage.setItem(balanceHistoryKey("default", "aa"), "[]"); localStorage.setItem("hme.desktop.balance-history.v1", "[]"); localStorage.setItem(balanceHistoryKey("second", "bb"), "[]"); clearBalanceHistory("default"); expect(localStorage.getItem("hme.desktop.balance-history.v1.aa")).toBeNull(); expect(localStorage.getItem("hme.desktop.balance-history.v1")).toBeNull(); expect(localStorage.getItem("p:second:hme.desktop.balance-history.v1.bb")).not.toBeNull(); });
   it("never records incomplete outage values as losses", () => { const saved = [{at: 1, usd: 100, coverage: "btc"}]; expect(appendBalancePoint(saved, {at: 600001, usd: 0, coverage: "btc"}, false)).toEqual(saved); });
-  it("does not compare different asset coverage as performance", () => { expect(appendBalancePoint([{at: 1, usd: 100, coverage: "btc"}], {at: 600001, usd: 50, coverage: "btc,eth"}, true)).toEqual([{at:600001, usd:50, coverage:"btc,eth"}]); });
+  it("keeps points from other coverage sets instead of wiping them", () => { const saved = [{at: 1, usd: 100, coverage: "btc"}]; expect(appendBalancePoint(saved, {at: 600001, usd: 50, coverage: "btc,eth"}, true)).toEqual([{at: 1, usd: 100, coverage: "btc"}, {at: 600001, usd: 50, coverage: "btc,eth"}]); });
+  it("throttles points within five minutes of the last matching-coverage point", () => { const saved = [{at: 1, usd: 100, coverage: "btc"}]; expect(appendBalancePoint(saved, {at: 100000, usd: 101, coverage: "btc"}, true)).toEqual(saved); });
 });
