@@ -61,14 +61,14 @@ type Stage =
   | { kind: "vault-sign"; order: PlacedOrder; dest: StableDestination; payload: string; destination: string }
   | { kind: "sent"; txid: string; order: PlacedOrder; dest: StableDestination };
 
-export function UtxoSwap({ coin }: { coin: UtxoSwapCoin }) {
+export function UtxoSwap({ coin, backTo = "/wallet" }: { coin: UtxoSwapCoin; backTo?: "/wallet" | "/desktop" }) {
   const exchangeAllowed = useExchangeFeaturesAllowed();
   const { activeProfileId } = useWallet();
   if (!exchangeAllowed) return <ExchangeUnavailable title="Swap" />;
-  return <UtxoSwapInner key={`${activeProfileId}:${coin}`} coin={coin} />;
+  return <UtxoSwapInner key={`${activeProfileId}:${coin}`} coin={coin} backTo={backTo} />;
 }
 
-function UtxoSwapInner({ coin }: { coin: UtxoSwapCoin }) {
+function UtxoSwapInner({ coin, backTo }: { coin: UtxoSwapCoin; backTo: "/wallet" | "/desktop" }) {
   const cfg = UTXO_SWAP_COINS[coin];
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -360,14 +360,14 @@ function UtxoSwapInner({ coin }: { coin: UtxoSwapCoin }) {
         order={stage.order}
         dest={stage.dest}
         profileId={activeProfileId}
-        onDone={() => navigate({ to: "/wallet" })}
+        onDone={() => navigate({ to: backTo })}
       />
     );
   }
 
   return (
     <main className="mx-auto max-w-xl px-4 py-8">
-      <Link to="/wallet" className="text-sm text-muted-foreground hover:text-foreground">
+      <Link to={backTo} className="text-sm text-muted-foreground hover:text-foreground">
         ← Back
       </Link>
       <h1 className="mt-3 text-2xl font-bold">Swap {cfg.ticker}</h1>
