@@ -5,8 +5,10 @@ import type { SwapQuote } from "@/lib/chains/swap.functions";
 import { executeLifiSwap } from "./lifi-execution";
 import { LIFI_DIAMOND, LIFI_NATIVE, type SwapIntent } from "./lifi-policy";
 
-const mocks = vi.hoisted(() => ({ gate: vi.fn(), deployment: vi.fn(), send: vi.fn() }));
+const mocks = vi.hoisted(() => ({ gate: vi.fn(), deployment: vi.fn(), send: vi.fn(), reviewedRoute: vi.fn() }));
 vi.mock("./execution-policy", () => ({ assertReviewedExecution: mocks.gate }));
+// Isolate sender/outer checks; dedicated reviewed-route tests exercise real inner decoding.
+vi.mock("./lifi-reviewed-route", () => ({ verifyReviewedLifiQuote: mocks.reviewedRoute }));
 vi.mock("./lifi-policy", async (original) => ({ ...await original<object>(), verifyLifiDeployment: mocks.deployment }));
 vi.mock("@/lib/chains/evm-send", () => ({ sendEvmTransaction: mocks.send }));
 const USER = "0x000000000000000000000000000000000000dEaD";
@@ -30,7 +32,7 @@ function harness(q: SwapQuote = ETH) {
   const wallet = { account: { address: USER }, chain: { id: base ? 8453 : 1 } };
   const refreshQuote = vi.fn().mockImplementation(async () => structuredClone(q));
   return { input: { intent, shown: structuredClone(q), walletClient: wallet as unknown as WalletClient,
-    publicClient: rpc as unknown as PublicClient, refreshQuote, assertSession: vi.fn() }, rpc, wallet, refreshQuote };
+    publicClient: rpc as unknown as PublicClient, refreshQuote, assertSession: vi.fn(), assertExecutionAvailable: vi.fn().mockResolvedValue(undefined) }, rpc, wallet, refreshQuote };
 }
 beforeEach(() => {
   vi.resetAllMocks();
@@ -41,6 +43,21 @@ beforeEach(() => {
 });
 
 describe("shared LI.FI executor signing boundary (release gate mocked open ONLY in tests)", () => {
+  it("unreviewed fee/opaque instructions fail before any allowance or signature", async () => {
+    const h = harness(); mocks.reviewedRoute.mockImplementation(() => { throw new Error("unreviewed route"); });
+    await expect(executeLifiSwap(h.input)).rejects.toThrow("unreviewed route");
+    expect(h.rpc.readContract).not.toHaveBeenCalled(); expect(mocks.send).not.toHaveBeenCalled();
+  });
+  it("remote stop refuses a previously cached quote before allowances", async () => {
+    const h = harness(); h.input.assertExecutionAvailable.mockRejectedValue(new Error("temporarily unavailable"));
+    await expect(executeLifiSwap(h.input)).rejects.toThrow("temporarily unavailable");
+    expect(mocks.send).not.toHaveBeenCalled(); expect(h.rpc.readContract).not.toHaveBeenCalled();
+  });
+  it("remote stop is checked again at the actual signature boundary", async () => {
+    const h = harness(BASE); h.input.assertExecutionAvailable.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("temporarily unavailable"));
+    await expect(executeLifiSwap(h.input)).rejects.toThrow("temporarily unavailable");
+    expect(h.input.assertExecutionAvailable).toHaveBeenCalledTimes(2);
+  });
   it("paused execution makes zero RPC, approval or sender calls", async () => {
     mocks.gate.mockImplementation(() => { throw new Error("paused"); });
     const h = harness();

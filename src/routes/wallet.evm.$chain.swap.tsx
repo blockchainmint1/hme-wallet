@@ -39,7 +39,7 @@ import {
 } from "@/lib/chains/erc20";
 import { useTokensForChain } from "@/lib/token-prefs";
 import { hapticSuccess, hapticError } from "@/lib/native/ui";
-import { getSwapQuote, NATIVE_TOKEN_ADDRESS, type SwapQuote } from "@/lib/chains/swap.functions";
+import { checkLifiExecutionAvailable, getSwapQuote, NATIVE_TOKEN_ADDRESS, type SwapQuote } from "@/lib/chains/swap.functions";
 import { useExchangeFeaturesAllowed } from "@/lib/native/capabilities";
 import { ExchangeUnavailable } from "@/components/wallet/ExchangeUnavailable";
 import { executeLifiSwap } from "@/lib/security/lifi-execution";
@@ -93,6 +93,7 @@ function EvmSwap() {
   }, [root]);
   const navigate = useNavigate();
   const fetchQuote = useServerFn(getSwapQuote);
+  const checkExecution = useServerFn(checkLifiExecutionAvailable);
 
   const account = useMemo(() => (root ? deriveEvmAccount(root) : null), [root]);
   const allAssets: AssetKind[] = useMemo(
@@ -220,6 +221,7 @@ function EvmSwap() {
           minAmountOutFloor: BigInt(quote.data.estimate.toAmountMin),
         },
         refreshQuote: () => fetchQuote({ data: quoteArgs }),
+        assertExecutionAvailable: () => checkExecution(),
         assertSession: () => {
           if (!root || currentRoot.current !== root) throw new Error("Wallet locked or changed. Start the swap again.");
         },
