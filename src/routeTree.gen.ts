@@ -27,6 +27,7 @@ import { Route as DesktopAppsRouteImport } from './routes/desktop.apps'
 import { Route as DesktopEarnRouteImport } from './routes/desktop.earn'
 import { Route as DesktopReceiveRouteImport } from './routes/desktop.receive'
 import { Route as DesktopSendRouteImport } from './routes/desktop.send'
+import { Route as DesktopSettingsRouteImport } from './routes/desktop.settings'
 import { Route as DesktopStablecoinsRouteImport } from './routes/desktop.stablecoins'
 import { Route as DesktopSwapRouteImport } from './routes/desktop.swap'
 import { Route as DesktopVaultRouteImport } from './routes/desktop.vault'
@@ -167,6 +168,11 @@ const DesktopReceiveRoute = DesktopReceiveRouteImport.update({
 const DesktopSendRoute = DesktopSendRouteImport.update({
   id: '/send',
   path: '/send',
+  getParentRoute: () => DesktopRoute,
+} as any)
+const DesktopSettingsRoute = DesktopSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => DesktopRoute,
 } as any)
 const DesktopStablecoinsRoute = DesktopStablecoinsRouteImport.update({
@@ -444,6 +450,7 @@ export interface FileRoutesByFullPath {
   '/desktop/earn': typeof DesktopEarnRoute
   '/desktop/receive': typeof DesktopReceiveRoute
   '/desktop/send': typeof DesktopSendRoute
+  '/desktop/settings': typeof DesktopSettingsRoute
   '/desktop/stablecoins': typeof DesktopStablecoinsRoute
   '/desktop/swap': typeof DesktopSwapRoute
   '/desktop/vault': typeof DesktopVaultRoute
@@ -513,6 +520,7 @@ export interface FileRoutesByTo {
   '/desktop/earn': typeof DesktopEarnRoute
   '/desktop/receive': typeof DesktopReceiveRoute
   '/desktop/send': typeof DesktopSendRoute
+  '/desktop/settings': typeof DesktopSettingsRoute
   '/desktop/stablecoins': typeof DesktopStablecoinsRoute
   '/desktop/swap': typeof DesktopSwapRoute
   '/desktop/vault': typeof DesktopVaultRoute
@@ -585,6 +593,7 @@ export interface FileRoutesById {
   '/desktop/earn': typeof DesktopEarnRoute
   '/desktop/receive': typeof DesktopReceiveRoute
   '/desktop/send': typeof DesktopSendRoute
+  '/desktop/settings': typeof DesktopSettingsRoute
   '/desktop/stablecoins': typeof DesktopStablecoinsRoute
   '/desktop/swap': typeof DesktopSwapRoute
   '/desktop/vault': typeof DesktopVaultRoute
@@ -658,6 +667,7 @@ export interface FileRouteTypes {
     | '/desktop/earn'
     | '/desktop/receive'
     | '/desktop/send'
+    | '/desktop/settings'
     | '/desktop/stablecoins'
     | '/desktop/swap'
     | '/desktop/vault'
@@ -727,6 +737,7 @@ export interface FileRouteTypes {
     | '/desktop/earn'
     | '/desktop/receive'
     | '/desktop/send'
+    | '/desktop/settings'
     | '/desktop/stablecoins'
     | '/desktop/swap'
     | '/desktop/vault'
@@ -798,6 +809,7 @@ export interface FileRouteTypes {
     | '/desktop/earn'
     | '/desktop/receive'
     | '/desktop/send'
+    | '/desktop/settings'
     | '/desktop/stablecoins'
     | '/desktop/swap'
     | '/desktop/vault'
@@ -1007,6 +1019,13 @@ declare module '@tanstack/react-router' {
       path: '/send'
       fullPath: '/desktop/send'
       preLoaderRoute: typeof DesktopSendRouteImport
+      parentRoute: typeof DesktopRoute
+    }
+    '/desktop/settings': {
+      id: '/desktop/settings'
+      path: '/settings'
+      fullPath: '/desktop/settings'
+      preLoaderRoute: typeof DesktopSettingsRouteImport
       parentRoute: typeof DesktopRoute
     }
     '/desktop/stablecoins': {
@@ -1375,6 +1394,7 @@ interface DesktopRouteChildren {
   DesktopEarnRoute: typeof DesktopEarnRoute
   DesktopReceiveRoute: typeof DesktopReceiveRoute
   DesktopSendRoute: typeof DesktopSendRoute
+  DesktopSettingsRoute: typeof DesktopSettingsRoute
   DesktopStablecoinsRoute: typeof DesktopStablecoinsRoute
   DesktopSwapRoute: typeof DesktopSwapRoute
   DesktopVaultRoute: typeof DesktopVaultRoute
@@ -1387,6 +1407,7 @@ const DesktopRouteChildren: DesktopRouteChildren = {
   DesktopEarnRoute: DesktopEarnRoute,
   DesktopReceiveRoute: DesktopReceiveRoute,
   DesktopSendRoute: DesktopSendRoute,
+  DesktopSettingsRoute: DesktopSettingsRoute,
   DesktopStablecoinsRoute: DesktopStablecoinsRoute,
   DesktopSwapRoute: DesktopSwapRoute,
   DesktopVaultRoute: DesktopVaultRoute,
