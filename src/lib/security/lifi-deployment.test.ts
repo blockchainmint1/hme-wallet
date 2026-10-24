@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PublicClient } from "viem";
-import { LIFI_TIMELOCK, verifyLifiDeployment } from "./lifi-policy";
+import { LIFI_GENERIC_FACET, LIFI_TIMELOCK, verifyLifiDeployment } from "./lifi-policy";
 
 function rpc() {
   return {
@@ -37,5 +37,13 @@ describe("LI.FI deployment fails closed", () => {
   it("RPC outage", async () => {
     const c = rpc(); c.getChainId.mockRejectedValue(new Error("offline"));
     await expect(verifyLifiDeployment("eth", c as unknown as PublicClient)).rejects.toThrow("offline");
+  });
+  it("modified code at the same facet address", async () => {
+    const c = rpc(); c.readContract.mockImplementation(async ({ functionName }) => {
+      if (functionName === "owner") return LIFI_TIMELOCK.eth;
+      if (functionName === "getMinDelay") return 10800n;
+      return LIFI_GENERIC_FACET;
+    });
+    await expect(verifyLifiDeployment("eth", c as unknown as PublicClient)).rejects.toThrow("implementation code changed");
   });
 });

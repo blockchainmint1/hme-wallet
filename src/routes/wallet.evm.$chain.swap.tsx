@@ -15,7 +15,7 @@ import {
 } from "@tanstack/react-router";
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowDown, Loader2, RefreshCw } from "lucide-react";
 import {
   createWalletClient,
@@ -87,6 +87,10 @@ function EvmSwap() {
   const { root } = useWallet();
   const currentRoot = useRef(root);
   currentRoot.current = root;
+  useEffect(() => {
+    currentRoot.current = root;
+    return () => { currentRoot.current = null; };
+  }, [root]);
   const navigate = useNavigate();
   const fetchQuote = useServerFn(getSwapQuote);
 
