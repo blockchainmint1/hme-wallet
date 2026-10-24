@@ -145,11 +145,11 @@ describe("shared LI.FI executor signing boundary (release gate mocked open ONLY 
     await expect(executeLifiSwap(h.input)).rejects.toThrow("signing account");
     expect(mocks.send).not.toHaveBeenCalled();
   });
-  it("wallet lock during quote refresh prevents payment signing", async () => {
+  it("wallet lock during server permission check prevents payment preparation", async () => {
     const h = harness(BASE);
     h.input.assertSession.mockImplementationOnce(() => undefined).mockImplementation(() => { throw new Error("Wallet locked"); });
     await expect(executeLifiSwap(h.input)).rejects.toThrow("Wallet locked");
-    expect(mocks.send).toHaveBeenCalledTimes(1);
+    expect(mocks.send).not.toHaveBeenCalled();
   });
   it("prepared sender substitution stops signature authorization", async () => {
     const h = harness(BASE);
