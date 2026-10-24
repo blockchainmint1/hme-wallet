@@ -107,6 +107,19 @@ describe("LI.FI policy rejects hostile quotes without producing a signature", ()
     q.transactionRequest.to = ATTACKER;
     expectBlocked(q, ethIntent, /not the LI\.FI Diamond/);
   });
+  it("zero minimum cannot be accepted", () => {
+    expectBlocked(ETH_Q, { ...ethIntent, minAmountOutFloor: 0n }, /minimum received must be positive/);
+  });
+  it("single ERC20 swaps pull the exact amount even when requiresDeposit is false", () => {
+    const q = clone(ETH_Q);
+    q.transactionRequest.data = encodeFunctionData({
+      abi: ABI, functionName: "swapTokensSingleV3ERC20ToERC20",
+      args: [`0x${"11".repeat(32)}`, "x", "", USER, BigInt(q.estimate.toAmountMin),
+        hop({ receivingAssetId: USDT_ETH, requiresDeposit: false })],
+    });
+    expect(verifyLifiQuote(q, { ...ethIntent, toToken: USDT_ETH }).hops[0]?.fromAmount).toBe(100000000n);
+    expectBlocked(q, { ...ethIntent, toToken: USDT_ETH, fromAmount: 99000000n }, /amount differs/);
+  });
   it("wrong chain id", () => {
     const q = clone(ETH_Q);
     q.transactionRequest.chainId = 56;

@@ -87,6 +87,13 @@ describe("shared LI.FI executor signing boundary (release gate mocked open ONLY 
     expect(mocks.send).toHaveBeenCalledTimes(1);
     expect(decodeFunctionData({ abi: erc20Abi, data: mocks.send.mock.calls[0]?.[2].data }).args?.[1]).toBe(0n);
   });
+  it("normalizes an existing unlimited allowance to exactly 100 USDC", async () => {
+    const h = harness(); h.rpc.readContract.mockResolvedValueOnce(2n ** 256n - 1n).mockResolvedValueOnce(100000000n);
+    await executeLifiSwap(h.input);
+    expect(mocks.send).toHaveBeenCalledTimes(3);
+    expect(decodeFunctionData({ abi: erc20Abi, data: mocks.send.mock.calls[0]?.[2].data }).args?.[1]).toBe(0n);
+    expect(decodeFunctionData({ abi: erc20Abi, data: mocks.send.mock.calls[1]?.[2].data }).args?.[1]).toBe(100000000n);
+  });
   it("failed allowance read-back prevents the swap", async () => {
     const h = harness(); h.rpc.readContract.mockResolvedValue(0n);
     await expect(executeLifiSwap(h.input)).rejects.toThrow("allowance differs");

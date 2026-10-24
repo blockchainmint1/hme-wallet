@@ -55,7 +55,7 @@ export async function executeLifiSwap(input: {
     const current = await pub.readContract({
       address: token, abi: erc20Abi, functionName: "allowance", args: [intent.user, spender],
     });
-    if (current < intent.fromAmount) {
+    if (current !== intent.fromAmount) {
       const approve = async (amount: bigint) => {
         // Recheck deployment before each allowance-changing signature.
         await verifyLifiDeployment(intent.chain, pub);
