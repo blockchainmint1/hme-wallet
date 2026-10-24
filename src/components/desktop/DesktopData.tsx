@@ -1,20 +1,6 @@
-import { setPreferPhone } from "@/lib/desktop-pref";
-import { createFileRoute, Link } from "@tanstack/react-router";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  BookUser,
-  LayoutDashboard,
-  Link2,
-  RefreshCw,
-  Settings as Cog,
-  Shield,
-  Smartphone,
-  Users,
-} from "lucide-react";
 import { useWallet } from "@/lib/txc/wallet-context";
 import { scanAccount } from "@/lib/txc/scan";
 import { scanIskAccount } from "@/lib/isk/scan";
@@ -51,10 +37,7 @@ import { getEnabledChains, CHAIN_META, type ChainId } from "@/lib/chain-prefs";
 import { loadPairing } from "@/lib/vault-link/pairing";
 import { vaultAccountSnapshot } from "@/lib/vault-link/snapshot";
 import type { VaultUtxoChain } from "@/lib/vault-link/pairing";
-import { ProfileSwitcher } from "@/components/wallet/ProfileSwitcher";
-import { useHideBalances, maskAmount } from "@/lib/hide-balances";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useHideBalances } from "@/lib/hide-balances";
 
 
 import { rootFingerprintHex } from "@/lib/txc/fingerprint";
@@ -80,10 +63,7 @@ function fmtAmount(n: number): string {
 }
 
 function useDesktopBalances() {
-  const { unlocked, root, seed, activeProfileId, unlock } = useWallet();
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { unlocked, root, seed, activeProfileId } = useWallet();
   const [hidden] = useHideBalances();
   const qc = useQueryClient();
   const isVault = unlocked?.mode === "vault";
@@ -388,7 +368,7 @@ function useDesktopBalances() {
   const accounts = { txc: txcAccount, isk: iskAccount, btc: btcAccount, ltc: ltcAccount, doge: dogeAccount };
   const queries = [txcAccount, ...(enabled.includes("isk") ? [iskAccount] : []), ...(enabled.includes("btc") ? [btcAccount] : []), ...(enabled.includes("ltc") ? [ltcAccount] : []), ...(enabled.includes("doge") ? [dogeAccount] : []), ...evmBalances, ...stableBalances, tsdBalance, ...(tronEnabled ? [tron.balance, ...tron.tokens] : []), ...(solanaEnabled ? [solana.balance] : [])];
   const complete = rows.every(r => r.amount !== null && (r.amount === 0 || r.price !== null)) && queries.every(q => !q.isError && !q.isFetching);
-  return { rows, total, valued, accounts, enabled, complete, loading: queries.some(q => q.isFetching), unavailable: queries.some(q => q.isError), evmAddress, tronAddress, solanaAddress, pairing, isVault, activeProfileId, hidden, refresh: () => qc.invalidateQueries({ predicate: q => isPortfolioRefreshKey(q.queryKey) }) };
+  return { rows, total, valued, accounts, enabled, complete, loading: queries.some(q => q.isFetching), unavailable: queries.some(q => q.isError), evmAddress, tronAddress, solanaAddress, pairing, isVault, activeProfileId, historyId: isVault ? vaultKey : rootKey, hidden, refresh: () => qc.invalidateQueries({ predicate: q => isPortfolioRefreshKey(q.queryKey) }) };
 }
 type DesktopData = ReturnType<typeof useDesktopBalances>;
 const DesktopContext = createContext<DesktopData | null>(null);

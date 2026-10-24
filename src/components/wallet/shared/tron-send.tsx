@@ -5,7 +5,7 @@
  * staked. We surface an estimate up front so a token send doesn't silently
  * fail with "account does not have enough TRX".
  */
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useQueryClient } from "@tanstack/react-query";
