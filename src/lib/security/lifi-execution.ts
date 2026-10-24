@@ -1,7 +1,7 @@
 /** Shared LI.FI approval/signing flow; the release gate cannot be bypassed by UI preferences. */
 import { encodeFunctionData, erc20Abi, type Hex, type PublicClient, type WalletClient } from "viem";
 import type { SwapQuote } from "@/lib/chains/swap.functions";
-import { sendEvmTransaction } from "@/lib/chains/evm-send";
+import { sendEvmTransaction, type EvmTxRequest } from "@/lib/chains/evm-send";
 import { assertReviewedExecution } from "./execution-policy";
 import {
   LIFI_CHAIN_IDS, LIFI_NATIVE, requiredSpender, verifyLifiDeployment, verifyLifiQuote,
@@ -30,6 +30,15 @@ export async function executeLifiSwap(input: {
     throw new Error("Swap blocked: signing network differs from the confirmed network");
   }
   verifyLifiQuote(shown, intent);
+  const send = (tx: EvmTxRequest) => sendEvmTransaction(intent.chain, walletClient, tx, (prepared) => {
+    assertReviewedExecution("lifi");
+    if (walletClient.account?.address.toLowerCase() !== intent.user.toLowerCase() ||
+        prepared.chainId !== LIFI_CHAIN_IDS[intent.chain] ||
+        prepared.to?.toLowerCase() !== tx.to.toLowerCase() ||
+        prepared.data !== tx.data || (prepared.value ?? 0n) !== (tx.value ?? 0n)) {
+      throw new Error("Swap blocked: prepared transaction differs from the confirmed payment");
+    }
+  });
   stage("Checking LI.FI contract…");
   await verifyLifiDeployment(intent.chain, pub);
 
@@ -53,7 +62,7 @@ export async function executeLifiSwap(input: {
         const data = encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [spender, amount] });
         // Do not sign approvals that cannot be simulated; never use quote gas.
         const gas = (await pub.estimateGas({ account, to: token, data, value: 0n }) * 130n) / 100n;
-        const hash = await sendEvmTransaction(intent.chain, walletClient, { to: token, data, value: 0n, gas });
+        const hash = await send({ to: token, data, value: 0n, gas });
         const receipt = await pub.waitForTransactionReceipt({ hash });
         if (receipt.status !== "success") throw new Error("Token approval failed on-chain");
       };
@@ -63,6 +72,10 @@ export async function executeLifiSwap(input: {
       }
       stage("Approving…");
       await approve(intent.fromAmount);
+      const allowance = await pub.readContract({
+        address: token, abi: erc20Abi, functionName: "allowance", args: [intent.user, spender],
+      });
+      if (allowance !== intent.fromAmount) throw new Error("Swap blocked: token allowance differs from the approved amount");
     }
   }
 
@@ -75,5 +88,5 @@ export async function executeLifiSwap(input: {
   // Failure aborts. Destination/data/value come from the same validated snapshot.
   const gas = (await pub.estimateGas({ account, ...tx }) * 130n) / 100n;
   stage("Swapping…");
-  return sendEvmTransaction(intent.chain, walletClient, { ...tx, gas });
+  return send({ ...tx, gas });
 }

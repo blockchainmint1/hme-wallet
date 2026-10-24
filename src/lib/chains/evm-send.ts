@@ -104,6 +104,7 @@ export async function sendEvmTransaction(
   chainId: EvmChainId,
   walletClient: WalletClient,
   tx: EvmTxRequest,
+  beforeSign?: (request: { to?: Address; data?: Hex; value?: bigint; chainId?: number; account?: unknown }) => void | Promise<void>,
 ): Promise<`0x${string}`> {
   const pub = evmClient(chainId);
   const account = walletClient.account;
@@ -133,6 +134,9 @@ export async function sendEvmTransaction(
         ...tx,
         nonce,
       } as Parameters<WalletClient["prepareTransactionRequest"]>[0]);
+      // Optional protocol-specific guard sees the actual prepared bytes on
+      // EVERY attempt. Ordinary Send/Receive callers remain unchanged.
+      await beforeSign?.(request);
       const raw = await walletClient.signTransaction(
         request as Parameters<WalletClient["signTransaction"]>[0],
       );

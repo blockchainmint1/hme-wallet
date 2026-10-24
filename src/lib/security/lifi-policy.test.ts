@@ -62,7 +62,7 @@ const hop = (o: Partial<Hop>): Hop => ({
   sendingAssetId: USDC_ETH,
   receivingAssetId: ZERO,
   fromAmount: 100_000000n,
-  callData: "0x",
+  callData: "0x12345678",
   requiresDeposit: true,
   ...o,
 });
@@ -89,7 +89,7 @@ describe("LI.FI policy accepts the genuine routes", () => {
     const v = verifyLifiQuote(BASE_Q, baseIntent);
     expect(v.functionName).toBe("swapTokensMultipleV3NativeToERC20");
     expect(v.value).toBe(10n ** 16n);
-    expect(v.hops[v.hops.length - 1]!.receivingAssetId.toLowerCase()).toBe(USDC_BASE.toLowerCase());
+    expect(v.hops.at(-1)?.receivingAssetId.toLowerCase()).toBe(USDC_BASE.toLowerCase());
   });
   it("only ever returns the pinned Diamond as approval spender", () => {
     expect(requiredSpender("eth", ETH_Q)).toBe(LIFI_DIAMOND.eth);

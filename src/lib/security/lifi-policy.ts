@@ -7,7 +7,8 @@
  *
  *   - `to` and `approvalAddress` must be the LiFiDiamond pinned per chain.
  *   - calldata must be one of GenericSwapFacetV3's six swap functions and is
- *     fully decoded; `_receiver` must be the user and `_minAmountOut` must be
+ *     decoded at the outer ABI level; nested DEX calldata needs separate
+ *     route-adapter acceptance. `_receiver` must be the user and `_minAmountOut` must be
  *     at least what the user accepted.
  *   - the money in (token + amount, or native `value`) must equal the intent.
  *   - the money out (last hop's receiving asset) must be the token the user
@@ -22,6 +23,7 @@
 import {
   decodeFunctionData,
   getAddress,
+  keccak256,
   parseAbi,
   type Address,
   type Hex,
@@ -51,6 +53,13 @@ export const LIFI_TIMELOCK: Record<LifiChain, Address> = {
   base: "0x5604A94A3438C3074EFFF803fab14B7244fe4E29",
   bsc: "0x55117ECcC867Db72aEb25f728CCf57C3C3B4faEe",
 };
+
+/** Official deployments at lifinance/contracts c1e01594de237929926cec058f42ef66dea0bc82,
+ * corroborated by read-only RPC on all three chains on 2026-10-24.
+ * Observed runtime hash is a change detector, not a reproducible-build attestation.
+ */
+export const LIFI_GENERIC_FACET: Address = "0x02Db8a1c2170AEE6cd17715EcD1c567C9B296E2c";
+export const LIFI_GENERIC_FACET_HASH: Hex = "0xe014807aa0af9c5f735ccb002e1a54ae9152986b5f17143ba7c0c52899545040";
 
 /** GenericSwapFacetV3 — the only functions a same-chain swap may call. */
 const FACET_ABI = parseAbi([
@@ -243,7 +252,7 @@ export function verifyLifiQuote(quote: SwapQuote, intent: SwapIntent): VerifiedS
     }
   }
   if (nativeIn) {
-    // Native hops never "deposit" (the facet reads msg.value); the first hop's amount is the spend.
+    // Native execution uses msg.value, not requiresDeposit, to fund calls.
     if (!same(firstHop.sendingAssetId, ZERO) || firstHop.fromAmount !== intent.fromAmount) {
       fail("native amount in calldata differs from the amount entered");
     }
@@ -297,4 +306,19 @@ export async function verifyLifiDeployment(chain: LifiChain, client: PublicClien
     functionName: "getMinDelay",
   });
   if (delay < 10800n) fail("LI.FI governance delay is below the reviewed 10800 seconds");
+  const timelockCode = await client.getCode({ address: LIFI_TIMELOCK[chain] });
+  if (!timelockCode || timelockCode === "0x") fail("LI.FI governance contract has no code");
+  for (const selector of Object.keys(LIFI_ALLOWED_SELECTORS)) {
+    const facet = await client.readContract({
+      address: diamond,
+      abi: parseAbi(["function facetAddress(bytes4) view returns (address)"]),
+      functionName: "facetAddress",
+      args: [selector as Hex],
+    });
+    if (!same(facet, LIFI_GENERIC_FACET)) fail("LI.FI swap implementation changed; execution needs re-review");
+  }
+  const facetCode = await client.getCode({ address: LIFI_GENERIC_FACET });
+  if (!facetCode || keccak256(facetCode) !== LIFI_GENERIC_FACET_HASH) {
+    fail("LI.FI swap implementation code changed; execution needs re-review");
+  }
 }
