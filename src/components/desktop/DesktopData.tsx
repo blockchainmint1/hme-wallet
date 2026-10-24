@@ -74,10 +74,10 @@ function useDesktopBalances() {
   const vaultKey = pairing ? `vault:${pairing.fp}` : null;
   const rootKey = root ? rootFingerprintHex(root) : null;
 
-  // Reactive enabled-chain list — same device-wide setting the phone uses.
-  const [enabled, setEnabled] = useState<ChainId[]>(() => getEnabledChains());
+  // Desktop network choices are device-wide, independent of phone choices.
+  const [enabled, setEnabled] = useState<ChainId[]>(() => getEnabledChains("desktop"));
   useEffect(() => {
-    const h = () => setEnabled(getEnabledChains());
+    const h = () => setEnabled(getEnabledChains("desktop"));
     window.addEventListener("hme:chains-changed", h);
     return () => window.removeEventListener("hme:chains-changed", h);
   }, []);

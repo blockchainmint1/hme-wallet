@@ -3,6 +3,7 @@ import { Layers } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { usePreferenceScope } from "@/lib/preference-scope";
 import {
   CHAIN_META,
   CHAIN_ORDER,
@@ -12,13 +13,15 @@ import {
 } from "@/lib/chain-prefs";
 
 export function ChainsCard({ compact }: { compact?: boolean }) {
-  const [prefs, setPrefs] = useState<Record<ChainId, boolean>>(() => getChainPrefs());
+  const scope = usePreferenceScope();
+  const [prefs, setPrefs] = useState<Record<ChainId, boolean>>(() => getChainPrefs(scope));
 
   useEffect(() => {
-    const h = () => setPrefs(getChainPrefs());
+    const h = () => setPrefs(getChainPrefs(scope));
+    h();
     window.addEventListener("hme:chains-changed", h);
     return () => window.removeEventListener("hme:chains-changed", h);
-  }, []);
+  }, [scope]);
 
   return (
     <Card className={compact ? "rounded-none border-0 bg-transparent shadow-none" : undefined}>
@@ -55,7 +58,7 @@ export function ChainsCard({ compact }: { compact?: boolean }) {
                 id={`chain-${id}`}
                 checked={prefs[id]}
                 disabled={isTxc || meta.soon}
-                onCheckedChange={(v) => setChainEnabled(id, v)}
+                onCheckedChange={(v) => setChainEnabled(id, v, scope)}
               />
             </div>
           );
