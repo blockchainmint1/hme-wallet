@@ -22,10 +22,12 @@ export function VaultBottomActions({
   pairing,
   chain,
   receiveAddress,
+  action = "both",
 }: {
   pairing: VaultPairing;
   chain: string;
   receiveAddress: string | null;
+  action?: "both" | "send" | "receive";
 }) {
   const qc = useQueryClient();
   const isUtxo = (UTXO as string[]).includes(chain);
@@ -52,12 +54,12 @@ export function VaultBottomActions({
 
   return (
     <>
-      <Button size="lg" variant="outline" className="flex-1" disabled={!receiveAddress} onClick={() => setShowReceive(true)}>
+      {action !== "send" && <Button size="lg" variant="outline" className="flex-1" disabled={!receiveAddress} onClick={() => setShowReceive(true)}>
         <QrIcon className="h-4 w-4 mr-2" /> Receive
-      </Button>
-      <Button size="lg" className="flex-1" disabled={preparing} onClick={() => void openSend()}>
+      </Button>}
+      {action !== "receive" && <Button size="lg" className="flex-1" disabled={preparing} onClick={() => void openSend()}>
         {preparing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />} Send
-      </Button>
+      </Button>}
 
       {showReceive && receiveAddress && (
         <Dialog open onOpenChange={(o) => !o && setShowReceive(false)}>

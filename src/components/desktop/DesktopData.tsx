@@ -300,7 +300,7 @@ function useDesktopBalances() {
       out.push({
         key: id,
         name: meta.name,
-        symbol: meta.shortName,
+        symbol: meta.nativeSymbol,
         accent: meta.accent,
         amount: amt,
         price: p,
