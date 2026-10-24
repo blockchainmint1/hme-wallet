@@ -14,6 +14,20 @@ A self-custodial, multi-chain wallet for people who want more from their money�
 
 ---
 
+## Our coins, front and center
+
+Three chains are the reason this wallet exists, and they're treated as first-class citizens — not an afterthought bolted onto a generic wallet.
+
+| Coin | What it is | Why it matters here |
+| :--- | :--- | :--- |
+| **TEXITcoin (TXC)** | A Bitcoin-style chain with its own address format (`T…` / `txc…`), its own explorers and its own fee market. | TXC is the wallet's home chain — always on, never hidden behind a toggle. It also carries **Omni Layer tokens**, so assets like the **Texas Stable Dollar (TSD)** sit right alongside your coin instead of on someone else's network. |
+| **IskanderCoin (ISK)** | A Bitcoin-family chain with its own address style (`K…` / `isk…`) and its own indexing at mempool.iskandercoin.com. | A genuinely separate chain that still comes out of the same recovery phrase — no extra seed, no extra backup, no extra app. |
+| **Zero Chill (ZCU)** | **Zero Chill Units** — the Honest Money ecosystem's own EVM-based layer-1 (chain ID `90031273`), with our node at node-zcu.honest.money and our own explorer. | EVM-compatible on purpose: the contracts, tooling and app patterns you already know work here, on a chain we actually run. |
+
+> **TSD** is the Texas Stable Dollar, an Omni Layer token on TEXITcoin. It redeems 1:1 for USDC through our cash-out service (minus a redemption fee), and refunds return to the TXC address they came from. Cash-out is an exchange-style service, so it stays optional.
+
+Same recovery phrase. Same encryption. Same approval screens. Our coins just get the priority the wallet was built for.
+
 ## One wallet. A bigger world.
 
 Bitcoin on one chain. Stablecoins on another. A payment to make, a portfolio to check, an app to connect.
@@ -26,7 +40,7 @@ Honest Money brings those moments together. Move between networks, manage separa
 
 | | What you can do |
 | :--- | :--- |
-| **Go multi-chain** | Manage supported native coins and tokens across UTXO, EVM, Tron and Solana networks. |
+| **Home coins first** | TEXITcoin, IskanderCoin and Zero Chill lead the lineup — alongside Bitcoin, Ethereum, Base, BNB Chain, Litecoin, Dogecoin, Tron and Solana. |
 | **Move your money** | Send, receive and use QR payment flows, with transaction activity close at hand. |
 | **Keep wallets separate** | Create or import additional seed-based profiles without replacing your existing wallet. |
 | **Keep an eye on your assets** | Track balances, prices and stablecoin holdings; hide balances when you want a little discretion. |
