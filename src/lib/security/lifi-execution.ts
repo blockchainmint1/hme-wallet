@@ -4,6 +4,7 @@ import type { SwapQuote } from "@/lib/chains/swap.functions";
 import { sendEvmTransaction, type EvmTxRequest } from "@/lib/chains/evm-send";
 import { assertReviewedExecution } from "./execution-policy";
 import { verifyReviewedLifiQuote } from "./lifi-reviewed-route";
+import { verifyLifiRouteAllowlisted } from "./lifi-route-allowlist";
 import {
   LIFI_CHAIN_IDS, LIFI_NATIVE, requiredSpender, verifyLifiDeployment, verifyLifiQuote,
   type SwapIntent,
@@ -33,9 +34,10 @@ export async function executeLifiSwap(input: {
   if (walletClient.chain?.id !== LIFI_CHAIN_IDS[intent.chain]) {
     throw new Error("Swap blocked: signing network differs from the confirmed network");
   }
-  verifyLifiQuote(shown, intent);
+  const shownVerified = verifyLifiQuote(shown, intent);
   verifyReviewedLifiQuote(shown, intent);
   await input.assertExecutionAvailable();
+  await verifyLifiRouteAllowlisted(intent.chain, shownVerified, pub);
   input.assertSession();
   const send = (tx: EvmTxRequest) => sendEvmTransaction(intent.chain, walletClient, tx, async (prepared) => {
     assertReviewedExecution("lifi");
@@ -61,8 +63,9 @@ export async function executeLifiSwap(input: {
   // leave a new allowance behind merely because the displayed route was safe.
   stage("Refreshing route…");
   const beforeApproval = structuredClone(await input.refreshQuote());
-  verifyLifiQuote(beforeApproval, intent);
+  const beforeApprovalVerified = verifyLifiQuote(beforeApproval, intent);
   verifyReviewedLifiQuote(beforeApproval, intent);
+  await verifyLifiRouteAllowlisted(intent.chain, beforeApprovalVerified, pub);
   const nativeIn = intent.fromToken.toLowerCase() === LIFI_NATIVE;
   if (!nativeIn) {
     const token = intent.fromToken as `0x${string}`;
@@ -100,6 +103,7 @@ export async function executeLifiSwap(input: {
   const finalQuote = structuredClone(await input.refreshQuote());
   const verified = verifyLifiQuote(finalQuote, intent);
   verifyReviewedLifiQuote(finalQuote, intent);
+  await verifyLifiRouteAllowlisted(intent.chain, verified, pub);
   await verifyLifiDeployment(intent.chain, pub);
   const tx = { to: finalQuote.transactionRequest.to, data: finalQuote.transactionRequest.data, value: verified.value };
   stage("Checking swap…");
