@@ -5,7 +5,7 @@ const PREFIX = "hme.desktop.balance-history.v1";
 export function balanceHistoryKey(profileId: string, fingerprint: string) { return scopedKey(`${PREFIX}.${fingerprint}`, profileId); }
 /** Remove every balance-history key for a profile, including legacy un-fingerprinted keys. */
 export function clearBalanceHistory(profileId: string): void {
-  if (typeof window === "undefined") return;
+  if (typeof localStorage === "undefined") return;
   const prefix = scopedKey(PREFIX, profileId);
   for (const key of Object.keys(localStorage)) {
     if (key === prefix || key.startsWith(`${prefix}.`)) localStorage.removeItem(key);
