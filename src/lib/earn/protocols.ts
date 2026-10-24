@@ -31,6 +31,7 @@ export const poolAbi = parseAbi([
   "function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode)",
   "function withdraw(address asset, uint256 amount, address to) returns (uint256)",
   "function getConfiguration(address asset) view returns ((uint256 data))",
+  "function getUserAccountData(address user) view returns (uint256 totalCollateralBase, uint256 totalDebtBase, uint256 availableBorrowsBase, uint256 currentLiquidationThreshold, uint256 ltv, uint256 healthFactor)",
 ]);
 export const aTokenAbi = parseAbi([
   "function UNDERLYING_ASSET_ADDRESS() view returns (address)",

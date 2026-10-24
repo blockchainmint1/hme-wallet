@@ -14,7 +14,11 @@ import { EARN, type EarnAction, type EarnProtocol } from "@/lib/earn/protocols";
 import { executeEarn, previewEarn, type EarnIntent, readEarnPosition } from "@/lib/earn/direct";
 import { DESKTOP_EARN_EXECUTION_ENABLED } from "@/lib/desktop/policy";
 
-const display = (n: bigint, decimals: number) => Number(formatUnits(n, decimals)).toLocaleString(undefined, { maximumFractionDigits: 6 });
+const display = (n: bigint, decimals: number) => {
+  const [whole, fraction = ""] = formatUnits(n, decimals).split(".");
+  const trimmed = fraction.slice(0, 6).replace(/0+$/, "");
+  return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${trimmed ? `.${trimmed}` : ""}`;
+};
 
 export function EarnAsset({ protocol, address }: { protocol: EarnProtocol; address: Address | null }) {
   const p = EARN[protocol];
@@ -48,7 +52,7 @@ export function EarnAsset({ protocol, address }: { protocol: EarnProtocol; addre
   const available = action === "deposit" ? position.data?.available : position.data?.shares;
   const outputSymbol = action === "deposit" ? p.name : p.asset;
   const choose = (next: EarnAction) => { setAction(next); setAmount(""); setReview(null); setError(""); };
-  useEffect(() => { setAmount(""); setReview(null); setHashes([]); setError(""); }, [address, activeProfileId]);
+  useEffect(() => { setAmount(""); setReview(null); setHashes([]); setError(""); setStage(""); }, [address, activeProfileId]);
 
   async function submit() {
     if (!review || !root || !isSeed) return;
@@ -78,25 +82,27 @@ export function EarnAsset({ protocol, address }: { protocol: EarnProtocol; addre
         <div className="flex justify-between gap-4"><dt>Receipt tokens</dt><dd>{hidden ? "••••" : position.data ? `${display(position.data.shares, p.decimals)} ${p.name}` : "Unavailable"}</dd></div>
         <div className="flex justify-between gap-4"><dt>Current variable APY</dt><dd>{position.data?.apy != null ? `${position.data.apy.toFixed(2)}%` : "Unavailable"}</dd></div>
       </dl>
-      <div className="mt-5 flex gap-2"><Button asChild variant="outline"><a href={p.url} target="_blank" rel="noopener noreferrer">{p.protocol}<ExternalLink className="h-4 w-4"/></a></Button><Button variant="ghost" size="icon" aria-label={`Refresh ${p.name}`} onClick={() => { void position.refetch(); void quote.refetch(); }}><RefreshCw className="h-4 w-4"/></Button></div>
+      <div className="mt-5 flex gap-2"><Button asChild variant="outline"><a href={p.url} target="_blank" rel="noopener noreferrer">{p.protocol}<ExternalLink className="h-4 w-4"/></a></Button><Button variant="ghost" size="icon" aria-label={`Refresh ${p.name}`} onClick={() => { if (address) void position.refetch(); if (intent) void quote.refetch(); }}><RefreshCw className="h-4 w-4"/></Button></div>
     </div>
     <div>
       <div className="mb-5 flex gap-2"><Button variant={action === "deposit" ? "default" : "outline"} onClick={() => choose("deposit")}><ArrowDownToLine className="h-4 w-4"/>Deposit</Button><Button variant={action === "withdraw" ? "default" : "outline"} onClick={() => choose("withdraw")}><ArrowUpFromLine className="h-4 w-4"/>Withdraw</Button></div>
       <Label htmlFor={`earn-${protocol}`}>{action === "deposit" ? p.asset : p.name} amount</Label>
-      <Input id={`earn-${protocol}`} className="mt-2" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" disabled={!address || busy}/>
+      <Input id={`earn-${protocol}`} className="mt-2" inputMode="decimal" value={amount} onChange={e => { setAmount(e.target.value); setReview(null); }} placeholder="0.00" disabled={!address || busy}/>
       <p className="mt-2 text-xs text-muted-foreground">Available: {hidden ? "••••" : available != null ? display(available, p.decimals) : "Unavailable"} {action === "deposit" ? p.asset : p.name}</p>
-      <dl className="my-5 space-y-3 text-sm"><div className="flex justify-between gap-4"><dt>Estimated received</dt><dd>{quote.data != null ? `${display(quote.data, p.decimals)} ${outputSymbol}` : "—"}</dd></div><div className="flex justify-between gap-4"><dt>Network fees</dt><dd>Paid in ETH · checked at signing</dd></div></dl>
+      <dl className="my-5 space-y-3 text-sm"><div className="flex justify-between gap-4"><dt>Estimated received</dt><dd>{quote.data != null ? `${display(quote.data, p.decimals)} ${outputSymbol}` : "—"}</dd></div><div className="flex justify-between gap-4"><dt>Network fees</dt><dd>Not yet quoted · paid in ETH</dd></div></dl>
       {(position.isError || quote.isError) && <p className="mb-4 text-sm text-destructive">{quote.isError ? "Amount or route unavailable. Check balance and protocol limits." : "Live protocol data unavailable. No payment can be prepared."}</p>}
       {!isSeed && <p className="mb-4 text-sm text-muted-foreground">Viewing only. Earn signing is not available for this wallet type.</p>}
-      <Button className="w-full" disabled={!intent || !quote.data || quote.isFetching || !isSeed} onClick={() => { if (intent && quote.data) setReview({ ...intent, minimum: quote.data }); }}>Review {action}</Button>
+      <Button className="w-full" disabled={!intent || !quote.data || quote.isFetching || position.isError || !isSeed} onClick={() => { if (intent && quote.data) setReview({ ...intent, minimum: quote.data }); }}>Preview {action}</Button>
       <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground"><ShieldCheck className="h-4 w-4"/>Execution awaiting independent review</p>
       {protocol === "sky" && <p className="mt-3 text-xs text-muted-foreground">USDC → USDS conversion is not available here yet.</p>}
       <Dialog open={!!review} onOpenChange={open => { if (!open && !busy) setReview(null); }}><DialogContent><DialogHeader><DialogTitle>Review {p.protocol} {review?.action}</DialogTitle></DialogHeader>
         <p className="break-all text-sm">Wallet: {review?.user}</p>
-        <p className="text-sm">Amount: {review ? display(review.amount, p.decimals) : "—"} {action === "deposit" ? p.asset : p.name}</p>
-        <p className="text-sm">Estimated received: {review ? display(review.minimum, p.decimals) : "—"} {outputSymbol}</p>
-        <p className="break-all text-xs text-muted-foreground">{action === "deposit" ? "Exact-amount approval to" : "Withdrawal from"}: {p.target}</p>
+        <p className="text-sm">Amount: {review ? display(review.amount, p.decimals) : "—"} {review?.action === "deposit" ? p.asset : p.name}</p>
+        <p className="text-sm">Estimated received: {review ? display(review.minimum, p.decimals) : "—"} {review?.action === "deposit" ? p.name : p.asset}</p>
+        <p className="break-all text-xs text-muted-foreground">{review?.action === "deposit" ? "Exact-amount approval to" : "Withdrawal from"}: {p.target}</p>
         <p className="text-sm text-muted-foreground">{protocol === "sky" ? "Sky’s basic savings calls do not enforce a minimum received. Additional protection is required before execution opens." : "Deposits and withdrawals remain unavailable until independent acceptance. Withdrawal also depends on liquidity and any existing borrowing position."}</p>
+        {protocol === "aave" && <p className="text-sm text-muted-foreground">Aave may automatically mark a new deposit as collateral. Accounts with existing Aave debt are excluded from this preview.</p>}
+        <p className="text-xs text-muted-foreground">A deposit may need an approval reset, approval and deposit. Each transaction costs ETH; an approval can remain if the deposit fails.</p>
         {stage && <p className="text-sm">{stage}</p>}{error && <p className="text-sm text-destructive">{error}</p>}
         {hashes.map(({ hash, step }) => <a key={hash} className="break-all text-xs underline" href={`https://etherscan.io/tx/${hash}`} target="_blank" rel="noopener noreferrer">{step}: {hash}</a>)}
         <Button disabled={!DESKTOP_EARN_EXECUTION_ENABLED || busy} onClick={() => void submit()}>Awaiting review · no funds move</Button>

@@ -6,7 +6,7 @@ const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 export type EarnIntent = Readonly<{ protocol: EarnProtocol; action: EarnAction; user: Address; amount: bigint; minimum: bigint }>;
 
 export function earnTransaction(intent: EarnIntent): EvmTxRequest {
-  if (!(intent.protocol in EARN) || !["deposit", "withdraw"].includes(intent.action) || intent.amount <= 0n || intent.minimum <= 0n) throw new Error("Invalid Earn amount or route");
+  if (!["sky", "aave"].includes(intent.protocol) || !["deposit", "withdraw"].includes(intent.action) || intent.amount <= 0n || intent.minimum <= 0n) throw new Error("Invalid Earn amount or route");
   const p = EARN[intent.protocol];
   const data = intent.protocol === "sky"
     ? intent.action === "deposit"
@@ -86,6 +86,8 @@ export async function previewEarn(pub: PublicClient, intent: EarnIntent) {
     return output;
   }
   const config = await pub.readContract({ address: p.target, abi: poolAbi, functionName: "getConfiguration", args: [p.underlying] });
+  const risk = await pub.readContract({ address: p.target, abi: poolAbi, functionName: "getUserAccountData", args: [intent.user] });
+  if (risk[1] !== 0n) throw new Error("Existing Aave borrowing position requires separate review");
   const active = (config.data & (1n << 56n)) !== 0n;
   const frozen = (config.data & (1n << 57n)) !== 0n;
   const paused = (config.data & (1n << 60n)) !== 0n;
@@ -106,18 +108,24 @@ export async function executeEarn(input: { intent: EarnIntent; walletClient: Wal
   if (!wallet.account || !same(wallet.account.address, intent.user) || wallet.chain?.id !== 1) throw new Error("Wallet or network changed");
   const account = wallet.account;
   const p = EARN[intent.protocol];
+  // The basic ERC-4626 ABI has no atomic minimum parameter. Never enable it
+  // just by changing the review gate; a reviewed bounded route is still needed.
+  if (intent.protocol === "sky") throw new Error("Sky atomic output protection not implemented");
   const send = async (tx: EvmTxRequest, step: string) => {
     assertSession();
     await verifyEarnDeployment(pub, intent.protocol);
     const gas = (await pub.estimateGas({ account, ...tx }) * 130n) / 100n;
     const hash = await sendEvmTransaction("eth", wallet, tx, async prepared => {
       assertEarnExecution(); assertSession();
-      if (!same(wallet.account?.address ?? "", intent.user) || prepared.chainId !== 1 || !same(prepared.to ?? "", tx.to) || prepared.data !== tx.data || (prepared.value ?? 0n) !== 0n) throw new Error("Prepared Earn payment changed");
+      const sender = typeof prepared.account === "string" ? prepared.account : (prepared.account as { address?: string } | undefined)?.address;
+      if (!same(wallet.account?.address ?? "", intent.user) || !same(sender ?? "", intent.user) || prepared.chainId !== 1 || !same(prepared.to ?? "", tx.to) || prepared.data !== tx.data || (prepared.value ?? 0n) !== 0n) throw new Error("Prepared Earn payment changed");
       await previewEarn(pub, intent);
+      assertSession();
     });
     input.onBroadcast?.(hash, step);
     const receipt = await pub.waitForTransactionReceipt({ hash });
     if (receipt.status !== "success") throw new Error(`${step} failed on-chain`);
+    assertSession();
     return hash;
   };
   stage("Checking balances and route");
@@ -138,6 +146,7 @@ export async function executeEarn(input: { intent: EarnIntent; walletClient: Wal
   stage(intent.action === "deposit" ? "Depositing" : "Withdrawing");
   const hash = await send(earnTransaction(intent), intent.action);
   const after = await pub.readContract({ address: outputToken, abi: erc20Abi, functionName: "balanceOf", args: [intent.user] });
+  assertSession();
   if (after - before < intent.minimum) throw new Error("Transaction confirmed; received balance needs investigation. Do not retry.");
   return hash;
 }

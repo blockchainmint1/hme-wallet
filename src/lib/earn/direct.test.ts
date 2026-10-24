@@ -17,6 +17,7 @@ function rpc(protocol: "sky" | "aave") {
         case "decimals": return p.decimals;
         case "ssr": return 10n ** 27n;
         case "getReserveData": return [0n,0n,0n,0n,0n,0n,0n,0n,0n,0n,0n,0n];
+        case "getUserAccountData": return [0n,0n,0n,0n,0n,0n];
         case "getConfiguration": return { data: 1n << 56n };
         case "previewDeposit": case "previewRedeem": return 90n * 10n ** 18n;
         default: return 200n * 10n ** 18n;
