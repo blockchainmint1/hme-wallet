@@ -12,7 +12,7 @@ const rpc = vi.hoisted(() => ({
 vi.mock("@/lib/chains/evm", () => ({ evmClient: () => rpc }));
 // Well-known public test key; NEVER fund this account.
 const account = privateKeyToAccount(`0x${"11".repeat(32)}`);
-const token = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+const token = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" as const;
 const data = encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [LIFI_DIAMOND.eth, 100000000n] });
 function wallet(chain: LifiChain = "eth") {
   const network = { eth: mainnet, base, bsc }[chain];
