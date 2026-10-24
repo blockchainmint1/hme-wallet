@@ -23,7 +23,13 @@ import { Route as ApiSolanaRouteImport } from './routes/api/solana'
 import { Route as ApiZcuExplorerBaseRouteImport } from './routes/api/zcu-explorer-base'
 import { Route as DesktopIndexRouteImport } from './routes/desktop.index'
 import { Route as DesktopActivityRouteImport } from './routes/desktop.activity'
+import { Route as DesktopAppsRouteImport } from './routes/desktop.apps'
+import { Route as DesktopEarnRouteImport } from './routes/desktop.earn'
+import { Route as DesktopReceiveRouteImport } from './routes/desktop.receive'
+import { Route as DesktopSendRouteImport } from './routes/desktop.send'
 import { Route as DesktopStablecoinsRouteImport } from './routes/desktop.stablecoins'
+import { Route as DesktopSwapRouteImport } from './routes/desktop.swap'
+import { Route as DesktopVaultRouteImport } from './routes/desktop.vault'
 import { Route as LegalPrivacyRouteImport } from './routes/legal.privacy'
 import { Route as LegalTermsRouteImport } from './routes/legal.terms'
 import { Route as PayInvoiceIdRouteImport } from './routes/pay.$invoiceId'
@@ -143,9 +149,39 @@ const DesktopActivityRoute = DesktopActivityRouteImport.update({
   path: '/activity',
   getParentRoute: () => DesktopRoute,
 } as any)
+const DesktopAppsRoute = DesktopAppsRouteImport.update({
+  id: '/apps',
+  path: '/apps',
+  getParentRoute: () => DesktopRoute,
+} as any)
+const DesktopEarnRoute = DesktopEarnRouteImport.update({
+  id: '/earn',
+  path: '/earn',
+  getParentRoute: () => DesktopRoute,
+} as any)
+const DesktopReceiveRoute = DesktopReceiveRouteImport.update({
+  id: '/receive',
+  path: '/receive',
+  getParentRoute: () => DesktopRoute,
+} as any)
+const DesktopSendRoute = DesktopSendRouteImport.update({
+  id: '/send',
+  path: '/send',
+  getParentRoute: () => DesktopRoute,
+} as any)
 const DesktopStablecoinsRoute = DesktopStablecoinsRouteImport.update({
   id: '/stablecoins',
   path: '/stablecoins',
+  getParentRoute: () => DesktopRoute,
+} as any)
+const DesktopSwapRoute = DesktopSwapRouteImport.update({
+  id: '/swap',
+  path: '/swap',
+  getParentRoute: () => DesktopRoute,
+} as any)
+const DesktopVaultRoute = DesktopVaultRouteImport.update({
+  id: '/vault',
+  path: '/vault',
   getParentRoute: () => DesktopRoute,
 } as any)
 const LegalPrivacyRoute = LegalPrivacyRouteImport.update({
@@ -404,7 +440,13 @@ export interface FileRoutesByFullPath {
   '/api/solana': typeof ApiSolanaRoute
   '/api/zcu-explorer-base': typeof ApiZcuExplorerBaseRoute
   '/desktop/activity': typeof DesktopActivityRoute
+  '/desktop/apps': typeof DesktopAppsRoute
+  '/desktop/earn': typeof DesktopEarnRoute
+  '/desktop/receive': typeof DesktopReceiveRoute
+  '/desktop/send': typeof DesktopSendRoute
   '/desktop/stablecoins': typeof DesktopStablecoinsRoute
+  '/desktop/swap': typeof DesktopSwapRoute
+  '/desktop/vault': typeof DesktopVaultRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/terms': typeof LegalTermsRoute
   '/pay/$invoiceId': typeof PayInvoiceIdRoute
@@ -467,7 +509,13 @@ export interface FileRoutesByTo {
   '/api/solana': typeof ApiSolanaRoute
   '/api/zcu-explorer-base': typeof ApiZcuExplorerBaseRoute
   '/desktop/activity': typeof DesktopActivityRoute
+  '/desktop/apps': typeof DesktopAppsRoute
+  '/desktop/earn': typeof DesktopEarnRoute
+  '/desktop/receive': typeof DesktopReceiveRoute
+  '/desktop/send': typeof DesktopSendRoute
   '/desktop/stablecoins': typeof DesktopStablecoinsRoute
+  '/desktop/swap': typeof DesktopSwapRoute
+  '/desktop/vault': typeof DesktopVaultRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/terms': typeof LegalTermsRoute
   '/pay/$invoiceId': typeof PayInvoiceIdRoute
@@ -533,7 +581,13 @@ export interface FileRoutesById {
   '/api/solana': typeof ApiSolanaRoute
   '/api/zcu-explorer-base': typeof ApiZcuExplorerBaseRoute
   '/desktop/activity': typeof DesktopActivityRoute
+  '/desktop/apps': typeof DesktopAppsRoute
+  '/desktop/earn': typeof DesktopEarnRoute
+  '/desktop/receive': typeof DesktopReceiveRoute
+  '/desktop/send': typeof DesktopSendRoute
   '/desktop/stablecoins': typeof DesktopStablecoinsRoute
+  '/desktop/swap': typeof DesktopSwapRoute
+  '/desktop/vault': typeof DesktopVaultRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/terms': typeof LegalTermsRoute
   '/pay/$invoiceId': typeof PayInvoiceIdRoute
@@ -600,7 +654,13 @@ export interface FileRouteTypes {
     | '/api/solana'
     | '/api/zcu-explorer-base'
     | '/desktop/activity'
+    | '/desktop/apps'
+    | '/desktop/earn'
+    | '/desktop/receive'
+    | '/desktop/send'
     | '/desktop/stablecoins'
+    | '/desktop/swap'
+    | '/desktop/vault'
     | '/legal/privacy'
     | '/legal/terms'
     | '/pay/$invoiceId'
@@ -663,7 +723,13 @@ export interface FileRouteTypes {
     | '/api/solana'
     | '/api/zcu-explorer-base'
     | '/desktop/activity'
+    | '/desktop/apps'
+    | '/desktop/earn'
+    | '/desktop/receive'
+    | '/desktop/send'
     | '/desktop/stablecoins'
+    | '/desktop/swap'
+    | '/desktop/vault'
     | '/legal/privacy'
     | '/legal/terms'
     | '/pay/$invoiceId'
@@ -728,7 +794,13 @@ export interface FileRouteTypes {
     | '/api/solana'
     | '/api/zcu-explorer-base'
     | '/desktop/activity'
+    | '/desktop/apps'
+    | '/desktop/earn'
+    | '/desktop/receive'
+    | '/desktop/send'
     | '/desktop/stablecoins'
+    | '/desktop/swap'
+    | '/desktop/vault'
     | '/legal/privacy'
     | '/legal/terms'
     | '/pay/$invoiceId'
@@ -909,11 +981,53 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DesktopActivityRouteImport
       parentRoute: typeof DesktopRoute
     }
+    '/desktop/apps': {
+      id: '/desktop/apps'
+      path: '/apps'
+      fullPath: '/desktop/apps'
+      preLoaderRoute: typeof DesktopAppsRouteImport
+      parentRoute: typeof DesktopRoute
+    }
+    '/desktop/earn': {
+      id: '/desktop/earn'
+      path: '/earn'
+      fullPath: '/desktop/earn'
+      preLoaderRoute: typeof DesktopEarnRouteImport
+      parentRoute: typeof DesktopRoute
+    }
+    '/desktop/receive': {
+      id: '/desktop/receive'
+      path: '/receive'
+      fullPath: '/desktop/receive'
+      preLoaderRoute: typeof DesktopReceiveRouteImport
+      parentRoute: typeof DesktopRoute
+    }
+    '/desktop/send': {
+      id: '/desktop/send'
+      path: '/send'
+      fullPath: '/desktop/send'
+      preLoaderRoute: typeof DesktopSendRouteImport
+      parentRoute: typeof DesktopRoute
+    }
     '/desktop/stablecoins': {
       id: '/desktop/stablecoins'
       path: '/stablecoins'
       fullPath: '/desktop/stablecoins'
       preLoaderRoute: typeof DesktopStablecoinsRouteImport
+      parentRoute: typeof DesktopRoute
+    }
+    '/desktop/swap': {
+      id: '/desktop/swap'
+      path: '/swap'
+      fullPath: '/desktop/swap'
+      preLoaderRoute: typeof DesktopSwapRouteImport
+      parentRoute: typeof DesktopRoute
+    }
+    '/desktop/vault': {
+      id: '/desktop/vault'
+      path: '/vault'
+      fullPath: '/desktop/vault'
+      preLoaderRoute: typeof DesktopVaultRouteImport
       parentRoute: typeof DesktopRoute
     }
     '/legal/privacy': {
@@ -1257,13 +1371,25 @@ declare module '@tanstack/react-router' {
 
 interface DesktopRouteChildren {
   DesktopActivityRoute: typeof DesktopActivityRoute
+  DesktopAppsRoute: typeof DesktopAppsRoute
+  DesktopEarnRoute: typeof DesktopEarnRoute
+  DesktopReceiveRoute: typeof DesktopReceiveRoute
+  DesktopSendRoute: typeof DesktopSendRoute
   DesktopStablecoinsRoute: typeof DesktopStablecoinsRoute
+  DesktopSwapRoute: typeof DesktopSwapRoute
+  DesktopVaultRoute: typeof DesktopVaultRoute
   DesktopIndexRoute: typeof DesktopIndexRoute
 }
 
 const DesktopRouteChildren: DesktopRouteChildren = {
   DesktopActivityRoute: DesktopActivityRoute,
+  DesktopAppsRoute: DesktopAppsRoute,
+  DesktopEarnRoute: DesktopEarnRoute,
+  DesktopReceiveRoute: DesktopReceiveRoute,
+  DesktopSendRoute: DesktopSendRoute,
   DesktopStablecoinsRoute: DesktopStablecoinsRoute,
+  DesktopSwapRoute: DesktopSwapRoute,
+  DesktopVaultRoute: DesktopVaultRoute,
   DesktopIndexRoute: DesktopIndexRoute,
 }
 
