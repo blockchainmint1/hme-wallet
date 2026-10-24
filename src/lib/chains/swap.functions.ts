@@ -9,6 +9,7 @@
  */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { readLifiQuote } from "@/lib/security/lifi-response";
 
 /** Sentinel address LI.FI uses for the native token on any EVM chain. */
 export const NATIVE_TOKEN_ADDRESS =
@@ -69,18 +70,6 @@ export const getSwapQuote = createServerFn({ method: "POST" })
     const apiKey = process.env.LIFI_API_KEY;
     if (apiKey) headers["x-lifi-api-key"] = apiKey;
 
-    const res = await fetch(url, { headers });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      // Bubble up a compact message; LI.FI returns { message } on 4xx.
-      let msg = `Quote unavailable (${res.status})`;
-      try {
-        const j = JSON.parse(text) as { message?: string };
-        if (j.message) msg = j.message;
-      } catch {
-        /* ignore */
-      }
-      throw new Error(msg);
-    }
-    return (await res.json()) as SwapQuote;
+    const res = await fetch(url, { headers, redirect: "error", signal: AbortSignal.timeout(15000) });
+    return await readLifiQuote(res) as SwapQuote;
   });

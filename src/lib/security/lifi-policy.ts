@@ -214,7 +214,7 @@ export function verifyLifiQuote(quote: SwapQuote, intent: SwapIntent): VerifiedS
   if (hops.length === 0 || hops.length > 4) fail(`unexpected number of hops (${hops.length})`);
   const firstHop = hops[0];
   const lastHop = hops.at(-1);
-  if (!firstHop || !lastHop) fail("route has no swap hops");
+  if (!firstHop || !lastHop) return fail("route has no swap hops");
 
   const receiver = getAddress(receiverRaw);
   if (!same(receiver, intent.user)) fail(`output would go to ${receiver}, not this wallet`);

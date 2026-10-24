@@ -104,7 +104,7 @@ export async function sendEvmTransaction(
   chainId: EvmChainId,
   walletClient: WalletClient,
   tx: EvmTxRequest,
-  beforeSign?: (request: { to?: Address; data?: Hex; value?: bigint; chainId?: number; account?: unknown }) => void | Promise<void>,
+  beforeSign?: (request: { to?: Address | null; data?: Hex; value?: bigint; chainId?: number; account?: unknown }) => void | Promise<void>,
 ): Promise<`0x${string}`> {
   const pub = evmClient(chainId);
   const account = walletClient.account;
