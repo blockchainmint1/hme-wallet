@@ -10,6 +10,7 @@
 <!-- LOVABLE:END -->
 
 ## Desktop workspace
+- Desktop overview refresh uses an explicit balance/price query allowlist; privacy hides funded allocation rankings and counts, and Tron/Solana display retains address-only results. Why: viewing must not refresh spending quotes, disclose allocation, or retain unnecessary signing material.
 - Desktop uses a nested /desktop layout with inline unlock, dedicated pages and desktop-only data/presentation; phone routes render extracted shared payment screens with their original defaults. Why: one signing implementation avoids platform drift without replacing the mobile experience.
 - Desktop balance history is profile-isolated device observations, recorded only for complete data and compatible asset coverage; never fabricate historical performance. Why: outages and changed coverage are not real portfolio losses.
 - Desktop Earn execution and Vault swaps stay unavailable pending their independent acceptance reviews. Why: a new presentation must not enable unverified spending paths.
