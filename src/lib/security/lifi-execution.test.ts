@@ -30,7 +30,7 @@ function harness(q: SwapQuote = ETH) {
   const wallet = { account: { address: USER }, chain: { id: base ? 8453 : 1 } };
   const refreshQuote = vi.fn().mockImplementation(async () => structuredClone(q));
   return { input: { intent, shown: structuredClone(q), walletClient: wallet as unknown as WalletClient,
-    publicClient: rpc as unknown as PublicClient, refreshQuote }, rpc, wallet, refreshQuote };
+    publicClient: rpc as unknown as PublicClient, refreshQuote, assertSession: vi.fn() }, rpc, wallet, refreshQuote };
 }
 beforeEach(() => {
   vi.resetAllMocks();
@@ -127,5 +127,11 @@ describe("shared LI.FI executor signing boundary (release gate mocked open ONLY 
     const h = harness(); h.wallet.account.address = ATTACKER;
     await expect(executeLifiSwap(h.input)).rejects.toThrow("signing account");
     expect(mocks.send).not.toHaveBeenCalled();
+  });
+  it("wallet lock during quote refresh prevents payment signing", async () => {
+    const h = harness(BASE);
+    h.input.assertSession.mockImplementationOnce(() => undefined).mockImplementation(() => { throw new Error("Wallet locked"); });
+    await expect(executeLifiSwap(h.input)).rejects.toThrow("Wallet locked");
+    expect(mocks.send).toHaveBeenCalledTimes(1);
   });
 });

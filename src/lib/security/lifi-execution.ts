@@ -14,9 +14,11 @@ export async function executeLifiSwap(input: {
   walletClient: WalletClient;
   publicClient: PublicClient;
   refreshQuote: () => Promise<SwapQuote>;
+  assertSession: () => void;
   stage?: (message: string) => void;
 }): Promise<Hex> {
   assertReviewedExecution("lifi");
+  input.assertSession();
   const { walletClient, publicClient: pub, stage = () => undefined } = input;
   // Snapshot both consent and provider bytes before the first await. Quote refetches
   // or form edits must not mutate an in-flight approval/payment.
@@ -32,6 +34,7 @@ export async function executeLifiSwap(input: {
   verifyLifiQuote(shown, intent);
   const send = (tx: EvmTxRequest) => sendEvmTransaction(intent.chain, walletClient, tx, (prepared) => {
     assertReviewedExecution("lifi");
+    input.assertSession();
     if (walletClient.account?.address.toLowerCase() !== intent.user.toLowerCase() ||
         prepared.chainId !== LIFI_CHAIN_IDS[intent.chain] ||
         prepared.to?.toLowerCase() !== tx.to.toLowerCase() ||

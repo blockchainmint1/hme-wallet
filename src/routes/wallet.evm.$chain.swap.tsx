@@ -15,7 +15,7 @@ import {
 } from "@tanstack/react-router";
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowDown, Loader2, RefreshCw } from "lucide-react";
 import {
   createWalletClient,
@@ -85,6 +85,8 @@ function EvmSwap() {
   const meta = EVM_CHAINS[chainId];
   const tokens = useTokensForChain(chainId);
   const { root } = useWallet();
+  const currentRoot = useRef(root);
+  currentRoot.current = root;
   const navigate = useNavigate();
   const fetchQuote = useServerFn(getSwapQuote);
 
@@ -214,6 +216,9 @@ function EvmSwap() {
           minAmountOutFloor: BigInt(quote.data.estimate.toAmountMin),
         },
         refreshQuote: () => fetchQuote({ data: quoteArgs }),
+        assertSession: () => {
+          if (!root || currentRoot.current !== root) throw new Error("Wallet locked or changed. Start the swap again.");
+        },
         stage: setStage,
       });
     },
