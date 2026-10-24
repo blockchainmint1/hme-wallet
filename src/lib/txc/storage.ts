@@ -12,6 +12,7 @@ import {
   setActiveProfileId,
   unregisterProfile,
 } from "@/lib/profiles";
+import { clearBalanceHistory } from "@/lib/desktop/history";
 /**
  * Encrypted wallet storage for the TEXITcoin web wallet.
  *
@@ -348,6 +349,7 @@ export function deleteWallet(): void {
   if (typeof window === "undefined") return;
   const id = activeProfileId();
   localStorage.removeItem(walletKey(id));
+  clearBalanceHistory(id);
   if (id !== DEFAULT_PROFILE_ID) {
     purgeProfileStorage(id);
     unregisterProfile(id);
@@ -363,6 +365,7 @@ export function deleteWallet(): void {
 export function deleteProfileWallet(profileId: string): void {
   if (typeof window === "undefined") return;
   localStorage.removeItem(walletKey(profileId));
+  clearBalanceHistory(profileId);
   if (profileId !== DEFAULT_PROFILE_ID) {
     purgeProfileStorage(profileId);
     unregisterProfile(profileId);
