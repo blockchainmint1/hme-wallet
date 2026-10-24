@@ -92,8 +92,10 @@ it.each(signedCases)("actual local swap signature preserves $chain $shape $famil
   const hop = { callTo: token, approveTo: token, sendingAssetId: nativeIn ? zero : token,
     receivingAssetId: family === "ERC20ToNative" ? zero : LIFI_DIAMOND[chain], fromAmount: 100000000n,
     callData: "0x12345678" as Hex, requiresDeposit: true };
-  const bytes = encodeFunctionData({ abi: swapAbi, functionName: name,
-    args: [`0x${"33".repeat(32)}`, "synthetic", "", account.address, 99000000n, shape === "Single" ? hop : [hop]] });
+  const prefix = [`0x${"33".repeat(32)}` as Hex, "synthetic", "", account.address, 99000000n] as const;
+  const bytes = shape === "Single"
+    ? encodeFunctionData({ abi: swapAbi, functionName: `swapTokensSingleV3${family}`, args: [...prefix, hop] })
+    : encodeFunctionData({ abi: swapAbi, functionName: `swapTokensMultipleV3${family}`, args: [...prefix, [hop]] });
   const client = wallet(chain);
   const timer = vi.spyOn(globalThis,"setTimeout").mockImplementation(((callback:()=>void)=>{callback();return 0;}) as typeof setTimeout);
   try {
