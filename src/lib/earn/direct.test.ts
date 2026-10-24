@@ -9,7 +9,7 @@ const intent = (protocol: "sky" | "aave", action: "deposit" | "withdraw" = "depo
 function rpc(protocol: "sky" | "aave") {
   const p = EARN[protocol];
   return { getChainId: vi.fn(async () => 1), getCode: vi.fn(async () => "0x6000"), getBalance: vi.fn(async () => 10n ** 18n),
-    readContract: vi.fn(async ({ functionName }: { functionName: string }) => {
+    readContract: vi.fn(async ({ functionName }: { functionName: string }): Promise<unknown> => {
       switch (functionName) {
         case "asset": case "UNDERLYING_ASSET_ADDRESS": return p.underlying;
         case "POOL": case "getPool": return p.target;
