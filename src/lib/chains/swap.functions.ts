@@ -10,12 +10,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { readLifiQuote } from "@/lib/security/lifi-response";
+import { assertLifiServerAvailable, lifiQuoteParameters } from "@/lib/security/lifi-quote-policy";
 
 /** Sentinel address LI.FI uses for the native token on any EVM chain. */
 export const NATIVE_TOKEN_ADDRESS =
   "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" as const;
-
-const CHAIN_IDS: Record<string, number> = { eth: 1, base: 8453, bsc: 56 };
 
 const quoteInput = z.object({
   chain: z.enum(["eth", "base", "bsc"]),
@@ -51,19 +50,8 @@ export type SwapQuote = {
 export const getSwapQuote = createServerFn({ method: "POST" })
   .inputValidator((raw: unknown) => quoteInput.parse(raw))
   .handler(async ({ data }): Promise<SwapQuote> => {
-    const chainId = CHAIN_IDS[data.chain];
-    const params = new URLSearchParams({
-      fromChain: String(chainId),
-      toChain: String(chainId),
-      fromToken: data.fromToken,
-      toToken: data.toToken,
-      fromAmount: data.fromAmount,
-      fromAddress: data.fromAddress,
-      slippage: String(data.slippage ?? 0.005),
-      order: "RECOMMENDED",
-    });
-    const integrator = process.env.LIFI_INTEGRATOR;
-    if (integrator) params.set("integrator", integrator);
+    assertLifiServerAvailable(process.env.LIFI_EXECUTION_DISABLED);
+    const params = lifiQuoteParameters(data);
 
     const url = `https://li.quest/v1/quote?${params}`;
     const headers: Record<string, string> = { accept: "application/json" };
@@ -72,4 +60,10 @@ export const getSwapQuote = createServerFn({ method: "POST" })
 
     const res = await fetch(url, { headers, redirect: "error", signal: AbortSignal.timeout(15000) });
     return await readLifiQuote(res) as SwapQuote;
+  });
+
+/** Fresh fail-closed permission checkpoint; a cached quote is not permission. */
+export const checkLifiExecutionAvailable = createServerFn({ method: "POST" })
+  .handler(async (): Promise<void> => {
+    assertLifiServerAvailable(process.env.LIFI_EXECUTION_DISABLED);
   });
