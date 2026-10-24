@@ -3,6 +3,7 @@ import { encodeFunctionData, erc20Abi, type Hex, type PublicClient, type WalletC
 import type { SwapQuote } from "@/lib/chains/swap.functions";
 import { sendEvmTransaction, type EvmTxRequest } from "@/lib/chains/evm-send";
 import { assertReviewedExecution } from "./execution-policy";
+import { verifyReviewedLifiQuote } from "./lifi-reviewed-route";
 import {
   LIFI_CHAIN_IDS, LIFI_NATIVE, requiredSpender, verifyLifiDeployment, verifyLifiQuote,
   type SwapIntent,
@@ -15,6 +16,7 @@ export async function executeLifiSwap(input: {
   publicClient: PublicClient;
   refreshQuote: () => Promise<SwapQuote>;
   assertSession: () => void;
+  assertExecutionAvailable: () => Promise<void>;
   stage?: (message: string) => void;
 }): Promise<Hex> {
   assertReviewedExecution("lifi");
@@ -32,6 +34,9 @@ export async function executeLifiSwap(input: {
     throw new Error("Swap blocked: signing network differs from the confirmed network");
   }
   verifyLifiQuote(shown, intent);
+  verifyReviewedLifiQuote(shown, intent);
+  await input.assertExecutionAvailable();
+  input.assertSession();
   const send = (tx: EvmTxRequest) => sendEvmTransaction(intent.chain, walletClient, tx, async (prepared) => {
     assertReviewedExecution("lifi");
     input.assertSession();
@@ -46,6 +51,7 @@ export async function executeLifiSwap(input: {
     // Sender preparation and nonce retries can take time; recheck the deployment
     // on every actual signature attempt, not just before estimating gas.
     await verifyLifiDeployment(intent.chain, pub);
+    await input.assertExecutionAvailable();
     input.assertSession();
   });
   stage("Checking LI.FI contract…");
@@ -56,6 +62,7 @@ export async function executeLifiSwap(input: {
   stage("Refreshing route…");
   const beforeApproval = structuredClone(await input.refreshQuote());
   verifyLifiQuote(beforeApproval, intent);
+  verifyReviewedLifiQuote(beforeApproval, intent);
   const nativeIn = intent.fromToken.toLowerCase() === LIFI_NATIVE;
   if (!nativeIn) {
     const token = intent.fromToken as `0x${string}`;
@@ -92,6 +99,7 @@ export async function executeLifiSwap(input: {
   stage("Refreshing route…");
   const finalQuote = structuredClone(await input.refreshQuote());
   const verified = verifyLifiQuote(finalQuote, intent);
+  verifyReviewedLifiQuote(finalQuote, intent);
   await verifyLifiDeployment(intent.chain, pub);
   const tx = { to: finalQuote.transactionRequest.to, data: finalQuote.transactionRequest.data, value: verified.value };
   stage("Checking swap…");
