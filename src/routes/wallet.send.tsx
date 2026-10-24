@@ -9,7 +9,7 @@ const searchSchema = z.object({
 });
 
 export const Route = createFileRoute("/wallet/send")({
-  head: () => ({ meta: [{ title: "Send — HME Wallet" }] }),
+  head: () => ({ meta: [{ title: "Send TXC — HME Wallet" }, { name: "description", content: "Send TXC using your self-custodial Honest Money wallet." }, { property: "og:title", content: "Send TXC — HME Wallet" }, { property: "og:description", content: "Send TXC using your self-custodial Honest Money wallet." }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" }] }),
   validateSearch: (raw) => searchSchema.parse(raw),
   component: MobileSend,
 });

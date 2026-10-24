@@ -7,7 +7,7 @@ const searchSchema = z.object({
 });
 
 export const Route = createFileRoute("/wallet/isk/send")({
-  head: () => ({ meta: [{ title: "Send ISK — HME Wallet" }] }),
+  head: () => ({ meta: [{ title: "Send ISK — HME Wallet" }, { name: "description", content: "Send ISK using your self-custodial Honest Money wallet." }, { property: "og:title", content: "Send ISK — HME Wallet" }, { property: "og:description", content: "Send ISK using your self-custodial Honest Money wallet." }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" }] }),
   validateSearch: (raw) => searchSchema.parse(raw),
   component: MobileSend,
 });

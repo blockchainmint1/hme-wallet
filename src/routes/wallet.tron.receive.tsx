@@ -3,6 +3,7 @@ import { TronReceive } from "@/components/wallet/shared/tron-receive";
 export const Route = createFileRoute("/wallet/tron/receive")({
   head: () => ({
     meta: [
+      { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" },
       { title: "Receive TRX & USDT — honest.money" },
       {
         name: "description",

@@ -4,6 +4,7 @@ import { TronSend } from "@/components/wallet/shared/tron-send";
 export const Route = createFileRoute("/wallet/tron/send")({
   head: () => ({
     meta: [
+      { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" },
       { title: "Send TRX & USDT — honest.money" },
       {
         name: "description",
