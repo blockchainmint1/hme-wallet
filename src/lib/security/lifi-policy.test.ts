@@ -62,7 +62,7 @@ const hop = (o: Partial<Hop>): Hop => ({
   sendingAssetId: USDC_ETH,
   receivingAssetId: ZERO,
   fromAmount: 100_000000n,
-  callData: "0x",
+  callData: "0x12345678",
   requiresDeposit: true,
   ...o,
 });
@@ -89,7 +89,7 @@ describe("LI.FI policy accepts the genuine routes", () => {
     const v = verifyLifiQuote(BASE_Q, baseIntent);
     expect(v.functionName).toBe("swapTokensMultipleV3NativeToERC20");
     expect(v.value).toBe(10n ** 16n);
-    expect(v.hops[v.hops.length - 1]!.receivingAssetId.toLowerCase()).toBe(USDC_BASE.toLowerCase());
+    expect(v.hops.at(-1)?.receivingAssetId.toLowerCase()).toBe(USDC_BASE.toLowerCase());
   });
   it("only ever returns the pinned Diamond as approval spender", () => {
     expect(requiredSpender("eth", ETH_Q)).toBe(LIFI_DIAMOND.eth);
@@ -106,6 +106,19 @@ describe("LI.FI policy rejects hostile quotes without producing a signature", ()
     const q = clone(ETH_Q);
     q.transactionRequest.to = ATTACKER;
     expectBlocked(q, ethIntent, /not the LI\.FI Diamond/);
+  });
+  it("zero minimum cannot be accepted", () => {
+    expectBlocked(ETH_Q, { ...ethIntent, minAmountOutFloor: 0n }, /minimum received must be positive/);
+  });
+  it("single ERC20 swaps pull the exact amount even when requiresDeposit is false", () => {
+    const q = clone(ETH_Q);
+    q.transactionRequest.data = encodeFunctionData({
+      abi: ABI, functionName: "swapTokensSingleV3ERC20ToERC20",
+      args: [`0x${"11".repeat(32)}`, "x", "", USER, BigInt(q.estimate.toAmountMin),
+        hop({ receivingAssetId: USDT_ETH, requiresDeposit: false })],
+    });
+    expect(verifyLifiQuote(q, { ...ethIntent, toToken: USDT_ETH }).hops[0]?.fromAmount).toBe(100000000n);
+    expectBlocked(q, { ...ethIntent, toToken: USDT_ETH, fromAmount: 99000000n }, /amount differs/);
   });
   it("wrong chain id", () => {
     const q = clone(ETH_Q);

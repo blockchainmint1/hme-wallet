@@ -7,7 +7,8 @@
  *
  *   - `to` and `approvalAddress` must be the LiFiDiamond pinned per chain.
  *   - calldata must be one of GenericSwapFacetV3's six swap functions and is
- *     fully decoded; `_receiver` must be the user and `_minAmountOut` must be
+ *     decoded at the outer ABI level; nested DEX calldata needs separate
+ *     route-adapter acceptance. `_receiver` must be the user and `_minAmountOut` must be
  *     at least what the user accepted.
  *   - the money in (token + amount, or native `value`) must equal the intent.
  *   - the money out (last hop's receiving asset) must be the token the user
@@ -22,6 +23,7 @@
 import {
   decodeFunctionData,
   getAddress,
+  keccak256,
   parseAbi,
   type Address,
   type Hex,
@@ -51,6 +53,13 @@ export const LIFI_TIMELOCK: Record<LifiChain, Address> = {
   base: "0x5604A94A3438C3074EFFF803fab14B7244fe4E29",
   bsc: "0x55117ECcC867Db72aEb25f728CCf57C3C3B4faEe",
 };
+
+/** Official deployments at lifinance/contracts c1e01594de237929926cec058f42ef66dea0bc82,
+ * corroborated by read-only RPC on all three chains on 2026-10-24.
+ * Observed runtime hash is a change detector, not a reproducible-build attestation.
+ */
+export const LIFI_GENERIC_FACET: Address = "0x02Db8a1c2170AEE6cd17715EcD1c567C9B296E2c";
+export const LIFI_GENERIC_FACET_HASH: Hex = "0xe014807aa0af9c5f735ccb002e1a54ae9152986b5f17143ba7c0c52899545040";
 
 /** GenericSwapFacetV3 — the only functions a same-chain swap may call. */
 const FACET_ABI = parseAbi([
@@ -97,6 +106,9 @@ export interface VerifiedSwap {
   minAmountOut: bigint;
   value: bigint;
   hops: {
+    callTo: Address;
+    approveTo: Address;
+    callData: Hex;
     sendingAssetId: Address;
     receivingAssetId: Address;
     fromAmount: bigint;
@@ -148,6 +160,7 @@ export function verifyLifiQuote(quote: SwapQuote, intent: SwapIntent): VerifiedS
   if (same(onChainAsset(intent.fromToken), onChainAsset(intent.toToken)))
     fail("input and output are the same asset");
   if (intent.fromAmount <= 0n) fail("amount must be positive");
+  if (intent.minAmountOutFloor <= 0n) fail("minimum received must be positive");
   if (!nativeIn) requiredSpender(intent.chain, quote);
 
   const value = BigInt(tx.value ?? "0x0");
@@ -156,11 +169,12 @@ export function verifyLifiQuote(quote: SwapQuote, intent: SwapIntent): VerifiedS
   }
 
   const selector = low(tx.data.slice(0, 10));
-  if (!LIFI_ALLOWED_SELECTORS[selector])
+  const functionName = LIFI_ALLOWED_SELECTORS[selector];
+  if (!functionName)
     fail(`function ${selector} is not a GenericSwapFacetV3 swap`);
   const expectedFamily = nativeIn ? "NativeToERC20" : nativeOut ? "ERC20ToNative" : "ERC20ToERC20";
-  if (!LIFI_ALLOWED_SELECTORS[selector]!.endsWith(expectedFamily)) {
-    fail(`${LIFI_ALLOWED_SELECTORS[selector]} does not match a ${expectedFamily} swap`);
+  if (!functionName.endsWith(expectedFamily)) {
+    fail(`${functionName} does not match a ${expectedFamily} swap`);
   }
 
   let decoded: ReturnType<typeof decodeFunctionData<typeof FACET_ABI>>;
@@ -198,6 +212,9 @@ export function verifyLifiQuote(quote: SwapQuote, intent: SwapIntent): VerifiedS
   ];
   const hops = Array.isArray(swaps) ? swaps : [swaps];
   if (hops.length === 0 || hops.length > 4) fail(`unexpected number of hops (${hops.length})`);
+  const firstHop = hops[0];
+  const lastHop = hops.at(-1);
+  if (!firstHop || !lastHop) return fail("route has no swap hops");
 
   const receiver = getAddress(receiverRaw);
   if (!same(receiver, intent.user)) fail(`output would go to ${receiver}, not this wallet`);
@@ -220,23 +237,30 @@ export function verifyLifiQuote(quote: SwapQuote, intent: SwapIntent): VerifiedS
   const inAsset = onChainAsset(intent.fromToken);
   const outAsset = onChainAsset(intent.toToken);
   let deposited = 0n;
+  const single = functionName.startsWith("swapTokensSingle");
   for (const h of hops) {
-    if (h.requiresDeposit) {
+    if (h.fromAmount <= 0n) fail("hop amount must be positive");
+    if (same(h.callTo, ZERO) || !/^0x(?:[0-9a-fA-F]{2}){4,}$/.test(h.callData)) {
+      fail("hop has no callable contract or function selector");
+    }
+    // Single ERC20 functions always pull from msg.sender, regardless of the
+    // caller-supplied requiresDeposit flag (GenericSwapFacetV3).
+    if (!nativeIn && (single || h.requiresDeposit)) {
       if (!same(h.sendingAssetId, inAsset))
         fail(`a hop pulls ${h.sendingAssetId}, not the token you are paying with`);
       deposited += h.fromAmount;
     }
   }
   if (nativeIn) {
-    // Native hops never "deposit" (the facet reads msg.value); the first hop's amount is the spend.
-    if (!same(hops[0]!.sendingAssetId, ZERO) || hops[0]!.fromAmount !== intent.fromAmount) {
+    // Native execution uses msg.value, not requiresDeposit, to fund calls.
+    if (!same(firstHop.sendingAssetId, ZERO) || firstHop.fromAmount !== intent.fromAmount) {
       fail("native amount in calldata differs from the amount entered");
     }
   } else if (deposited !== intent.fromAmount) {
     fail(`calldata pulls ${deposited}, not the ${intent.fromAmount} entered`);
   }
-  if (!same(hops[hops.length - 1]!.receivingAssetId, outAsset)) {
-    fail(`route ends in ${hops[hops.length - 1]!.receivingAssetId}, not the token you chose`);
+  if (!same(lastHop.receivingAssetId, outAsset)) {
+    fail(`route ends in ${lastHop.receivingAssetId}, not the token you chose`);
   }
 
   return {
@@ -245,6 +269,9 @@ export function verifyLifiQuote(quote: SwapQuote, intent: SwapIntent): VerifiedS
     minAmountOut,
     value,
     hops: hops.map((h) => ({
+      callTo: h.callTo,
+      approveTo: h.approveTo,
+      callData: h.callData,
       sendingAssetId: h.sendingAssetId,
       receivingAssetId: h.receivingAssetId,
       fromAmount: h.fromAmount,
@@ -255,11 +282,13 @@ export function verifyLifiQuote(quote: SwapQuote, intent: SwapIntent): VerifiedS
 
 /**
  * Runtime check that the pinned Diamond is still what we verified: code is
- * present and `owner()` is the pinned timelock. Run once per session before
- * the first swap; a failure means LI.FI changed governance (or our pin is
+ * present and `owner()` is the pinned timelock with its reviewed minimum delay.
+ * Recheck before approvals and the final swap; a failure means governance (or our pin is
  * stale) and execution must stay off until re-reviewed.
  */
 export async function verifyLifiDeployment(chain: LifiChain, client: PublicClient): Promise<void> {
+  const chainId = await client.getChainId();
+  if (chainId !== LIFI_CHAIN_IDS[chain]) fail("RPC network differs from the confirmed network");
   const diamond = LIFI_DIAMOND[chain];
   const code = await client.getCode({ address: diamond });
   if (!code || code === "0x") fail(`no contract at the LI.FI Diamond address on ${chain}`);
@@ -270,5 +299,26 @@ export async function verifyLifiDeployment(chain: LifiChain, client: PublicClien
   })) as Address;
   if (!same(owner, LIFI_TIMELOCK[chain])) {
     fail(`LI.FI Diamond owner changed to ${owner}; execution needs re-review`);
+  }
+  const delay = await client.readContract({
+    address: LIFI_TIMELOCK[chain],
+    abi: parseAbi(["function getMinDelay() view returns (uint256)"]),
+    functionName: "getMinDelay",
+  });
+  if (delay < 10800n) fail("LI.FI governance delay is below the reviewed 10800 seconds");
+  const timelockCode = await client.getCode({ address: LIFI_TIMELOCK[chain] });
+  if (!timelockCode || timelockCode === "0x") fail("LI.FI governance contract has no code");
+  for (const selector of Object.keys(LIFI_ALLOWED_SELECTORS)) {
+    const facet = await client.readContract({
+      address: diamond,
+      abi: parseAbi(["function facetAddress(bytes4) view returns (address)"]),
+      functionName: "facetAddress",
+      args: [selector as Hex],
+    });
+    if (!same(facet, LIFI_GENERIC_FACET)) fail("LI.FI swap implementation changed; execution needs re-review");
+  }
+  const facetCode = await client.getCode({ address: LIFI_GENERIC_FACET });
+  if (!facetCode || keccak256(facetCode) !== LIFI_GENERIC_FACET_HASH) {
+    fail("LI.FI swap implementation code changed; execution needs re-review");
   }
 }

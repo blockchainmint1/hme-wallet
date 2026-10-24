@@ -15,14 +15,11 @@ import {
 } from "@tanstack/react-router";
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowDown, Loader2, RefreshCw } from "lucide-react";
 import {
   createWalletClient,
-  encodeFunctionData,
-  erc20Abi,
   http,
-  type Address,
 } from "viem";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,23 +42,9 @@ import { hapticSuccess, hapticError } from "@/lib/native/ui";
 import { getSwapQuote, NATIVE_TOKEN_ADDRESS, type SwapQuote } from "@/lib/chains/swap.functions";
 import { useExchangeFeaturesAllowed } from "@/lib/native/capabilities";
 import { ExchangeUnavailable } from "@/components/wallet/ExchangeUnavailable";
-import { sendEvmTransaction } from "@/lib/chains/evm-send";
+import { executeLifiSwap } from "@/lib/security/lifi-execution";
 import { assertReviewedExecution } from "@/lib/security/execution-policy";
-import {
-  LIFI_NATIVE,
-  requiredSpender,
-  verifyLifiDeployment,
-  verifyLifiQuote,
-  type LifiChain,
-} from "@/lib/security/lifi-policy";
-
-/**
- * A refreshed route may guarantee a little less than the one the user saw
- * (prices move between the tap and the signature). Anything below this
- * fraction of the accepted minimum is a material change and is refused so the
- * user can re-confirm, instead of being signed silently.
- */
-const ACCEPTED_MIN_DRIFT_BPS = 50n; // 0.5%
+import type { LifiChain } from "@/lib/security/lifi-policy";
 
 type AssetKind =
   | { kind: "native" }
@@ -102,6 +85,12 @@ function EvmSwap() {
   const meta = EVM_CHAINS[chainId];
   const tokens = useTokensForChain(chainId);
   const { root } = useWallet();
+  const currentRoot = useRef(root);
+  currentRoot.current = root;
+  useEffect(() => {
+    currentRoot.current = root;
+    return () => { currentRoot.current = null; };
+  }, [root]);
   const navigate = useNavigate();
   const fetchQuote = useServerFn(getSwapQuote);
 
@@ -126,14 +115,20 @@ function EvmSwap() {
   const nativeBal = useQuery({
     queryKey: ["evm-balance", chainId, account?.address],
     enabled: !!account,
-    queryFn: () => evmClient(chainId).getBalance({ address: account!.address }),
+    queryFn: () => {
+      if (!account) throw new Error("Wallet locked");
+      return evmClient(chainId).getBalance({ address: account.address });
+    },
     staleTime: 15_000,
   });
   const tokenBalances = useQueries({
     queries: tokens.map((t) => ({
       queryKey: ["erc20-balance", chainId, t.address, account?.address],
       enabled: !!account,
-      queryFn: () => readErc20Balance(chainId, t, account!.address),
+      queryFn: () => {
+        if (!account) throw new Error("Wallet locked");
+        return readErc20Balance(chainId, t, account.address);
+      },
       staleTime: 30_000,
     })),
   });
@@ -212,102 +207,24 @@ function EvmSwap() {
         chain: meta.viemChain,
         transport: http(`/api/evm/${chainId}`),
       });
-      const pub = evmClient(chainId);
-      const lifiChain = chainId as LifiChain;
-
-      // The intent is what the user saw when they pressed the button. Every
-      // quote used from here on — for the approval spender and for the
-      // signed transaction — must bind to it; a quote is not an authority.
-      const shown = quote.data;
-      const intent = {
-        chain: lifiChain,
-        user: account.address,
-        fromToken: from.kind === "native" ? LIFI_NATIVE : from.token.address,
-        toToken: to.kind === "native" ? LIFI_NATIVE : to.token.address,
-        fromAmount: rawAmount,
-        minAmountOutFloor:
-          (BigInt(shown.estimate.toAmountMin) * (10_000n - ACCEPTED_MIN_DRIFT_BPS)) / 10_000n,
-      };
-      verifyLifiQuote(shown, intent);
-      setStage("Checking LI.FI contract…");
-      await verifyLifiDeployment(lifiChain, pub);
-
-      // ERC-20 approval, if needed. Done BEFORE the final quote so the
-      // route we sign is as fresh as possible. The spender is the pinned
-      // Diamond, never a quote field; the amount is exactly the intent.
-      if (from.kind === "erc20") {
-        setStage("Checking approval…");
-        const approvalTo: Address = requiredSpender(lifiChain, shown);
-        const current = await pub.readContract({
-          address: from.token.address,
-          abi: erc20Abi,
-          functionName: "allowance",
-          args: [account.address, approvalTo],
-        });
-        // Approve generously so a re-quoted (slightly larger) amount still fits.
-        const required = rawAmount;
-        if (current < required) {
-          // USDT-style tokens revert when moving a non-zero allowance to
-          // another non-zero value — reset to 0 first.
-          if (current > 0n) {
-            setStage("Resetting approval…");
-            const resetHash = await sendEvmTransaction(chainId, walletClient, {
-              to: from.token.address,
-              data: encodeFunctionData({
-                abi: erc20Abi,
-                functionName: "approve",
-                args: [approvalTo, 0n],
-              }),
-              value: 0n,
-            });
-            await pub.waitForTransactionReceipt({ hash: resetHash });
-          }
-          setStage("Approving…");
-          const approveHash = await sendEvmTransaction(chainId, walletClient, {
-            to: from.token.address,
-            data: encodeFunctionData({
-              abi: erc20Abi,
-              functionName: "approve",
-              args: [approvalTo, required],
-            }),
-            value: 0n,
-          });
-          const rec = await pub.waitForTransactionReceipt({ hash: approveHash });
-          if (rec.status !== "success") throw new Error("Token approval failed on-chain");
-        }
-      }
-
-      // Always sign against a freshly fetched route — a quote that sat on
-      // screen for a minute will revert on slippage.
-      setStage("Refreshing route…");
-      const q = await fetchQuote({ data: quoteArgs });
-      // The refreshed route must still be the swap the user confirmed: same
-      // Diamond, same tokens and amount, output to this wallet, and a minimum
-      // no more than ACCEPTED_MIN_DRIFT_BPS below what they accepted.
-      const verified = verifyLifiQuote(q, intent);
-
-      setStage("Swapping…");
-      const tx = {
-        to: q.transactionRequest.to,
-        data: q.transactionRequest.data,
-        value: verified.value,
-      };
-      // Simulate first. A revert means the router would reject this route,
-      // and a quote-supplied gasLimit is attacker-controlled, so estimation
-      // failure blocks signing rather than falling back to the quoted limit.
-      let gas: bigint;
-      try {
-        gas = await pub.estimateGas({ account, ...tx });
-        gas = (gas * 130n) / 100n;
-      } catch (e) {
-        throw new Error(
-          `The router rejected this swap (likely price moved). Try again, or raise slippage. Details: ${
-            (e as Error).message.split("\n")[0]
-          }`,
-        );
-      }
-
-      return await sendEvmTransaction(chainId, walletClient, { ...tx, gas });
+      return executeLifiSwap({
+        walletClient,
+        publicClient: evmClient(chainId),
+        shown: quote.data,
+        intent: {
+          chain: chainId as LifiChain,
+          user: account.address,
+          fromToken: assetAddress(from),
+          toToken: assetAddress(to),
+          fromAmount: rawAmount,
+          minAmountOutFloor: BigInt(quote.data.estimate.toAmountMin),
+        },
+        refreshQuote: () => fetchQuote({ data: quoteArgs }),
+        assertSession: () => {
+          if (!root || currentRoot.current !== root) throw new Error("Wallet locked or changed. Start the swap again.");
+        },
+        stage: setStage,
+      });
     },
     onError: (e: Error) => {
       hapticError();
