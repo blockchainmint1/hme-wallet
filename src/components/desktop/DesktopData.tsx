@@ -38,9 +38,9 @@ import { getTxcPriceUsd } from "@/lib/txc/price.functions";
 import { getAllPricesUsd } from "@/lib/chains/prices.functions";
 import { EVM_CHAINS, deriveEvmAccount, evmClient, type EvmChainId } from "@/lib/chains/evm";
 import { BUILTIN_TOKENS_BY_CHAIN, readErc20Balance, tokenAmountFromRaw } from "@/lib/chains/erc20";
-import { deriveSolanaAccount, lamportsToSol } from "@/lib/solana/network";
+import { deriveSolanaAddress, lamportsToSol } from "@/lib/solana/network";
 import { useSolanaData } from "@/components/wallet/SolanaTile";
-import { deriveTronAccount } from "@/lib/tron/address";
+import { deriveTronAddress } from "@/lib/tron/address";
 import { TRC20_TOKENS } from "@/lib/tron/network";
 import { sunToTrx } from "@/lib/tron/units";
 import { useTronData } from "@/components/wallet/TronTile";
@@ -58,6 +58,7 @@ import { Input } from "@/components/ui/input";
 
 
 import { rootFingerprintHex } from "@/lib/txc/fingerprint";
+import { isPortfolioRefreshKey } from "@/lib/desktop/display-policy";
 export type DesktopAsset = {
   key: string;
   name: string;
@@ -230,13 +231,13 @@ function useDesktopBalances() {
   // ---- Tron + Solana (not available for Vault-paired profiles) ----
   const tronEnabled = enabled.includes("tron") && !isVault;
   const tronAddress = useMemo(
-    () => (root && !isVault ? deriveTronAccount(root).address : null),
+    () => (root && !isVault ? deriveTronAddress(root) : null),
     [root, isVault],
   );
   const tron = useTronData(tronAddress, !!unlocked && tronEnabled);
   const solanaEnabled = enabled.includes("solana") && !isVault;
-  const solanaAccount = useMemo(() => (seed && !isVault ? deriveSolanaAccount(seed) : null), [seed, isVault]);
-  const solana = useSolanaData(solanaAccount?.address ?? null, !!unlocked && solanaEnabled);
+  const solanaAddress = useMemo(() => (seed && !isVault ? deriveSolanaAddress(seed) : null), [seed, isVault]);
+  const solana = useSolanaData(solanaAddress, !!unlocked && solanaEnabled);
 
   // ---- Assemble rows ----
   const rows: DesktopAsset[] = useMemo(() => {
@@ -356,7 +357,7 @@ function useDesktopBalances() {
         });
       });
     }
-    if (solanaEnabled && solanaAccount) {
+    if (solanaEnabled && solanaAddress) {
       const amt = solana.balance.data != null ? lamportsToSol(solana.balance.data) : null;
       const p = allPrices.data?.prices?.SOL ?? null;
       out.push({
@@ -379,22 +380,15 @@ function useDesktopBalances() {
     ltcAccount.data, ltcPrice.data, dogeAccount.data, dogePrice.data,
     evmEnabled, evmBalances, stableQueries, stableBalances, allPrices.data,
     tronEnabled, tronAddress, tron.balance.data, tron.price.data, tron.tokens,
-    solanaEnabled, solanaAccount, solana.balance.data, enabled,
+    solanaEnabled, solanaAddress, solana.balance.data, enabled,
   ]);
 
   const total = rows.reduce((s, r) => s + (r.usd ?? 0), 0);
   const valued = rows.filter((r) => (r.usd ?? 0) > 0).sort((a, b) => (b.usd ?? 0) - (a.usd ?? 0));
-  const loadingAny =
-    txcAccount.isPending ||
-    (enabled.includes("isk") && iskAccount.isPending) ||
-    (enabled.includes("btc") && btcAccount.isPending) ||
-    (enabled.includes("ltc") && ltcAccount.isPending) ||
-    (enabled.includes("doge") && dogeAccount.isPending);
-
   const accounts = { txc: txcAccount, isk: iskAccount, btc: btcAccount, ltc: ltcAccount, doge: dogeAccount };
   const queries = [txcAccount, ...(enabled.includes("isk") ? [iskAccount] : []), ...(enabled.includes("btc") ? [btcAccount] : []), ...(enabled.includes("ltc") ? [ltcAccount] : []), ...(enabled.includes("doge") ? [dogeAccount] : []), ...evmBalances, ...stableBalances, tsdBalance, ...(tronEnabled ? [tron.balance, ...tron.tokens] : []), ...(solanaEnabled ? [solana.balance] : [])];
   const complete = rows.every(r => r.amount !== null && (r.amount === 0 || r.price !== null)) && queries.every(q => !q.isError && !q.isFetching);
-  return { rows, total, valued, accounts, enabled, complete, loading: queries.some(q => q.isFetching), unavailable: queries.some(q => q.isError), evmAddress, tronAddress, solanaAddress: solanaAccount?.address ?? null, pairing, isVault, activeProfileId, hidden, refresh: () => qc.invalidateQueries({ predicate: q => !q.queryKey[0]?.toString().includes("history") && !q.queryKey[0]?.toString().includes("txs") }) };
+  return { rows, total, valued, accounts, enabled, complete, loading: queries.some(q => q.isFetching), unavailable: queries.some(q => q.isError), evmAddress, tronAddress, solanaAddress, pairing, isVault, activeProfileId, hidden, refresh: () => qc.invalidateQueries({ predicate: q => isPortfolioRefreshKey(q.queryKey) }) };
 }
 type DesktopData = ReturnType<typeof useDesktopBalances>;
 const DesktopContext = createContext<DesktopData | null>(null);
