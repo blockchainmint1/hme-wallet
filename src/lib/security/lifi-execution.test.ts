@@ -5,10 +5,11 @@ import type { SwapQuote } from "@/lib/chains/swap.functions";
 import { executeLifiSwap } from "./lifi-execution";
 import { LIFI_DIAMOND, LIFI_NATIVE, type SwapIntent } from "./lifi-policy";
 
-const mocks = vi.hoisted(() => ({ gate: vi.fn(), deployment: vi.fn(), send: vi.fn(), reviewedRoute: vi.fn() }));
+const mocks = vi.hoisted(() => ({ gate: vi.fn(), deployment: vi.fn(), send: vi.fn(), reviewedRoute: vi.fn(), allowlist: vi.fn() }));
 vi.mock("./execution-policy", () => ({ assertReviewedExecution: mocks.gate }));
 // Isolate sender/outer checks; dedicated reviewed-route tests exercise real inner decoding.
 vi.mock("./lifi-reviewed-route", () => ({ verifyReviewedLifiQuote: mocks.reviewedRoute }));
+vi.mock("./lifi-route-allowlist", () => ({ verifyLifiRouteAllowlisted: mocks.allowlist }));
 vi.mock("./lifi-policy", async (original) => ({ ...await original<object>(), verifyLifiDeployment: mocks.deployment }));
 vi.mock("@/lib/chains/evm-send", () => ({ sendEvmTransaction: mocks.send }));
 const USER = "0x000000000000000000000000000000000000dEaD";
@@ -43,6 +44,15 @@ beforeEach(() => {
 });
 
 describe("shared LI.FI executor signing boundary (release gate mocked open ONLY in tests)", () => {
+  it("rejected direct-call membership fails before any allowance read or signature", async () => {
+    const h = harness(); mocks.allowlist.mockRejectedValue(new Error("permission is unavailable"));
+    await expect(executeLifiSwap(h.input)).rejects.toThrow("permission is unavailable");
+    expect(h.rpc.readContract).not.toHaveBeenCalled(); expect(mocks.send).not.toHaveBeenCalled();
+  });
+  it("checks displayed and both refreshed routes in addition to mandatory review", async () => {
+    const h = harness(BASE); await executeLifiSwap(h.input);
+    expect(mocks.allowlist).toHaveBeenCalledTimes(3); expect(mocks.reviewedRoute).toHaveBeenCalledTimes(3);
+  });
   it("unreviewed fee/opaque instructions fail before any allowance or signature", async () => {
     const h = harness(); mocks.reviewedRoute.mockImplementation(() => { throw new Error("unreviewed route"); });
     await expect(executeLifiSwap(h.input)).rejects.toThrow("unreviewed route");

@@ -51,7 +51,7 @@ Registry/Hub use ecosystem-credential.server (current per-site HME convention); 
 - Swap history keeps its original key; new rows carry profile IDs, legacy rows match payout addresses, and opening refreshes provider status. Why: preserve records without cross-wallet display or invented completion.
 
 ## Security boundaries
-- LI.FI uses one immutable shared executor with exact intent, prepared bytes, session/deployment and fresh server checks per signature; reviewed nested adapters only, no generic fallback. Quote requests omit integrator configuration. Keep execution paused until independent adapter/release/device acceptance. Why: cached quotes cannot authorize opaque spending.
+- LI.FI shares immutable intent/bytes and session/deployment/server signing checks; nested semantic review is mandatory, no fallback. Single-block hop allowlisting adds compatibility only; distinct spenders use the approval-only sentinel. Omit integrator config; remain paused until independent route/release/device acceptance. Why: permitted entrypoints cannot authorize opaque instructions.
 - FixedFloat non-JSON 403 responses are access refusals, not invalid quotes; never retry order creation against alternate hosts or expose gateway bodies. Why: live-service access can differ from sandbox access and duplicate orders must be avoided.
 - THORChain quotes and order refreshes use liquidity_tolerance_bps against expected after-fee output, never feeless tolerance_bps; why: liquidity fees must not consume price protection or reject valid streaming quotes.
 - Read src/lib/security/AGENTS.md before changing security controls; why: shared guardrails cover web, Android and extension.
