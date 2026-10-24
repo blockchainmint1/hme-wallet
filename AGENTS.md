@@ -9,6 +9,11 @@
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
 
+## Desktop workspace
+- Desktop uses a nested /desktop layout with inline unlock, dedicated pages and desktop-only data/presentation; phone routes render extracted shared payment screens with their original defaults. Why: one signing implementation avoids platform drift without replacing the mobile experience.
+- Desktop balance history is profile-isolated device observations, recorded only for complete data and compatible asset coverage; never fabricate historical performance. Why: outages and changed coverage are not real portfolio losses.
+- Desktop Earn execution and Vault swaps stay unavailable pending their independent acceptance reviews. Why: a new presentation must not enable unverified spending paths.
+
 ## Shared platform capabilities and layout
 - Wide fine-pointer web browsers land on /desktop from /wallet unless "Phone view" was chosen (src/lib/desktop-pref.ts); APK and extension never redirect. Why: desktop default must never alter phone/APK/extension behavior.
 - Desktop's locked state stays at /desktop and unlocks inline through the shared WalletProvider; why: hard navigation intentionally loses the ephemeral session key and must not bounce users into the mobile workspace.
