@@ -36,8 +36,15 @@ export const aTokenAbi = parseAbi([
   "function UNDERLYING_ASSET_ADDRESS() view returns (address)",
   "function POOL() view returns (address)",
 ]);
+export const AAVE_DATA_PROVIDER = "0x0a16f2FCC0D44FaE41cc54e079281D84A363bECD" as Address;
+export const AAVE_ADDRESSES_PROVIDER = "0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e" as Address;
+export const providerAbi = parseAbi(["function getPool() view returns (address)"]);
+export const dataProviderAbi = parseAbi([
+  "function getReserveData(address asset) view returns (uint256 unbacked, uint256 accruedToTreasuryScaled, uint256 totalAToken, uint256 totalStableDebt, uint256 totalVariableDebt, uint256 liquidityRate, uint256 variableBorrowRate, uint256 stableBorrowRate, uint256 averageStableBorrowRate, uint256 liquidityIndex, uint256 variableBorrowIndex, uint40 lastUpdateTimestamp)",
+  "function getReserveTokensAddresses(address asset) view returns (address aTokenAddress, address stableDebtTokenAddress, address variableDebtTokenAddress)",
+]);
 
 /** Deliberately unconditional: a UI preference must never enable spending. */
-export function assertEarnExecution(): never {
+export function assertEarnExecution(): void {
   throw new Error("Earn deposits and withdrawals await independent safety review.");
 }

@@ -1,6 +1,6 @@
 import { encodeFunctionData, erc20Abi, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
 import { sendEvmTransaction, type EvmTxRequest } from "@/lib/chains/evm-send";
-import { EARN, skyAbi, poolAbi, aTokenAbi, assertEarnExecution, type EarnProtocol, type EarnAction } from "./protocols";
+import { EARN, skyAbi, poolAbi, aTokenAbi, assertEarnExecution, AAVE_DATA_PROVIDER, AAVE_ADDRESSES_PROVIDER, providerAbi, dataProviderAbi, type EarnProtocol, type EarnAction } from "./protocols";
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 export type EarnIntent = Readonly<{ protocol: EarnProtocol; action: EarnAction; user: Address; amount: bigint; minimum: bigint }>;
@@ -37,6 +37,9 @@ export async function verifyEarnDeployment(pub: PublicClient, protocol: EarnProt
       pub.readContract({ address: p.receipt, abi: aTokenAbi, functionName: "POOL" }),
     ]);
     if (!same(asset, p.underlying) || !same(pool, p.target)) throw new Error("Aave reserve changed");
+    const livePool = await pub.readContract({ address: AAVE_ADDRESSES_PROVIDER, abi: providerAbi, functionName: "getPool" });
+    const reserve = await pub.readContract({ address: AAVE_DATA_PROVIDER, abi: dataProviderAbi, functionName: "getReserveTokensAddresses", args: [p.underlying] });
+    if (!same(livePool, p.target) || !same(reserve[0], p.receipt)) throw new Error("Aave deployment changed");
   }
 }
 
@@ -56,6 +59,10 @@ export async function readEarnPosition(pub: PublicClient, protocol: EarnProtocol
     // Annualized current per-second RAY rate, not a guaranteed future return.
     apy = Math.expm1(Math.log1p(Number(rate - 10n ** 27n) / 1e27) * 31_536_000) * 100;
     if (!Number.isFinite(apy) || apy < 0) throw new Error("Invalid savings rate");
+  } else {
+    const reserve = await pub.readContract({ address: AAVE_DATA_PROVIDER, abi: dataProviderAbi, functionName: "getReserveData", args: [p.underlying] });
+    apy = Math.expm1(Math.log1p(Number(reserve[5]) / 1e27 / 31_536_000) * 31_536_000) * 100;
+    if (!Number.isFinite(apy) || apy < 0) throw new Error("Invalid lending rate");
   }
   return { available, shares, assets, eth, apy };
 }
