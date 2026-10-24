@@ -3,6 +3,7 @@ import { z } from "zod";
 const amount = z.string().regex(/^\d{1,78}$/);
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/);
 const hex = z.string().regex(/^0x(?:[0-9a-fA-F]{2})*$/);
+const quantity = z.string().regex(/^0x[0-9a-fA-F]{1,64}$/);
 export const lifiQuoteSchema = z.object({
   estimate: z.object({
     fromAmount: amount, toAmount: amount, toAmountMin: amount,
@@ -11,9 +12,9 @@ export const lifiQuoteSchema = z.object({
     gasCosts: z.array(z.object({ amountUSD: z.string().max(100).optional(), estimate: amount.optional() })).max(20).optional(),
   }),
   transactionRequest: z.object({
-    to: address, data: hex.max(262144), value: hex,
+    to: address, data: hex.max(262144), value: quantity,
     chainId: z.union([z.literal(1), z.literal(8453), z.literal(56)]),
-    gasLimit: hex.optional(), gasPrice: hex.optional(),
+    gasLimit: quantity.optional(), gasPrice: quantity.optional(),
   }),
   tool: z.string().max(100),
   toolDetails: z.object({ name: z.string().max(200), logoURI: z.string().max(2048).optional() }).optional(),

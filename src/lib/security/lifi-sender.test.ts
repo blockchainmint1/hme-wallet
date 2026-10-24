@@ -1,6 +1,6 @@
 /** Actual local viem signing with a PUBLIC disposable test key; no network/funds. */
 import { beforeEach, expect, it, vi } from "vitest";
-import { createWalletClient, decodeFunctionData, encodeFunctionData, erc20Abi, http, parseTransaction, recoverTransactionAddress } from "viem";
+import { createWalletClient, custom, decodeFunctionData, encodeFunctionData, erc20Abi, parseTransaction, recoverTransactionAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { mainnet } from "viem/chains";
 import { sendEvmTransaction } from "@/lib/chains/evm-send";
@@ -15,7 +15,12 @@ const account = privateKeyToAccount(`0x${"11".repeat(32)}`);
 const token = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const data = encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [LIFI_DIAMOND.eth, 100000000n] });
 function wallet() {
-  const client = createWalletClient({ account, chain: mainnet, transport: http("http://localhost:8080") });
+  const client = createWalletClient({ account, chain: mainnet, transport: custom({
+    request: async ({ method }) => {
+      if (method === "eth_chainId") return "0x1";
+      throw new Error(`Unexpected test RPC: ${method}`);
+    },
+  }) });
   vi.spyOn(client, "prepareTransactionRequest").mockImplementation(async (request) => ({
     ...request, chainId: 1, gas: 100000n, gasPrice: 1000000000n, type: "legacy",
   }) as Awaited<ReturnType<typeof client.prepareTransactionRequest>>);
