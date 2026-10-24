@@ -32,15 +32,21 @@ export async function executeLifiSwap(input: {
     throw new Error("Swap blocked: signing network differs from the confirmed network");
   }
   verifyLifiQuote(shown, intent);
-  const send = (tx: EvmTxRequest) => sendEvmTransaction(intent.chain, walletClient, tx, (prepared) => {
+  const send = (tx: EvmTxRequest) => sendEvmTransaction(intent.chain, walletClient, tx, async (prepared) => {
     assertReviewedExecution("lifi");
     input.assertSession();
+    const sender = typeof prepared.account === "string" ? prepared.account : (prepared.account as { address?: string } | undefined)?.address;
     if (walletClient.account?.address.toLowerCase() !== intent.user.toLowerCase() ||
+        sender?.toLowerCase() !== intent.user.toLowerCase() ||
         prepared.chainId !== LIFI_CHAIN_IDS[intent.chain] ||
         prepared.to?.toLowerCase() !== tx.to.toLowerCase() ||
         prepared.data !== tx.data || (prepared.value ?? 0n) !== (tx.value ?? 0n)) {
       throw new Error("Swap blocked: prepared transaction differs from the confirmed payment");
     }
+    // Sender preparation and nonce retries can take time; recheck the deployment
+    // on every actual signature attempt, not just before estimating gas.
+    await verifyLifiDeployment(intent.chain, pub);
+    input.assertSession();
   });
   stage("Checking LI.FI contract…");
   await verifyLifiDeployment(intent.chain, pub);
@@ -68,6 +74,7 @@ export async function executeLifiSwap(input: {
         const hash = await send({ to: token, data, value: 0n, gas });
         const receipt = await pub.waitForTransactionReceipt({ hash });
         if (receipt.status !== "success") throw new Error("Token approval failed on-chain");
+        input.assertSession();
       };
       if (current > 0n) {
         stage("Resetting approval…");

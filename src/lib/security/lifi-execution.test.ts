@@ -35,7 +35,7 @@ function harness(q: SwapQuote = ETH) {
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.send.mockImplementation(async (_chain, _wallet, tx, guard) => {
-    await guard({ ...tx, chainId: _wallet.chain.id });
+    await guard({ ...tx, chainId: _wallet.chain.id, account: _wallet.account });
     return HASH;
   });
 });
@@ -119,7 +119,7 @@ describe("shared LI.FI executor signing boundary (release gate mocked open ONLY 
   it("pre-sign guard rejects altered prepared calldata", async () => {
     const h = harness(BASE);
     mocks.send.mockImplementation(async (_chain, _wallet, tx, guard) => {
-      await guard({ ...tx, chainId: 8453, data: "0xdeadbeef" }); return HASH;
+      await guard({ ...tx, chainId: 8453, account: _wallet.account, data: "0xdeadbeef" }); return HASH;
     });
     await expect(executeLifiSwap(h.input)).rejects.toThrow("prepared transaction differs");
   });
@@ -132,6 +132,32 @@ describe("shared LI.FI executor signing boundary (release gate mocked open ONLY 
     const h = harness(BASE);
     h.input.assertSession.mockImplementationOnce(() => undefined).mockImplementation(() => { throw new Error("Wallet locked"); });
     await expect(executeLifiSwap(h.input)).rejects.toThrow("Wallet locked");
+    expect(mocks.send).toHaveBeenCalledTimes(1);
+  });
+  it("prepared sender substitution stops signature authorization", async () => {
+    const h = harness(BASE);
+    mocks.send.mockImplementation(async (_chain, _wallet, tx, guard) => {
+      await guard({ ...tx, chainId: 8453, account: { address: ATTACKER } }); return HASH;
+    });
+    await expect(executeLifiSwap(h.input)).rejects.toThrow("prepared transaction differs");
+  });
+  it("deployment change during nonce preparation stops signature authorization", async () => {
+    const h = harness(BASE);
+    mocks.deployment.mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("implementation changed"));
+    await expect(executeLifiSwap(h.input)).rejects.toThrow("implementation changed");
+  });
+  it("lock during deployment recheck stops signature authorization", async () => {
+    const h = harness(BASE); let locked = false;
+    h.input.assertSession.mockImplementation(() => { if (locked) throw new Error("locked"); });
+    mocks.deployment.mockImplementation(async () => { if (mocks.deployment.mock.calls.length === 3) locked = true; });
+    await expect(executeLifiSwap(h.input)).rejects.toThrow("locked");
+  });
+  it("wallet lock while approval confirms stops the swap", async () => {
+    const h = harness(); let locked = false;
+    h.input.assertSession.mockImplementation(() => { if (locked) throw new Error("locked"); });
+    h.rpc.readContract.mockResolvedValueOnce(0n);
+    h.rpc.waitForTransactionReceipt.mockImplementation(async () => { locked = true; return { status: "success" }; });
+    await expect(executeLifiSwap(h.input)).rejects.toThrow("locked");
     expect(mocks.send).toHaveBeenCalledTimes(1);
   });
 });
