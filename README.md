@@ -14,9 +14,9 @@ A self-custodial, multi-chain wallet for people who want more from their money�
 
 ---
 
-## Homegrown money, front and center
+## Our coins, front and center
 
-Three chains are built by Honest Money and treated as first-class citizens — not an afterthought bolted onto a generic wallet.
+Three chains are the reason this wallet exists, and they're treated as first-class citizens — not an afterthought bolted onto a generic wallet.
 
 | Coin | What it is | Why it matters here |
 | :--- | :--- | :--- |
@@ -40,7 +40,7 @@ Honest Money brings those moments together. Move between networks, manage separa
 
 | | What you can do |
 | :--- | :--- |
-| **Start with our own chains** | TEXITcoin, IskanderCoin and Zero Chill are built in — alongside Bitcoin, Ethereum, Base, BNB Chain, Litecoin, Dogecoin, Tron and Solana. |
+| **Home coins first** | TEXITcoin, IskanderCoin and Zero Chill lead the lineup — alongside Bitcoin, Ethereum, Base, BNB Chain, Litecoin, Dogecoin, Tron and Solana. |
 | **Move your money** | Send, receive and use QR payment flows, with transaction activity close at hand. |
 | **Keep wallets separate** | Create or import additional seed-based profiles without replacing your existing wallet. |
 | **Keep an eye on your assets** | Track balances, prices and stablecoin holdings; hide balances when you want a little discretion. |
