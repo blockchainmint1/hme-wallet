@@ -1,5 +1,5 @@
 # Roadmap
-- [ ] Apply approved desktop audit improvements: balance/price-only Refresh, hidden allocation ranking, address-only Tron/Solana display; regression checks and revised auditor pack, no release.
+- [x] Apply approved desktop audit improvements: explicit balance/price-only Refresh, hidden allocation ranking/count, address-only Tron/Solana display and unused pending calculation removed. 48 targeted tests pass; unlocked desktop privacy/navigation/payment rejection and phone separation verified; revised auditor pack prepared, not published.
 - [x] Rebuild /desktop around Bobby's Ledger Live reference: device balance history, allocation/activity, dedicated Send/Receive/Swap/Vault/Stablecoins/Earn/Apps pages; shared payment screens preserve mobile defaults. Build OK; 44 tests passed; isolated unlocked-wallet navigation, invalid-address rejection, privacy, inline lock/reunlock and 390px phone separation verified. No funds sent or releases published.
 - [ ] Enable reviewed sUSDS acquisition and selected additional Earn assets. Blocker: verified contracts, supported execution routes and independent acceptance review; no invented yield or enabled spending.
 - [ ] Desktop release acceptance: third-party source review, funded multi-chain/profile/Vault-device tests and APK/extension package checks required before publication.
