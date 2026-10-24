@@ -1,4 +1,5 @@
 import { scopedKey } from "@/lib/profiles";
+import type { PreferenceScope } from "./preference-scope";
 /**
  * Chain preferences: which chains from the single HD seed to show tiles for.
  * Stored in localStorage so it persists across sessions on-device.
@@ -130,44 +131,47 @@ const DEFAULT_ENABLED: Record<ChainId, boolean> = {
   zcu: false,
 };
 
-function read(): Record<ChainId, boolean> {
-  if (typeof localStorage === "undefined") return { ...DEFAULT_ENABLED };
+function read(scope: PreferenceScope = "phone"): Record<ChainId, boolean> {
+  const defaults = scope === "desktop"
+    ? Object.fromEntries(CHAIN_ORDER.map(id => [id, !CHAIN_META[id].soon])) as Record<ChainId, boolean>
+    : DEFAULT_ENABLED;
+  if (typeof localStorage === "undefined") return { ...defaults };
   try {
-    const raw = localStorage.getItem(STORAGE_KEY()) ?? adoptLegacy(STORAGE_KEY_BASE);
-    if (!raw) return { ...DEFAULT_ENABLED };
+    const raw = scope === "desktop" ? localStorage.getItem("hme.desktop.chains.enabled.v1") : localStorage.getItem(STORAGE_KEY()) ?? adoptLegacy(STORAGE_KEY_BASE);
+    if (!raw) return { ...defaults };
     const parsed = JSON.parse(raw) as Partial<Record<ChainId, boolean>>;
-    const out = { ...DEFAULT_ENABLED };
-    for (const k of CHAIN_ORDER) if (typeof parsed[k] === "boolean") out[k] = parsed[k]!;
+    const out = { ...defaults };
+    for (const k of CHAIN_ORDER) { const value = parsed[k]; if (typeof value === "boolean") out[k] = value; }
     // "soon" chains can never be enabled.
     for (const k of CHAIN_ORDER) if (CHAIN_META[k].soon) out[k] = false;
     // TXC is always on.
     out.txc = true;
     return out;
   } catch {
-    return { ...DEFAULT_ENABLED };
+    return { ...defaults };
   }
 }
 
-export function getChainPrefs(): Record<ChainId, boolean> {
-  return read();
+export function getChainPrefs(scope: PreferenceScope = "phone"): Record<ChainId, boolean> {
+  return read(scope);
 }
 
-export function getEnabledChains(): ChainId[] {
+export function getEnabledChains(scope: PreferenceScope = "phone"): ChainId[] {
   // A key-only wallet has no seed, so there are no derived HD chain tiles —
   // only the imported WIF tiles.
   if (isKeyOnlyWallet()) return [];
-  const prefs = read();
-  return readOrder().filter((c) => prefs[c]);
+  const prefs = read(scope);
+  return (scope === "desktop" ? CHAIN_ORDER : readOrder()).filter((c) => prefs[c]);
 }
 
 
-export function setChainEnabled(id: ChainId, enabled: boolean): void {
+export function setChainEnabled(id: ChainId, enabled: boolean, scope: PreferenceScope = "phone"): void {
   if (CHAIN_META[id].soon) return;
   if (id === "txc") return; // TXC is always on
-  const prefs = read();
+  const prefs = read(scope);
   prefs[id] = enabled;
   try {
-    localStorage.setItem(STORAGE_KEY(), JSON.stringify(prefs));
+    localStorage.setItem(scope === "desktop" ? "hme.desktop.chains.enabled.v1" : STORAGE_KEY(), JSON.stringify(prefs));
     window.dispatchEvent(new CustomEvent("hme:chains-changed"));
   } catch {
     /* ignore */
