@@ -1,4 +1,5 @@
 # Roadmap
+- [ ] Build dedicated /desktop wallet management, compact header switching and desktop add/import/watch/private-key screens; preserve phone flows and shared storage safeguards, verify and provide auditor handoff.
 - [x] Compared public TSD treasury controls and official Sky/Spark routes; prepared checked bigint USDC/USDS fee/rounding estimates and review handoff, 27 Earn tests pass. No screen/execution/release changes.
 - [ ] Finish TSD-aligned Sky integration. Blockers: TSD server-side source not accessible in this workspace; official combined deposit bounds intermediate USDS, not final sUSDS shares. Need verified final-output protection, independent acceptance and funded release-device checks; retain both spending gates.
 - [x] Diagnose stalled desktop history: screenshot shows incomplete balances, which correctly block recording. Added missing-asset explanation and stable-total sampling; 11 tests pass and unlocked browser confirms no partial history saved. Past unrecorded days cannot be recovered; unavailable networks must recover before complete observations resume.
