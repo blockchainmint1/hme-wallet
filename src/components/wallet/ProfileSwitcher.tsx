@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeftRight, Check, ChevronDown, Download, Eye, Key, Loader2, Nfc, Pencil, Plus, ShieldCheck, Sparkles, Trash2, Wallet } from "lucide-react";
 import { useFeature } from "@/lib/feature-prefs";
+import { usePreferenceScope } from "@/lib/preference-scope";
 import { DELEGATE_LINKS_EVENT, listDelegateLinks, type DelegateLinkRecord } from "@/lib/xpub-link/delegate";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -38,6 +39,7 @@ import { Label } from "@/components/ui/label";
 import { disableBiometric } from "@/lib/native/biometric";
 
 export function ProfileSwitcher() {
+  const scope = usePreferenceScope();
   const { profiles, activeProfileId, switchProfile, refreshProfiles, rename, unlocked, forget } =
     useWallet();
   const navigate = useNavigate();
@@ -314,7 +316,7 @@ export function ProfileSwitcher() {
             </Link>
           </Button>
           <Button asChild variant="outline" onClick={() => setOpen(false)}>
-            <Link to="/vault-add">
+            <Link to={scope === "desktop" ? "/desktop/vault-add" : "/vault-add"}>
               <ShieldCheck className="h-4 w-4 mr-2" /> Add Vault wallet
             </Link>
           </Button>

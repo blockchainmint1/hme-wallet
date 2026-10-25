@@ -31,6 +31,7 @@ import { Route as DesktopSettingsRouteImport } from './routes/desktop.settings'
 import { Route as DesktopStablecoinsRouteImport } from './routes/desktop.stablecoins'
 import { Route as DesktopSwapRouteImport } from './routes/desktop.swap'
 import { Route as DesktopVaultRouteImport } from './routes/desktop.vault'
+import { Route as DesktopVaultAddRouteImport } from './routes/desktop.vault-add'
 import { Route as LegalPrivacyRouteImport } from './routes/legal.privacy'
 import { Route as LegalTermsRouteImport } from './routes/legal.terms'
 import { Route as PayInvoiceIdRouteImport } from './routes/pay.$invoiceId'
@@ -188,6 +189,11 @@ const DesktopSwapRoute = DesktopSwapRouteImport.update({
 const DesktopVaultRoute = DesktopVaultRouteImport.update({
   id: '/vault',
   path: '/vault',
+  getParentRoute: () => DesktopRoute,
+} as any)
+const DesktopVaultAddRoute = DesktopVaultAddRouteImport.update({
+  id: '/vault-add',
+  path: '/vault-add',
   getParentRoute: () => DesktopRoute,
 } as any)
 const LegalPrivacyRoute = LegalPrivacyRouteImport.update({
@@ -454,6 +460,7 @@ export interface FileRoutesByFullPath {
   '/desktop/stablecoins': typeof DesktopStablecoinsRoute
   '/desktop/swap': typeof DesktopSwapRoute
   '/desktop/vault': typeof DesktopVaultRoute
+  '/desktop/vault-add': typeof DesktopVaultAddRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/terms': typeof LegalTermsRoute
   '/pay/$invoiceId': typeof PayInvoiceIdRoute
@@ -524,6 +531,7 @@ export interface FileRoutesByTo {
   '/desktop/stablecoins': typeof DesktopStablecoinsRoute
   '/desktop/swap': typeof DesktopSwapRoute
   '/desktop/vault': typeof DesktopVaultRoute
+  '/desktop/vault-add': typeof DesktopVaultAddRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/terms': typeof LegalTermsRoute
   '/pay/$invoiceId': typeof PayInvoiceIdRoute
@@ -597,6 +605,7 @@ export interface FileRoutesById {
   '/desktop/stablecoins': typeof DesktopStablecoinsRoute
   '/desktop/swap': typeof DesktopSwapRoute
   '/desktop/vault': typeof DesktopVaultRoute
+  '/desktop/vault-add': typeof DesktopVaultAddRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/terms': typeof LegalTermsRoute
   '/pay/$invoiceId': typeof PayInvoiceIdRoute
@@ -671,6 +680,7 @@ export interface FileRouteTypes {
     | '/desktop/stablecoins'
     | '/desktop/swap'
     | '/desktop/vault'
+    | '/desktop/vault-add'
     | '/legal/privacy'
     | '/legal/terms'
     | '/pay/$invoiceId'
@@ -741,6 +751,7 @@ export interface FileRouteTypes {
     | '/desktop/stablecoins'
     | '/desktop/swap'
     | '/desktop/vault'
+    | '/desktop/vault-add'
     | '/legal/privacy'
     | '/legal/terms'
     | '/pay/$invoiceId'
@@ -813,6 +824,7 @@ export interface FileRouteTypes {
     | '/desktop/stablecoins'
     | '/desktop/swap'
     | '/desktop/vault'
+    | '/desktop/vault-add'
     | '/legal/privacy'
     | '/legal/terms'
     | '/pay/$invoiceId'
@@ -1047,6 +1059,13 @@ declare module '@tanstack/react-router' {
       path: '/vault'
       fullPath: '/desktop/vault'
       preLoaderRoute: typeof DesktopVaultRouteImport
+      parentRoute: typeof DesktopRoute
+    }
+    '/desktop/vault-add': {
+      id: '/desktop/vault-add'
+      path: '/vault-add'
+      fullPath: '/desktop/vault-add'
+      preLoaderRoute: typeof DesktopVaultAddRouteImport
       parentRoute: typeof DesktopRoute
     }
     '/legal/privacy': {
@@ -1398,6 +1417,7 @@ interface DesktopRouteChildren {
   DesktopStablecoinsRoute: typeof DesktopStablecoinsRoute
   DesktopSwapRoute: typeof DesktopSwapRoute
   DesktopVaultRoute: typeof DesktopVaultRoute
+  DesktopVaultAddRoute: typeof DesktopVaultAddRoute
   DesktopIndexRoute: typeof DesktopIndexRoute
 }
 
@@ -1411,6 +1431,7 @@ const DesktopRouteChildren: DesktopRouteChildren = {
   DesktopStablecoinsRoute: DesktopStablecoinsRoute,
   DesktopSwapRoute: DesktopSwapRoute,
   DesktopVaultRoute: DesktopVaultRoute,
+  DesktopVaultAddRoute: DesktopVaultAddRoute,
   DesktopIndexRoute: DesktopIndexRoute,
 }
 
