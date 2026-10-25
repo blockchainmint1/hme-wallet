@@ -24,14 +24,21 @@ import { Route as ApiZcuExplorerBaseRouteImport } from './routes/api/zcu-explore
 import { Route as DesktopIndexRouteImport } from './routes/desktop.index'
 import { Route as DesktopActivityRouteImport } from './routes/desktop.activity'
 import { Route as DesktopAppsRouteImport } from './routes/desktop.apps'
+import { Route as DesktopCreateRouteImport } from './routes/desktop.create'
 import { Route as DesktopEarnRouteImport } from './routes/desktop.earn'
+import { Route as DesktopImportRouteImport } from './routes/desktop.import'
+import { Route as DesktopPrivateKeyRouteImport } from './routes/desktop.private-key'
 import { Route as DesktopReceiveRouteImport } from './routes/desktop.receive'
 import { Route as DesktopSendRouteImport } from './routes/desktop.send'
 import { Route as DesktopSettingsRouteImport } from './routes/desktop.settings'
+import { Route as DesktopSharedRouteImport } from './routes/desktop.shared'
 import { Route as DesktopStablecoinsRouteImport } from './routes/desktop.stablecoins'
 import { Route as DesktopSwapRouteImport } from './routes/desktop.swap'
 import { Route as DesktopVaultRouteImport } from './routes/desktop.vault'
 import { Route as DesktopVaultAddRouteImport } from './routes/desktop.vault-add'
+import { Route as DesktopWalletAddRouteImport } from './routes/desktop.wallet-add'
+import { Route as DesktopWalletsRouteImport } from './routes/desktop.wallets'
+import { Route as DesktopWatchAddRouteImport } from './routes/desktop.watch-add'
 import { Route as LegalPrivacyRouteImport } from './routes/legal.privacy'
 import { Route as LegalTermsRouteImport } from './routes/legal.terms'
 import { Route as PayInvoiceIdRouteImport } from './routes/pay.$invoiceId'
@@ -156,9 +163,24 @@ const DesktopAppsRoute = DesktopAppsRouteImport.update({
   path: '/apps',
   getParentRoute: () => DesktopRoute,
 } as any)
+const DesktopCreateRoute = DesktopCreateRouteImport.update({
+  id: '/create',
+  path: '/create',
+  getParentRoute: () => DesktopRoute,
+} as any)
 const DesktopEarnRoute = DesktopEarnRouteImport.update({
   id: '/earn',
   path: '/earn',
+  getParentRoute: () => DesktopRoute,
+} as any)
+const DesktopImportRoute = DesktopImportRouteImport.update({
+  id: '/import',
+  path: '/import',
+  getParentRoute: () => DesktopRoute,
+} as any)
+const DesktopPrivateKeyRoute = DesktopPrivateKeyRouteImport.update({
+  id: '/private-key',
+  path: '/private-key',
   getParentRoute: () => DesktopRoute,
 } as any)
 const DesktopReceiveRoute = DesktopReceiveRouteImport.update({
@@ -174,6 +196,11 @@ const DesktopSendRoute = DesktopSendRouteImport.update({
 const DesktopSettingsRoute = DesktopSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => DesktopRoute,
+} as any)
+const DesktopSharedRoute = DesktopSharedRouteImport.update({
+  id: '/shared',
+  path: '/shared',
   getParentRoute: () => DesktopRoute,
 } as any)
 const DesktopStablecoinsRoute = DesktopStablecoinsRouteImport.update({
@@ -194,6 +221,21 @@ const DesktopVaultRoute = DesktopVaultRouteImport.update({
 const DesktopVaultAddRoute = DesktopVaultAddRouteImport.update({
   id: '/vault-add',
   path: '/vault-add',
+  getParentRoute: () => DesktopRoute,
+} as any)
+const DesktopWalletAddRoute = DesktopWalletAddRouteImport.update({
+  id: '/wallet-add',
+  path: '/wallet-add',
+  getParentRoute: () => DesktopRoute,
+} as any)
+const DesktopWalletsRoute = DesktopWalletsRouteImport.update({
+  id: '/wallets',
+  path: '/wallets',
+  getParentRoute: () => DesktopRoute,
+} as any)
+const DesktopWatchAddRoute = DesktopWatchAddRouteImport.update({
+  id: '/watch-add',
+  path: '/watch-add',
   getParentRoute: () => DesktopRoute,
 } as any)
 const LegalPrivacyRoute = LegalPrivacyRouteImport.update({
@@ -453,14 +495,21 @@ export interface FileRoutesByFullPath {
   '/api/zcu-explorer-base': typeof ApiZcuExplorerBaseRoute
   '/desktop/activity': typeof DesktopActivityRoute
   '/desktop/apps': typeof DesktopAppsRoute
+  '/desktop/create': typeof DesktopCreateRoute
   '/desktop/earn': typeof DesktopEarnRoute
+  '/desktop/import': typeof DesktopImportRoute
+  '/desktop/private-key': typeof DesktopPrivateKeyRoute
   '/desktop/receive': typeof DesktopReceiveRoute
   '/desktop/send': typeof DesktopSendRoute
   '/desktop/settings': typeof DesktopSettingsRoute
+  '/desktop/shared': typeof DesktopSharedRoute
   '/desktop/stablecoins': typeof DesktopStablecoinsRoute
   '/desktop/swap': typeof DesktopSwapRoute
   '/desktop/vault': typeof DesktopVaultRoute
   '/desktop/vault-add': typeof DesktopVaultAddRoute
+  '/desktop/wallet-add': typeof DesktopWalletAddRoute
+  '/desktop/wallets': typeof DesktopWalletsRoute
+  '/desktop/watch-add': typeof DesktopWatchAddRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/terms': typeof LegalTermsRoute
   '/pay/$invoiceId': typeof PayInvoiceIdRoute
@@ -524,14 +573,21 @@ export interface FileRoutesByTo {
   '/api/zcu-explorer-base': typeof ApiZcuExplorerBaseRoute
   '/desktop/activity': typeof DesktopActivityRoute
   '/desktop/apps': typeof DesktopAppsRoute
+  '/desktop/create': typeof DesktopCreateRoute
   '/desktop/earn': typeof DesktopEarnRoute
+  '/desktop/import': typeof DesktopImportRoute
+  '/desktop/private-key': typeof DesktopPrivateKeyRoute
   '/desktop/receive': typeof DesktopReceiveRoute
   '/desktop/send': typeof DesktopSendRoute
   '/desktop/settings': typeof DesktopSettingsRoute
+  '/desktop/shared': typeof DesktopSharedRoute
   '/desktop/stablecoins': typeof DesktopStablecoinsRoute
   '/desktop/swap': typeof DesktopSwapRoute
   '/desktop/vault': typeof DesktopVaultRoute
   '/desktop/vault-add': typeof DesktopVaultAddRoute
+  '/desktop/wallet-add': typeof DesktopWalletAddRoute
+  '/desktop/wallets': typeof DesktopWalletsRoute
+  '/desktop/watch-add': typeof DesktopWatchAddRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/terms': typeof LegalTermsRoute
   '/pay/$invoiceId': typeof PayInvoiceIdRoute
@@ -598,14 +654,21 @@ export interface FileRoutesById {
   '/api/zcu-explorer-base': typeof ApiZcuExplorerBaseRoute
   '/desktop/activity': typeof DesktopActivityRoute
   '/desktop/apps': typeof DesktopAppsRoute
+  '/desktop/create': typeof DesktopCreateRoute
   '/desktop/earn': typeof DesktopEarnRoute
+  '/desktop/import': typeof DesktopImportRoute
+  '/desktop/private-key': typeof DesktopPrivateKeyRoute
   '/desktop/receive': typeof DesktopReceiveRoute
   '/desktop/send': typeof DesktopSendRoute
   '/desktop/settings': typeof DesktopSettingsRoute
+  '/desktop/shared': typeof DesktopSharedRoute
   '/desktop/stablecoins': typeof DesktopStablecoinsRoute
   '/desktop/swap': typeof DesktopSwapRoute
   '/desktop/vault': typeof DesktopVaultRoute
   '/desktop/vault-add': typeof DesktopVaultAddRoute
+  '/desktop/wallet-add': typeof DesktopWalletAddRoute
+  '/desktop/wallets': typeof DesktopWalletsRoute
+  '/desktop/watch-add': typeof DesktopWatchAddRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/terms': typeof LegalTermsRoute
   '/pay/$invoiceId': typeof PayInvoiceIdRoute
@@ -673,14 +736,21 @@ export interface FileRouteTypes {
     | '/api/zcu-explorer-base'
     | '/desktop/activity'
     | '/desktop/apps'
+    | '/desktop/create'
     | '/desktop/earn'
+    | '/desktop/import'
+    | '/desktop/private-key'
     | '/desktop/receive'
     | '/desktop/send'
     | '/desktop/settings'
+    | '/desktop/shared'
     | '/desktop/stablecoins'
     | '/desktop/swap'
     | '/desktop/vault'
     | '/desktop/vault-add'
+    | '/desktop/wallet-add'
+    | '/desktop/wallets'
+    | '/desktop/watch-add'
     | '/legal/privacy'
     | '/legal/terms'
     | '/pay/$invoiceId'
@@ -744,14 +814,21 @@ export interface FileRouteTypes {
     | '/api/zcu-explorer-base'
     | '/desktop/activity'
     | '/desktop/apps'
+    | '/desktop/create'
     | '/desktop/earn'
+    | '/desktop/import'
+    | '/desktop/private-key'
     | '/desktop/receive'
     | '/desktop/send'
     | '/desktop/settings'
+    | '/desktop/shared'
     | '/desktop/stablecoins'
     | '/desktop/swap'
     | '/desktop/vault'
     | '/desktop/vault-add'
+    | '/desktop/wallet-add'
+    | '/desktop/wallets'
+    | '/desktop/watch-add'
     | '/legal/privacy'
     | '/legal/terms'
     | '/pay/$invoiceId'
@@ -817,14 +894,21 @@ export interface FileRouteTypes {
     | '/api/zcu-explorer-base'
     | '/desktop/activity'
     | '/desktop/apps'
+    | '/desktop/create'
     | '/desktop/earn'
+    | '/desktop/import'
+    | '/desktop/private-key'
     | '/desktop/receive'
     | '/desktop/send'
     | '/desktop/settings'
+    | '/desktop/shared'
     | '/desktop/stablecoins'
     | '/desktop/swap'
     | '/desktop/vault'
     | '/desktop/vault-add'
+    | '/desktop/wallet-add'
+    | '/desktop/wallets'
+    | '/desktop/watch-add'
     | '/legal/privacy'
     | '/legal/terms'
     | '/pay/$invoiceId'
@@ -1012,11 +1096,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DesktopAppsRouteImport
       parentRoute: typeof DesktopRoute
     }
+    '/desktop/create': {
+      id: '/desktop/create'
+      path: '/create'
+      fullPath: '/desktop/create'
+      preLoaderRoute: typeof DesktopCreateRouteImport
+      parentRoute: typeof DesktopRoute
+    }
     '/desktop/earn': {
       id: '/desktop/earn'
       path: '/earn'
       fullPath: '/desktop/earn'
       preLoaderRoute: typeof DesktopEarnRouteImport
+      parentRoute: typeof DesktopRoute
+    }
+    '/desktop/import': {
+      id: '/desktop/import'
+      path: '/import'
+      fullPath: '/desktop/import'
+      preLoaderRoute: typeof DesktopImportRouteImport
+      parentRoute: typeof DesktopRoute
+    }
+    '/desktop/private-key': {
+      id: '/desktop/private-key'
+      path: '/private-key'
+      fullPath: '/desktop/private-key'
+      preLoaderRoute: typeof DesktopPrivateKeyRouteImport
       parentRoute: typeof DesktopRoute
     }
     '/desktop/receive': {
@@ -1038,6 +1143,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/desktop/settings'
       preLoaderRoute: typeof DesktopSettingsRouteImport
+      parentRoute: typeof DesktopRoute
+    }
+    '/desktop/shared': {
+      id: '/desktop/shared'
+      path: '/shared'
+      fullPath: '/desktop/shared'
+      preLoaderRoute: typeof DesktopSharedRouteImport
       parentRoute: typeof DesktopRoute
     }
     '/desktop/stablecoins': {
@@ -1066,6 +1178,27 @@ declare module '@tanstack/react-router' {
       path: '/vault-add'
       fullPath: '/desktop/vault-add'
       preLoaderRoute: typeof DesktopVaultAddRouteImport
+      parentRoute: typeof DesktopRoute
+    }
+    '/desktop/wallet-add': {
+      id: '/desktop/wallet-add'
+      path: '/wallet-add'
+      fullPath: '/desktop/wallet-add'
+      preLoaderRoute: typeof DesktopWalletAddRouteImport
+      parentRoute: typeof DesktopRoute
+    }
+    '/desktop/wallets': {
+      id: '/desktop/wallets'
+      path: '/wallets'
+      fullPath: '/desktop/wallets'
+      preLoaderRoute: typeof DesktopWalletsRouteImport
+      parentRoute: typeof DesktopRoute
+    }
+    '/desktop/watch-add': {
+      id: '/desktop/watch-add'
+      path: '/watch-add'
+      fullPath: '/desktop/watch-add'
+      preLoaderRoute: typeof DesktopWatchAddRouteImport
       parentRoute: typeof DesktopRoute
     }
     '/legal/privacy': {
@@ -1410,28 +1543,42 @@ declare module '@tanstack/react-router' {
 interface DesktopRouteChildren {
   DesktopActivityRoute: typeof DesktopActivityRoute
   DesktopAppsRoute: typeof DesktopAppsRoute
+  DesktopCreateRoute: typeof DesktopCreateRoute
   DesktopEarnRoute: typeof DesktopEarnRoute
+  DesktopImportRoute: typeof DesktopImportRoute
+  DesktopPrivateKeyRoute: typeof DesktopPrivateKeyRoute
   DesktopReceiveRoute: typeof DesktopReceiveRoute
   DesktopSendRoute: typeof DesktopSendRoute
   DesktopSettingsRoute: typeof DesktopSettingsRoute
+  DesktopSharedRoute: typeof DesktopSharedRoute
   DesktopStablecoinsRoute: typeof DesktopStablecoinsRoute
   DesktopSwapRoute: typeof DesktopSwapRoute
   DesktopVaultRoute: typeof DesktopVaultRoute
   DesktopVaultAddRoute: typeof DesktopVaultAddRoute
+  DesktopWalletAddRoute: typeof DesktopWalletAddRoute
+  DesktopWalletsRoute: typeof DesktopWalletsRoute
+  DesktopWatchAddRoute: typeof DesktopWatchAddRoute
   DesktopIndexRoute: typeof DesktopIndexRoute
 }
 
 const DesktopRouteChildren: DesktopRouteChildren = {
   DesktopActivityRoute: DesktopActivityRoute,
   DesktopAppsRoute: DesktopAppsRoute,
+  DesktopCreateRoute: DesktopCreateRoute,
   DesktopEarnRoute: DesktopEarnRoute,
+  DesktopImportRoute: DesktopImportRoute,
+  DesktopPrivateKeyRoute: DesktopPrivateKeyRoute,
   DesktopReceiveRoute: DesktopReceiveRoute,
   DesktopSendRoute: DesktopSendRoute,
   DesktopSettingsRoute: DesktopSettingsRoute,
+  DesktopSharedRoute: DesktopSharedRoute,
   DesktopStablecoinsRoute: DesktopStablecoinsRoute,
   DesktopSwapRoute: DesktopSwapRoute,
   DesktopVaultRoute: DesktopVaultRoute,
   DesktopVaultAddRoute: DesktopVaultAddRoute,
+  DesktopWalletAddRoute: DesktopWalletAddRoute,
+  DesktopWalletsRoute: DesktopWalletsRoute,
+  DesktopWatchAddRoute: DesktopWatchAddRoute,
   DesktopIndexRoute: DesktopIndexRoute,
 }
 

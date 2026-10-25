@@ -241,3 +241,15 @@ html {
   .desktop-workspace > aside > div:nth-child(2) { display: none; }
   .desktop-workspace > aside a { justify-content: center; padding-left: 0; padding-right: 0; font-size: 0; }
 }
+
+/* Dedicated desktop management framing; phone form presentation stays unchanged. */
+[data-wallet-management="desktop"] { max-width: none; padding: 0; }
+[data-wallet-management="desktop"] > [data-slot="card"],
+[data-wallet-management="desktop"] > .rounded-xl { border-radius: 0; box-shadow: none; }
+@media (min-width: 1100px) {
+ [data-wallet-management="desktop"]:not(.space-y-4) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 2.5rem; align-items: start; }
+ [data-wallet-management="desktop"] > a,
+ [data-wallet-management="desktop"] > h1,
+ [data-wallet-management="desktop"] > p,
+ [data-wallet-management="desktop"] > div:first-child { grid-column: 1 / -1; }
+}
