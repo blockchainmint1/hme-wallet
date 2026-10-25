@@ -24,6 +24,13 @@ describe("desktop balance history", () => {
   it("keys history by wallet fingerprint so a new seed never inherits old history", () => { localStorage.setItem(balanceHistoryKey("default", "oldseed"), JSON.stringify([{ at: 1, usd: 100, coverage: "btc" }])); expect(readBalanceHistory("default", "newseed")).toEqual([]); expect(readBalanceHistory("default", "oldseed")).toEqual([{ at: 1, usd: 100, coverage: "btc" }]); });
   it("clears fingerprinted and legacy history when the wallet is deleted", () => { localStorage.setItem(balanceHistoryKey("default", "aa"), "[]"); localStorage.setItem("hme.desktop.balance-history.v1", "[]"); localStorage.setItem(balanceHistoryKey("second", "bb"), "[]"); clearBalanceHistory("default"); expect(localStorage.getItem("hme.desktop.balance-history.v1.aa")).toBeNull(); expect(localStorage.getItem("hme.desktop.balance-history.v1")).toBeNull(); expect(localStorage.getItem("p:second:hme.desktop.balance-history.v1.bb")).not.toBeNull(); });
   it("never records incomplete outage values as losses", () => { const saved = [{at: 1, usd: 100, coverage: "btc"}]; expect(appendBalancePoint(saved, {at: 600001, usd: 0, coverage: "btc"}, false)).toEqual(saved); });
+  it("removes per-currency observations with the deleted profile only", () => {
+    const own=balanceHistoryKey("default","aa.currency.btc");
+    const other=balanceHistoryKey("second","aa.currency.btc");
+    localStorage.setItem(own,"[]"); localStorage.setItem(other,"[]");
+    clearBalanceHistory("default");
+    expect(localStorage.getItem(own)).toBeNull(); expect(localStorage.getItem(other)).toBe("[]");
+  });
   it("keeps points from other coverage sets instead of wiping them", () => { const saved = [{at: 1, usd: 100, coverage: "btc"}]; expect(appendBalancePoint(saved, {at: 600001, usd: 50, coverage: "btc,eth"}, true)).toEqual([{at: 1, usd: 100, coverage: "btc"}, {at: 600001, usd: 50, coverage: "btc,eth"}]); });
   it("throttles points within five minutes of the last matching-coverage point", () => { const saved = [{at: 1, usd: 100, coverage: "btc"}]; expect(appendBalancePoint(saved, {at: 100000, usd: 101, coverage: "btc"}, true)).toEqual(saved); });
 });
