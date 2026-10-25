@@ -1,5 +1,10 @@
 import { scopedKey } from "@/lib/profiles";
 export interface BalancePoint { at: number; usd: number; coverage: string }
+/** Zero holdings need no market price; positive holdings must have a finite valuation. */
+export function balanceHistoryBlockers(rows: readonly { name: string; amount: number | null; price: number | null }[]): string[] {
+  return rows.filter(row => row.amount === null || !Number.isFinite(row.amount) || row.amount < 0 ||
+    (row.amount > 0 && (row.price === null || !Number.isFinite(row.price) || row.price <= 0))).map(row => row.name);
+}
 const PREFIX = "hme.desktop.balance-history.v1";
 /** Keyed by wallet fingerprint so a different seed never inherits another wallet's history. */
 export function balanceHistoryKey(profileId: string, fingerprint: string) { return scopedKey(`${PREFIX}.${fingerprint}`, profileId); }
