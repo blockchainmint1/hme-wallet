@@ -15,7 +15,7 @@
 - Desktop charts store profile/fingerprint-isolated observations under the deletable balance-history prefix; portfolio requires complete coverage, currencies require their own data. Why: outages aren't losses; never invent history.
 - Desktop Earn stays paused; shared UTXO swap entry blocks Vault mode before quotes/orders/signing on all builds. Why: phone cannot bypass independent acceptance.
 - Direct Earn shares Ethereum-only fixed ABIs, public-address reads and an unconditional execution gate. Sky conversion estimates are bigint-only, distinguishing USDC, USDS and shares; intermediate-asset bounds never authorize final-share promises. Why: official contracts and previews do not enforce user minimums or attest upgrade safety.
-- Desktop feature UI inherits an explicit preference context; chains use explicit desktop scope, defaulting to supported networks, with device-wide desktop chain choices and profile-scoped desktop feature choices stored separately from phone. Why: desktop defaults must not rewrite phone/APK/extension choices or grant spending permission.
+- Desktop features use preference context; desktop chains are device-wide, features profile-scoped and separate from phone. Custom-token settings reuse compact shared controls/catalog scopes, omitting duplicate spam toggle. Why: no forked validation, storage or spending permissions.
 
 ## Shared platform capabilities and layout
 - Wide fine-pointer web browsers land on /desktop from /wallet unless "Phone view" was chosen (src/lib/desktop-pref.ts); APK and extension never redirect. Why: desktop default must never alter phone/APK/extension behavior.
