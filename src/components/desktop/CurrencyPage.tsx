@@ -25,6 +25,7 @@ const descriptions: Record<string, string> = {
 };
 function description(asset: DesktopAsset) {
   if (descriptions[asset.key]) return descriptions[asset.key];
+  if (asset.custom) return `${asset.symbol} is a custom token on ${asset.chain}. Contract: ${asset.address}. Token metadata is user supplied; a dollar price is not available for this token.`;
   return `${asset.symbol} is a dollar-linked token on ${asset.name.replace(`${asset.symbol} (`, "").replace(/\)$/, "")}. Its displayed value uses a $1 peg estimate, not a live market quote. Issuer, redemption and network risks apply.`;
 }
 function CurrencyChart({ asset }: { asset: DesktopAsset }) {

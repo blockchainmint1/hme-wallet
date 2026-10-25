@@ -23,7 +23,9 @@ import { satsToTxc, formatFiat } from "@/lib/txc/units";
 import { getTxcPriceUsd } from "@/lib/txc/price.functions";
 import { getAllPricesUsd } from "@/lib/chains/prices.functions";
 import { EVM_CHAINS, deriveEvmAccount, evmClient, type EvmChainId } from "@/lib/chains/evm";
-import { BUILTIN_TOKENS_BY_CHAIN, readErc20Balance, tokenAmountFromRaw } from "@/lib/chains/erc20";
+import { readErc20Balance, tokenAmountFromRaw } from "@/lib/chains/erc20";
+import { getEnabledTokens } from "@/lib/token-prefs";
+import { desktopTokenIdentity } from "@/lib/desktop/token-assets";
 import { deriveSolanaAddress, lamportsToSol } from "@/lib/solana/network";
 import { useSolanaData } from "@/components/wallet/SolanaTile";
 import { deriveTronAddress } from "@/lib/tron/address";
@@ -51,6 +53,7 @@ export type DesktopAsset = {
   accent: string;
   chain?: ChainId;
   stable?: boolean;
+  custom?: boolean;
   address?: string;
   amount: number | null;
   price: number | null;
@@ -68,6 +71,12 @@ function useDesktopBalances() {
   const { unlocked, root, seed, activeProfileId } = useWallet();
   const [hidden] = useHideBalances();
   const qc = useQueryClient();
+  const [tokenRevision, setTokenRevision] = useState(0);
+  useEffect(() => {
+    const refresh = () => setTokenRevision(v => v + 1);
+    window.addEventListener("hme:tokens-changed", refresh);
+    return () => window.removeEventListener("hme:tokens-changed", refresh);
+  }, []);
   const isVault = unlocked?.mode === "vault";
   const pairing = useMemo(
     () => (isVault ? loadPairing(activeProfileId) : null),
@@ -190,13 +199,13 @@ function useDesktopBalances() {
       staleTime: 60_000,
     })),
   });
-  // Built-in stablecoins (USDC/USDT/PYUSD) per enabled EVM chain — $1 peg.
+  // Enabled catalog includes customs; only canonical built-ins get a peg estimate.
   const stableQueries = useMemo(
     () =>
       evmEnabled.flatMap((id) =>
-        BUILTIN_TOKENS_BY_CHAIN[id].map((token) => ({ chain: id, token })),
+        getEnabledTokens(id).map((token) => ({ chain: id, token })),
       ),
-    [evmEnabled],
+    [evmEnabled, tokenRevision],
   );
   const stableBalances = useQueries({
     queries: stableQueries.map(({ chain, token }) => ({
@@ -295,16 +304,16 @@ function useDesktopBalances() {
     stableQueries.forEach(({ chain, token }, i) => {
       const raw = stableBalances[i]?.data;
       const amt = raw != null ? Number(tokenAmountFromRaw(raw, token.decimals)) : null;
-      
+      const identity = desktopTokenIdentity(chain, token);
       out.push({
-        key: `${chain}-${token.symbol}`, chain, stable: true,
+        ...identity, chain, address: token.address,
         name: `${token.symbol} (${EVM_CHAINS[chain].name})`,
         symbol: token.symbol,
-        accent: "stable",
+        accent: identity.stable ? "stable" : EVM_CHAINS[chain].accent,
         amount: amt,
-        price: 1,
-        usd: amt,
-        send: { to: "/wallet/evm/$chain/send", params: { chain } },
+        price: identity.price,
+        usd: identity.price !== null ? amt : amt === 0 ? 0 : null,
+        send: identity.custom ? undefined : { to: "/wallet/evm/$chain/send", params: { chain } },
         receive: { to: "/wallet/evm/$chain/receive", params: { chain } },
       });
     });
@@ -371,7 +380,7 @@ function useDesktopBalances() {
     const chain = row.chain ?? row.key;
     const account = chain in accountsForHistory ? accountsForHistory[chain as VaultUtxoChain] : null;
     const evmIndex = evmEnabled.indexOf(chain as EvmChainId);
-    const stableIndex = stableQueries.findIndex(q => `${q.chain}-${q.token.symbol}` === row.key);
+    const stableIndex = stableQueries.findIndex(q => desktopTokenIdentity(q.chain, q.token).key === row.key);
     const tronIndex = TRC20_TOKENS.findIndex(t => `tron-${t.symbol}` === row.key);
     const source = row.key === "tsd" ? tsdBalance : account ?? (stableIndex >= 0 ? stableBalances[stableIndex] : evmIndex >= 0 ? evmBalances[evmIndex] : chain === "tron" ? (tronIndex >= 0 ? tron.tokens[tronIndex] : tron.balance) : chain === "solana" ? solana.balance : null);
     const priceSource = row.stable ? null : chain === "txc" ? txcPrice : chain === "btc" ? btcPrice : chain === "isk" ? iskPrice : chain === "ltc" ? ltcPrice : chain === "doge" ? dogePrice : chain === "tron" ? tron.price : allPrices;
