@@ -1,4 +1,5 @@
 # Roadmap
+- [ ] Add /desktop/currency/$currency pages linked from holdings, with per-asset observed value charts, coin overview and isolated transaction history; preserve privacy and phone presentation, verify and prepare auditor handoff.
 - [x] Fix shared Vault pairing camera loading/local-media policy and visible multipart progress; 16 tests and real jsQR decoding of two synthetic camera frames pass, pairing saved without replacing original wallet and camera stopped. Compared TXC spending/bulk sources; auditor handoff prepared. No spending changes, publishing or packaged builds.
 - [ ] Accept camera changes on physical browser/APK/extension and Vault devices after independent audit. Blocker: Bobby's devices and reviewed release packages; synthetic camera test is not physical acceptance.
 - [ ] Implement desktop-only TXC Omni bulk sends after independent transaction/signature-policy review. Blockers: source TXC verifier omits destination scripts, HME Vault multisend recognizes TSD property 39 only, and network activation/relay plus funded seed/Vault acceptance remain unverified. Comparison delivered, not spending implementation.
