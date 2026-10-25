@@ -48,7 +48,7 @@ Registry/Hub use ecosystem-credential.server (current per-site HME convention); 
 - Partners pay via `/api/public/card/pay` signed with `HME_ECOSYSTEM`; over-limit taps go to Telegram approvers via `/api/public/telegram/webhook`. Owner actions are wallet-signed envelopes, never accounts. Why: no extra service and no email logins.
 
 ## Vault wallets (offline signing via HME Vault)
-- Rules live in `src/lib/vault-link/AGENTS.md` — read it before changing files there. Why: subdirectories carry their own scoped rules.
+- Rules live in `src/lib/vault-link/AGENTS.md`; Cold Storage previews read explicit-profile public stores without switching; Vault preview scans reject failed reads. Why: preserve wallet state and avoid false zeros.
 - Swap history keeps its original key; new rows carry profile IDs, legacy rows match payout addresses, and opening refreshes provider status. Why: preserve records without cross-wallet display or invented completion.
 
 ## Security boundaries
