@@ -1,4 +1,5 @@
 # Roadmap
+- [x] Diagnose stalled desktop history: screenshot shows incomplete balances, which correctly block recording. Added missing-asset explanation and stable-total sampling; 11 tests pass and unlocked browser confirms no partial history saved. Past unrecorded days cannot be recovered; unavailable networks must recover before complete observations resume.
 - [x] Move the desktop wallet picker into the header with wider names and a visible Add wallet action using existing profile actions; preserve the phone picker and wallet storage behavior.
 - [x] Evaluate Bobby's `evm-unstick-decision.md`: official pinned source corroborated; two read-only reviewers found the allowlist guarantee overstated, distinct approveTo check wrong (`0xffffffff` required), 30-second stop not instant and provider USD cap not independently trusted. 263 tests pass; decision assessment prepared for auditor. No execution or publication changes.
 - [x] Bobby confirmed actual LI.FI route review, preserving reviewed-only acceptance. Investigate Nordstern/fee source and chain deployments; add direct-hop compatibility checks as extra protection, never a substitute for instruction review.

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
-import { appendBalancePoint, balanceHistoryKey, clearBalanceHistory, readBalanceHistory } from "./history";
+import { appendBalancePoint, balanceHistoryKey, balanceHistoryBlockers, clearBalanceHistory, readBalanceHistory } from "./history";
 describe("desktop balance history", () => {
   beforeAll(() => {
     const store: Record<string, string> = {};
@@ -13,6 +13,13 @@ describe("desktop balance history", () => {
     }));
   });
   beforeEach(() => localStorage.clear());
+  it("reports unknown balances instead of treating them as zero", () => {
+    expect(balanceHistoryBlockers([{ name: "Zero Chill", amount: null, price: 1 }, { name: "Bitcoin", amount: 2, price: 60000 }])).toEqual(["Zero Chill"]);
+  });
+  it("requires a valid price for funded holdings but not known zero holdings", () => {
+    expect(balanceHistoryBlockers([{ name: "Zero Chill", amount: 2, price: null }, { name: "Ethereum", amount: 0, price: null }])).toEqual(["Zero Chill"]);
+    expect(balanceHistoryBlockers([{ name: "Bitcoin", amount: 1, price: NaN }])).toEqual(["Bitcoin"]);
+  });
   it("isolates two wallet profiles without changing envelope keys", () => { expect(balanceHistoryKey("default", "aa")).toBe("hme.desktop.balance-history.v1.aa"); expect(balanceHistoryKey("second", "bb")).toBe("p:second:hme.desktop.balance-history.v1.bb"); });
   it("keys history by wallet fingerprint so a new seed never inherits old history", () => { localStorage.setItem(balanceHistoryKey("default", "oldseed"), JSON.stringify([{ at: 1, usd: 100, coverage: "btc" }])); expect(readBalanceHistory("default", "newseed")).toEqual([]); expect(readBalanceHistory("default", "oldseed")).toEqual([{ at: 1, usd: 100, coverage: "btc" }]); });
   it("clears fingerprinted and legacy history when the wallet is deleted", () => { localStorage.setItem(balanceHistoryKey("default", "aa"), "[]"); localStorage.setItem("hme.desktop.balance-history.v1", "[]"); localStorage.setItem(balanceHistoryKey("second", "bb"), "[]"); clearBalanceHistory("default"); expect(localStorage.getItem("hme.desktop.balance-history.v1.aa")).toBeNull(); expect(localStorage.getItem("hme.desktop.balance-history.v1")).toBeNull(); expect(localStorage.getItem("p:second:hme.desktop.balance-history.v1.bb")).not.toBeNull(); });

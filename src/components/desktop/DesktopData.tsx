@@ -42,6 +42,7 @@ import { useHideBalances } from "@/lib/hide-balances";
 
 import { rootFingerprintHex } from "@/lib/txc/fingerprint";
 import { isPortfolioRefreshKey } from "@/lib/desktop/display-policy";
+import { balanceHistoryBlockers } from "@/lib/desktop/history";
 export type DesktopAsset = {
   key: string;
   name: string;
@@ -367,8 +368,9 @@ function useDesktopBalances() {
   const valued = rows.filter((r) => (r.usd ?? 0) > 0).sort((a, b) => (b.usd ?? 0) - (a.usd ?? 0));
   const accounts = { txc: txcAccount, isk: iskAccount, btc: btcAccount, ltc: ltcAccount, doge: dogeAccount };
   const queries = [txcAccount, ...(enabled.includes("isk") ? [iskAccount] : []), ...(enabled.includes("btc") ? [btcAccount] : []), ...(enabled.includes("ltc") ? [ltcAccount] : []), ...(enabled.includes("doge") ? [dogeAccount] : []), ...evmBalances, ...stableBalances, tsdBalance, ...(tronEnabled ? [tron.balance, ...tron.tokens] : []), ...(solanaEnabled ? [solana.balance] : [])];
-  const complete = rows.every(r => r.amount !== null && (r.amount === 0 || r.price !== null)) && queries.every(q => !q.isError && !q.isFetching);
-  return { rows, total, valued, accounts, enabled, complete, loading: queries.some(q => q.isFetching), unavailable: queries.some(q => q.isError), evmAddress, tronAddress, solanaAddress, pairing, isVault, activeProfileId, historyId: isVault ? vaultKey : rootKey, hidden, refresh: () => qc.invalidateQueries({ predicate: q => isPortfolioRefreshKey(q.queryKey) }) };
+  const historyBlockers = balanceHistoryBlockers(rows);
+  const complete = historyBlockers.length === 0 && queries.every(q => !q.isError && !q.isFetching);
+  return { rows, total, valued, accounts, enabled, complete, historyBlockers, loading: queries.some(q => q.isFetching), unavailable: queries.some(q => q.isError), evmAddress, tronAddress, solanaAddress, pairing, isVault, activeProfileId, historyId: isVault ? vaultKey : rootKey, hidden, refresh: () => qc.invalidateQueries({ predicate: q => isPortfolioRefreshKey(q.queryKey) }) };
 }
 type DesktopData = ReturnType<typeof useDesktopBalances>;
 const DesktopContext = createContext<DesktopData | null>(null);
