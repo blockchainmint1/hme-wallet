@@ -1,4 +1,5 @@
 # Roadmap
+- [ ] Fix Vault pairing camera reliability and show scan progress; compare TXC Wallet spending and desktop-only Omni bulk sends, prepare independent review handoff. Real camera/device acceptance requires Bobby's devices.
 - [x] Build dedicated /desktop wallet management, compact header switching and desktop add/import/watch/private-key/shared screens; 8 preservation/preference tests pass and disposable-wallet rename/add/switch-back plus phone separation verified. Independent auditor pack prepared; not published or packaged.
 - [x] Compared public TSD treasury controls and official Sky/Spark routes; prepared checked bigint USDC/USDS fee/rounding estimates and review handoff, 27 Earn tests pass. No screen/execution/release changes.
 - [ ] Finish TSD-aligned Sky integration. Blockers: TSD server-side source not accessible in this workspace; official combined deposit bounds intermediate USDS, not final sUSDS shares. Need verified final-output protection, independent acceptance and funded release-device checks; retain both spending gates.
