@@ -314,7 +314,7 @@ export function ProfileSwitcher() {
             </Link>
           </Button>
           <Button asChild variant="outline" onClick={() => setOpen(false)}>
-            <Link to="/vault-add">
+            <Link to={scope === "desktop" ? "/desktop/vault-add" : "/vault-add"}>
               <ShieldCheck className="h-4 w-4 mr-2" /> Add Vault wallet
             </Link>
           </Button>
