@@ -38,8 +38,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { disableBiometric } from "@/lib/native/biometric";
 
-export function ProfileSwitcher({ presentation = "phone" }: { presentation?: "phone" | "desktop-header" }) {
-  const desktopHeader = presentation === "desktop-header";
+export function ProfileSwitcher({ presentation = "phone" }: { presentation?: "phone" | "desktop-header" | "desktop-management" }) {
+  const desktopHeader = presentation !== "phone";
   const scope = usePreferenceScope();
   const { profiles, activeProfileId, switchProfile, refreshProfiles, rename, unlocked, forget } =
     useWallet();
@@ -132,7 +132,7 @@ export function ProfileSwitcher({ presentation = "phone" }: { presentation?: "ph
     setOpen(false);
     await disableBiometric();
     forget();
-    navigate({ to: "/" });
+    navigate({ to: scope === "desktop" ? "/desktop" : "/" });
   }
 
   // A single profile is the common case — still show the name, but there's
@@ -141,13 +141,13 @@ export function ProfileSwitcher({ presentation = "phone" }: { presentation?: "ph
     <Sheet open={open} onOpenChange={setOpen}>
       <div className={desktopHeader ? "flex min-w-0 flex-1 items-center gap-2 sm:gap-3" : "contents"}>
       <SheetTrigger asChild>
-        <Button variant={desktopHeader ? "outline" : "ghost"} size="sm" className={desktopHeader ? "h-10 min-w-0 w-full max-w-sm justify-start gap-2 px-3" : "max-w-[9rem] px-2"} title="Switch wallet" onClick={() => setAdding(false)}>
+        <Button variant={desktopHeader ? "outline" : "ghost"} size="sm" className={desktopHeader ? "h-10 min-w-0 w-full max-w-sm justify-start gap-2 px-3" : "max-w-[9rem] px-2"} title={presentation === "desktop-management" ? "Manage removal" : "Switch wallet"} onClick={() => setAdding(false)}>
           <Wallet className="h-4 w-4 shrink-0" />
-          <span className={desktopHeader ? "min-w-0 flex-1 truncate text-left text-sm font-medium" : "truncate text-xs font-medium"}>{activeLabel}</span>
+          <span className={desktopHeader ? "min-w-0 flex-1 truncate text-left text-sm font-medium" : "truncate text-xs font-medium"}>{presentation === "desktop-management" ? "Choose wallet to remove" : activeLabel}</span>
           <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
         </Button>
       </SheetTrigger>
-      {desktopHeader && <Button variant="outline" className="h-10 shrink-0 gap-2 px-3" title="Add wallet" aria-label="Add wallet" onClick={() => { setAdding(true); setOpen(true); }}><Plus className="h-4 w-4"/><span className="hidden sm:inline">Add wallet</span></Button>}
+      {presentation === "desktop-header" && <Button variant="outline" className="h-10 shrink-0 gap-2 px-3" title="Add wallet" aria-label="Add wallet" onClick={() => { setAdding(true); setOpen(true); }}><Plus className="h-4 w-4"/><span className="hidden sm:inline">Add wallet</span></Button>}
       </div>
       <SheetContent
         side={desktopHeader ? "right" : "bottom"}
@@ -253,7 +253,7 @@ export function ProfileSwitcher({ presentation = "phone" }: { presentation?: "ph
             {sharedLinks.map((l) => (
               <Link
                 key={l.linkId}
-                to="/wallet/shared"
+                to={scope === "desktop" ? "/desktop/shared" : "/wallet/shared"}
                 onClick={() => setOpen(false)}
                 className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-muted"
               >
@@ -262,7 +262,7 @@ export function ProfileSwitcher({ presentation = "phone" }: { presentation?: "ph
               </Link>
             ))}
             <Link
-              to="/wallet/shared"
+              to={scope === "desktop" ? "/desktop/shared" : "/wallet/shared"}
               onClick={() => setOpen(false)}
               className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-muted"
             >
@@ -271,7 +271,7 @@ export function ProfileSwitcher({ presentation = "phone" }: { presentation?: "ph
             </Link>
             {sharedOn && (
               <Link
-                to="/wallet/shared"
+                to={scope === "desktop" ? "/desktop/shared" : "/wallet/shared"}
                 onClick={() => setOpen(false)}
                 className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-primary hover:bg-muted"
               >
@@ -311,12 +311,12 @@ export function ProfileSwitcher({ presentation = "phone" }: { presentation?: "ph
 
         <div className="mt-5 grid shrink-0 gap-2 sm:grid-cols-2">
           <Button asChild variant="secondary" onClick={() => setOpen(false)}>
-            <Link to="/create" search={{ add: true }}>
+            <Link to={scope === "desktop" ? "/desktop/create" : "/create"} search={{ add: true }}>
               <Sparkles className="h-4 w-4 mr-2" /> Add new seed
             </Link>
           </Button>
           <Button asChild variant="outline" onClick={() => setOpen(false)}>
-            <Link to="/import" search={{ add: true }}>
+            <Link to={scope === "desktop" ? "/desktop/import" : "/import"} search={{ add: true }}>
               <Download className="h-4 w-4 mr-2" /> Import a seed
             </Link>
           </Button>
@@ -326,19 +326,19 @@ export function ProfileSwitcher({ presentation = "phone" }: { presentation?: "ph
             </Link>
           </Button>
           <Button asChild variant="outline" onClick={() => setOpen(false)}>
-            <Link to="/wallet/wif-add">
+            <Link to={scope === "desktop" ? "/desktop/private-key" : "/wallet/wif-add"}>
               <Key className="h-4 w-4 mr-2" /> Import private key
             </Link>
           </Button>
           <Button asChild variant="outline" onClick={() => setOpen(false)}>
-            <Link to="/wallet/watch-add">
+            <Link to={scope === "desktop" ? "/desktop/watch-add" : "/wallet/watch-add"}>
               <Eye className="h-4 w-4 mr-2" /> Watch-only address
             </Link>
           </Button>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
           Private keys and watch-only addresses are added to{" "}
-          <span className="font-medium text-foreground">{activeLabel}</span> as their own tiles.
+          <span className="font-medium text-foreground">{presentation === "desktop-management" ? "Choose wallet to remove" : activeLabel}</span> as their own tiles.
           Removing a wallet here only forgets it on this device — your seed phrase is still the
           backup.
         </p>

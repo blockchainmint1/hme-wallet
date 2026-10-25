@@ -36,6 +36,8 @@ import { Route as DesktopStablecoinsRouteImport } from './routes/desktop.stablec
 import { Route as DesktopSwapRouteImport } from './routes/desktop.swap'
 import { Route as DesktopVaultRouteImport } from './routes/desktop.vault'
 import { Route as DesktopVaultAddRouteImport } from './routes/desktop.vault-add'
+import { Route as DesktopWalletAddRouteImport } from './routes/desktop.wallet-add'
+import { Route as DesktopWalletsRouteImport } from './routes/desktop.wallets'
 import { Route as DesktopWatchAddRouteImport } from './routes/desktop.watch-add'
 import { Route as LegalPrivacyRouteImport } from './routes/legal.privacy'
 import { Route as LegalTermsRouteImport } from './routes/legal.terms'
@@ -219,6 +221,16 @@ const DesktopVaultRoute = DesktopVaultRouteImport.update({
 const DesktopVaultAddRoute = DesktopVaultAddRouteImport.update({
   id: '/vault-add',
   path: '/vault-add',
+  getParentRoute: () => DesktopRoute,
+} as any)
+const DesktopWalletAddRoute = DesktopWalletAddRouteImport.update({
+  id: '/wallet-add',
+  path: '/wallet-add',
+  getParentRoute: () => DesktopRoute,
+} as any)
+const DesktopWalletsRoute = DesktopWalletsRouteImport.update({
+  id: '/wallets',
+  path: '/wallets',
   getParentRoute: () => DesktopRoute,
 } as any)
 const DesktopWatchAddRoute = DesktopWatchAddRouteImport.update({
@@ -495,6 +507,8 @@ export interface FileRoutesByFullPath {
   '/desktop/swap': typeof DesktopSwapRoute
   '/desktop/vault': typeof DesktopVaultRoute
   '/desktop/vault-add': typeof DesktopVaultAddRoute
+  '/desktop/wallet-add': typeof DesktopWalletAddRoute
+  '/desktop/wallets': typeof DesktopWalletsRoute
   '/desktop/watch-add': typeof DesktopWatchAddRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/terms': typeof LegalTermsRoute
@@ -571,6 +585,8 @@ export interface FileRoutesByTo {
   '/desktop/swap': typeof DesktopSwapRoute
   '/desktop/vault': typeof DesktopVaultRoute
   '/desktop/vault-add': typeof DesktopVaultAddRoute
+  '/desktop/wallet-add': typeof DesktopWalletAddRoute
+  '/desktop/wallets': typeof DesktopWalletsRoute
   '/desktop/watch-add': typeof DesktopWatchAddRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/terms': typeof LegalTermsRoute
@@ -650,6 +666,8 @@ export interface FileRoutesById {
   '/desktop/swap': typeof DesktopSwapRoute
   '/desktop/vault': typeof DesktopVaultRoute
   '/desktop/vault-add': typeof DesktopVaultAddRoute
+  '/desktop/wallet-add': typeof DesktopWalletAddRoute
+  '/desktop/wallets': typeof DesktopWalletsRoute
   '/desktop/watch-add': typeof DesktopWatchAddRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/terms': typeof LegalTermsRoute
@@ -730,6 +748,8 @@ export interface FileRouteTypes {
     | '/desktop/swap'
     | '/desktop/vault'
     | '/desktop/vault-add'
+    | '/desktop/wallet-add'
+    | '/desktop/wallets'
     | '/desktop/watch-add'
     | '/legal/privacy'
     | '/legal/terms'
@@ -806,6 +826,8 @@ export interface FileRouteTypes {
     | '/desktop/swap'
     | '/desktop/vault'
     | '/desktop/vault-add'
+    | '/desktop/wallet-add'
+    | '/desktop/wallets'
     | '/desktop/watch-add'
     | '/legal/privacy'
     | '/legal/terms'
@@ -884,6 +906,8 @@ export interface FileRouteTypes {
     | '/desktop/swap'
     | '/desktop/vault'
     | '/desktop/vault-add'
+    | '/desktop/wallet-add'
+    | '/desktop/wallets'
     | '/desktop/watch-add'
     | '/legal/privacy'
     | '/legal/terms'
@@ -1154,6 +1178,20 @@ declare module '@tanstack/react-router' {
       path: '/vault-add'
       fullPath: '/desktop/vault-add'
       preLoaderRoute: typeof DesktopVaultAddRouteImport
+      parentRoute: typeof DesktopRoute
+    }
+    '/desktop/wallet-add': {
+      id: '/desktop/wallet-add'
+      path: '/wallet-add'
+      fullPath: '/desktop/wallet-add'
+      preLoaderRoute: typeof DesktopWalletAddRouteImport
+      parentRoute: typeof DesktopRoute
+    }
+    '/desktop/wallets': {
+      id: '/desktop/wallets'
+      path: '/wallets'
+      fullPath: '/desktop/wallets'
+      preLoaderRoute: typeof DesktopWalletsRouteImport
       parentRoute: typeof DesktopRoute
     }
     '/desktop/watch-add': {
@@ -1517,6 +1555,8 @@ interface DesktopRouteChildren {
   DesktopSwapRoute: typeof DesktopSwapRoute
   DesktopVaultRoute: typeof DesktopVaultRoute
   DesktopVaultAddRoute: typeof DesktopVaultAddRoute
+  DesktopWalletAddRoute: typeof DesktopWalletAddRoute
+  DesktopWalletsRoute: typeof DesktopWalletsRoute
   DesktopWatchAddRoute: typeof DesktopWatchAddRoute
   DesktopIndexRoute: typeof DesktopIndexRoute
 }
@@ -1536,6 +1576,8 @@ const DesktopRouteChildren: DesktopRouteChildren = {
   DesktopSwapRoute: DesktopSwapRoute,
   DesktopVaultRoute: DesktopVaultRoute,
   DesktopVaultAddRoute: DesktopVaultAddRoute,
+  DesktopWalletAddRoute: DesktopWalletAddRoute,
+  DesktopWalletsRoute: DesktopWalletsRoute,
   DesktopWatchAddRoute: DesktopWatchAddRoute,
   DesktopIndexRoute: DesktopIndexRoute,
 }
