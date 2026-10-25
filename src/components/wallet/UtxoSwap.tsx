@@ -34,6 +34,7 @@ import { PartCollector } from "@/lib/vault-link/qr-parts";
 import { hapticError, hapticSuccess } from "@/lib/native/ui";
 import { useExchangeFeaturesAllowed } from "@/lib/native/capabilities";
 import { ExchangeUnavailable } from "@/components/wallet/ExchangeUnavailable";
+import { vaultSwapExecutionAllowed } from "@/lib/security/vault-swap-policy";
 import { confirmWithBiometric } from "@/lib/native/biometric";
 import { friendlyBroadcastError } from "@/lib/broadcast-error";
 import { OP_RETURN_MAX_BYTES } from "@/lib/utxo/op-return";
@@ -63,8 +64,9 @@ type Stage =
 
 export function UtxoSwap({ coin, backTo = "/wallet" }: { coin: UtxoSwapCoin; backTo?: "/wallet" | "/desktop" }) {
   const exchangeAllowed = useExchangeFeaturesAllowed();
-  const { activeProfileId } = useWallet();
+  const { activeProfileId, unlocked } = useWallet();
   if (!exchangeAllowed) return <ExchangeUnavailable title="Swap" />;
+  if (!vaultSwapExecutionAllowed(unlocked?.mode)) return <main className="mx-auto w-full max-w-3xl px-4 py-6"><Link to={backTo} className="text-sm text-muted-foreground">← Back to wallet</Link><h1 className="mt-4 text-2xl font-semibold">Cold Storage swaps are paused</h1><p className="mt-3 text-muted-foreground">Vault swaps are awaiting independent safety review and device testing.</p></main>;
   return <UtxoSwapInner key={`${activeProfileId}:${coin}`} coin={coin} backTo={backTo} />;
 }
 

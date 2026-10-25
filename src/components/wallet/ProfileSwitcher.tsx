@@ -338,7 +338,7 @@ export function ProfileSwitcher({ presentation = "phone" }: { presentation?: "ph
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
           Private keys and watch-only addresses are added to{" "}
-          <span className="font-medium text-foreground">{presentation === "desktop-management" ? "Choose wallet to remove" : activeLabel}</span> as their own tiles.
+          <span className="font-medium text-foreground">{activeLabel}</span> as their own tiles.
           Removing a wallet here only forgets it on this device — your seed phrase is still the
           backup.
         </p>

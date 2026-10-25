@@ -11,9 +11,9 @@
 
 ## Desktop workspace
 - Desktop overview refresh uses an explicit balance/price query allowlist; privacy hides funded allocation rankings and counts, and Tron/Solana display retains address-only results. Why: viewing must not refresh spending quotes, disclose allocation, or retain unnecessary signing material.
-- Desktop uses nested /desktop management pages, inline unlock, a compact header wallet menu and a full wallet library; shared management forms accept explicit desktop presentation/navigation while phone retains its defaults. Why: dedicated presentation must not fork encryption, profile storage, validation or signing.
+- Desktop management stays under /desktop with inline unlock, header picker and wallet library; shared forms retain phone defaults. Create/import use managed-seed-save: immutable add intent, fresh session checks at submission/save, initial setup refuses existing envelopes. Why: expired sessions cannot replace wallets.
 - Desktop charts store profile/fingerprint-isolated observations under the deletable balance-history prefix; portfolio requires complete coverage, currencies require their own data. Why: outages aren't losses; never invent history.
-- Desktop Earn execution and Vault swaps stay unavailable pending their independent acceptance reviews. Why: a new presentation must not enable unverified spending paths.
+- Desktop Earn stays paused; shared UTXO swap entry blocks Vault mode before quotes/orders/signing on all builds. Why: phone cannot bypass independent acceptance.
 - Direct Earn shares Ethereum-only fixed ABIs, public-address reads and an unconditional execution gate. Sky conversion estimates are bigint-only, distinguishing USDC, USDS and shares; intermediate-asset bounds never authorize final-share promises. Why: official contracts and previews do not enforce user minimums or attest upgrade safety.
 - Desktop feature UI inherits an explicit preference context; chains use explicit desktop scope, defaulting to supported networks, with device-wide desktop chain choices and profile-scoped desktop feature choices stored separately from phone. Why: desktop defaults must not rewrite phone/APK/extension choices or grant spending permission.
 
