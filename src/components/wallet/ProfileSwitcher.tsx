@@ -38,12 +38,14 @@ import {
 import { Label } from "@/components/ui/label";
 import { disableBiometric } from "@/lib/native/biometric";
 
-export function ProfileSwitcher() {
+export function ProfileSwitcher({ presentation = "phone" }: { presentation?: "phone" | "desktop-header" }) {
+  const desktopHeader = presentation === "desktop-header";
   const scope = usePreferenceScope();
   const { profiles, activeProfileId, switchProfile, refreshProfiles, rename, unlocked, forget } =
     useWallet();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [needPassword, setNeedPassword] = useState<string | null>(null);
   const [password, setPassword] = useState("");
@@ -137,26 +139,29 @@ export function ProfileSwitcher() {
   // nothing to switch between until a second seed is added.
   return (
     <Sheet open={open} onOpenChange={setOpen}>
+      <div className={desktopHeader ? "flex min-w-0 flex-1 items-center gap-2 sm:gap-3" : "contents"}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="sm" className="max-w-[9rem] px-2" title="Switch wallet">
+        <Button variant={desktopHeader ? "outline" : "ghost"} size="sm" className={desktopHeader ? "h-10 min-w-0 w-full max-w-sm justify-start gap-2 px-3" : "max-w-[9rem] px-2"} title="Switch wallet" onClick={() => setAdding(false)}>
           <Wallet className="h-4 w-4 shrink-0" />
-          <span className="truncate text-xs font-medium">{activeLabel}</span>
+          <span className={desktopHeader ? "min-w-0 flex-1 truncate text-left text-sm font-medium" : "truncate text-xs font-medium"}>{activeLabel}</span>
           <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
         </Button>
       </SheetTrigger>
+      {desktopHeader && <Button variant="outline" className="h-10 shrink-0 gap-2 px-3" title="Add wallet" aria-label="Add wallet" onClick={() => { setAdding(true); setOpen(true); }}><Plus className="h-4 w-4"/><span className="hidden sm:inline">Add wallet</span></Button>}
+      </div>
       <SheetContent
-        side="bottom"
-        className="flex max-h-[85dvh] flex-col gap-0 rounded-t-2xl pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+        side={desktopHeader ? "right" : "bottom"}
+        className={desktopHeader ? "flex h-full w-full flex-col gap-0 overflow-y-auto sm:max-w-lg" : "flex max-h-[85dvh] flex-col gap-0 rounded-t-2xl pb-[max(1.5rem,env(safe-area-inset-bottom))]"}
       >
         <SheetHeader className="shrink-0 text-left">
-          <SheetTitle>Your wallets</SheetTitle>
+          <SheetTitle>{desktopHeader && adding ? "Add wallet" : "Your wallets"}</SheetTitle>
           <SheetDescription>
             Each wallet is a separate seed with its own chains, keys and contacts. One password
             unlocks them all.
           </SheetDescription>
         </SheetHeader>
 
-        <div className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className={desktopHeader && adding ? "hidden" : "mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain"}>
         <div className="grid gap-2">
           {profiles.map((p) =>
             editingId === p.id ? (
