@@ -18,23 +18,22 @@ import { addressBalance, coldStorageEntries, previewVaultBalance } from "@/lib/d
 type Entries = ReturnType<typeof coldStorageEntries>;
 function Balance({ value, symbol, error, pending, stale }: { value?: string; symbol: string; error: boolean; pending: boolean; stale: boolean }) {
   const [hidden] = useHideBalances();
-  return <div className="text-right"><p className="font-mono text-sm">{hidden ? "••••" : value !== undefined ? `${value} ${symbol}` : pending ? "Loading…" : "Unavailable"}</p>{(error || stale) && <p className="mt-1 text-xs text-muted-foreground">{value !== undefined ? "Last known · update unavailable" : "Could not load balance"}</p>}</div>;
+  return <div className="text-right"><p className="break-all font-mono text-sm">{hidden ? "••••" : value !== undefined ? `${value} ${symbol}` : pending ? "Loading…" : "Unavailable"}</p>{(error || stale) && <p className="mt-1 text-xs text-muted-foreground">{value !== undefined ? "Last known · update unavailable" : "Could not load balance"}</p>}</div>;
 }
 function WatchPreview({ entry }: { entry: Entries["watches"][number] }) {
   const { wallet, profile } = entry;
   const meta = WATCH_CHAIN_META[wallet.chain];
   const q = useQuery({ queryKey: ["cold-storage-watch", profile.id, wallet.chain, wallet.address], queryFn: async () => addressBalance(await watchApi(wallet.chain).getAddressStats(wallet.address)), staleTime: 300_000, retry: 1 });
-  return <article className="rounded-lg border border-border bg-card p-5"><div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-center gap-3"><Eye className="h-5 w-5 shrink-0 text-primary"/><div className="min-w-0"><h3 className="break-words font-semibold">{wallet.label}</h3><p className="mt-1 text-xs text-muted-foreground">Watch-only · {meta.label}</p></div></div><Button variant="ghost" size="icon" title="Refresh address balance" disabled={q.isFetching} onClick={() => void q.refetch()}><RefreshCw className={`h-4 w-4 ${q.isFetching ? "animate-spin" : ""}`}/></Button></div><div className="mt-5 border-t border-border pt-4"><Balance value={q.data === undefined ? undefined : meta.formatCompact(q.data)} symbol={meta.ticker} error={q.isError} pending={q.isPending} stale={q.isRefetchError}/></div><a href={meta.api.explorerAddressUrl(wallet.address)} target="_blank" rel="noreferrer" className="mt-4 block break-all font-mono text-xs text-muted-foreground hover:text-primary">{wallet.address}</a><p className="mt-3 text-xs text-muted-foreground">Linked to {profile.label}</p></article>;
+  return <article className="rounded-lg border border-border bg-card p-5"><div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-center gap-3"><Eye className="h-5 w-5 shrink-0 text-primary"/><div className="min-w-0"><h3 className="break-words font-semibold">{wallet.label}</h3><p className="mt-1 text-xs text-muted-foreground">Watch-only · {meta.label}</p></div></div><Button variant="ghost" size="icon" title="Refresh address balance" disabled={q.isFetching} onClick={() => void q.refetch()}><RefreshCw className={`h-4 w-4 ${q.isFetching ? "animate-spin" : ""}`}/></Button></div><div className="mt-5 border-t border-border pt-4"><Balance value={q.data === undefined ? undefined : meta.formatCompact(q.data)} symbol={meta.ticker} error={q.isError} pending={q.isPending} stale={q.isRefetchError}/></div><a href={("explorerAddressUrl" in meta.api ? meta.api.explorerAddressUrl(wallet.address) : EVM_CHAINS.zcu.explorerAddress(wallet.address))} target="_blank" rel="noreferrer" className="mt-4 block break-all font-mono text-xs text-muted-foreground hover:text-primary">{wallet.address}</a><p className="mt-3 text-xs text-muted-foreground">Linked to {profile.label}</p></article>;
 }
 function VaultPreview({ entry }: { entry: Entries["vaults"][number] }) {
   const { profile, pairing } = entry;
   const [expanded, setExpanded] = useState(false);
-  const [revision, setRevision] = useState(0);
+  const [, setRevision] = useState(0);
   useEffect(() => { const h = () => setRevision(v => v + 1); window.addEventListener("hme:tokens-changed", h); return () => window.removeEventListener("hme:tokens-changed", h); }, []);
   const utxo = pairing ? VAULT_UTXO_CHAINS.filter(chain => vaultHasChain(pairing, chain)) : [];
   const evm = pairing?.evm;
   const networks = evm ? Object.keys(EVM_CHAINS) as EvmChainId[] : [];
-  void revision;
   const rows = [
     ...utxo.map(chain => ({ id: chain, label: WATCH_CHAIN_META[chain].label, symbol: WATCH_CHAIN_META[chain].ticker, read: async () => { if (!pairing) throw new Error("Not paired"); return WATCH_CHAIN_META[chain].formatCompact(await previewVaultBalance(pairing, chain)); } })),
     ...networks.flatMap(chain => [
