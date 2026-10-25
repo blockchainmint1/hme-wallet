@@ -19,7 +19,7 @@ const pages = [
   {to:"/desktop/swap", label:"Swap", icon:ArrowLeftRight},
   {to:"/desktop/stablecoins", label:"Stablecoins", icon:CircleDollarSign},
   {to:"/desktop/earn", label:"Earn", icon:Landmark},
-  {to:"/desktop/vault", label:"HME Vault", icon:ShieldCheck},
+  {to:"/desktop/vault", label:"Cold Storage", icon:ShieldCheck},
   {to:"/desktop/apps", label:"Apps & links", icon:Globe2},
 ] as const;
 export function DesktopShell() {
