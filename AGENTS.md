@@ -14,7 +14,7 @@
 - Desktop uses nested /desktop pages, inline unlock and a header variant of the shared profile picker; phone retains default presentation and shared payment screens. Why: layout must not fork signing, profile storage or mobile behavior.
 - Desktop balance history is profile-isolated device observations, recorded only for complete data and compatible asset coverage; never fabricate historical performance. Why: outages and changed coverage are not real portfolio losses.
 - Desktop Earn execution and Vault swaps stay unavailable pending their independent acceptance reviews. Why: a new presentation must not enable unverified spending paths.
-- Direct Earn uses a shared Ethereum-only fixed-ABI registry, public-address reads and an unconditional executor gate independent of display settings; keep Sky calls blocked until atomic output bounds are reviewed. Why: official contracts and preview reads alone do not enforce user minimums or certify upgrade safety.
+- Direct Earn shares Ethereum-only fixed ABIs, public-address reads and an unconditional execution gate. Sky conversion estimates are bigint-only, distinguishing USDC, USDS and shares; intermediate-asset bounds never authorize final-share promises. Why: official contracts and previews do not enforce user minimums or attest upgrade safety.
 - Desktop feature UI inherits an explicit preference context; chains use explicit desktop scope, defaulting to supported networks, with device-wide desktop chain choices and profile-scoped desktop feature choices stored separately from phone. Why: desktop defaults must not rewrite phone/APK/extension choices or grant spending permission.
 
 ## Shared platform capabilities and layout
