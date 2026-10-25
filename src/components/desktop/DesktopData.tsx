@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useWallet } from "@/lib/txc/wallet-context";
@@ -42,6 +42,7 @@ import { useHideBalances } from "@/lib/hide-balances";
 
 import { rootFingerprintHex } from "@/lib/txc/fingerprint";
 import { isPortfolioRefreshKey } from "@/lib/desktop/display-policy";
+import { appendCurrencyPoint, currencyHistoryKey, readCurrencyHistory } from "@/lib/desktop/currency-history";
 import { balanceHistoryBlockers } from "@/lib/desktop/history";
 export type DesktopAsset = {
   key: string;
@@ -364,6 +365,39 @@ function useDesktopBalances() {
     solanaEnabled, solanaAddress, solana.balance.data, enabled,
   ]);
 
+  const accountsForHistory = { txc: txcAccount, isk: iskAccount, btc: btcAccount, ltc: ltcAccount, doge: dogeAccount };
+  // Sample each asset independently; unavailable unrelated networks do not block it.
+  const samples = rows.map(row => {
+    const chain = row.chain ?? row.key;
+    const account = chain in accountsForHistory ? accountsForHistory[chain as VaultUtxoChain] : null;
+    const evmIndex = evmEnabled.indexOf(chain as EvmChainId);
+    const stableIndex = stableQueries.findIndex(q => `${q.chain}-${q.token.symbol}` === row.key);
+    const tronIndex = TRC20_TOKENS.findIndex(t => `tron-${t.symbol}` === row.key);
+    const source = row.key === "tsd" ? tsdBalance : account ?? (stableIndex >= 0 ? stableBalances[stableIndex] : evmIndex >= 0 ? evmBalances[evmIndex] : chain === "tron" ? (tronIndex >= 0 ? tron.tokens[tronIndex] : tron.balance) : chain === "solana" ? solana.balance : null);
+    const priceSource = row.stable ? null : chain === "txc" ? txcPrice : chain === "btc" ? btcPrice : chain === "isk" ? iskPrice : chain === "ltc" ? ltcPrice : chain === "doge" ? dogePrice : chain === "tron" ? tron.price : allPrices;
+    return { row, ready: !!source && !source.isError && !source.isFetching && (row.amount === 0 || (!!priceSource && !priceSource.isError && !priceSource.isFetching) || !!row.stable) && balanceHistoryBlockers([row]).length === 0 };
+  });
+  const latestSamples = useRef(samples);
+  const readiness = samples.map(s => `${s.row.key}:${s.ready}`).join(",");
+  useEffect(() => { latestSamples.current = samples; });
+  const historyFingerprint = vaultKey ?? rootKey;
+  useEffect(() => {
+    if (!historyFingerprint) return;
+    const record = () => {
+      for (const { row, ready } of latestSamples.current) {
+        if (!ready || row.amount === null) continue;
+        const key = currencyHistoryKey(activeProfileId, historyFingerprint, row.key);
+        const points = readCurrencyHistory(key);
+        const next = appendCurrencyPoint(points, { at: Date.now(), usd: row.amount === 0 ? 0 : row.usd ?? NaN, amount: row.amount, price: row.price }, ready);
+        try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* best-effort device history */ }
+      }
+      window.dispatchEvent(new Event("hme:currency-history"));
+    };
+    // Start after initial reads, then keep a stable sampling clock across price updates.
+    const initial = setTimeout(record, 1000);
+    const timer = setInterval(record, 300_000);
+    return () => { clearTimeout(initial); clearInterval(timer); };
+  }, [activeProfileId, historyFingerprint, readiness]);
   const total = rows.reduce((s, r) => s + (r.usd ?? 0), 0);
   const valued = rows.filter((r) => (r.usd ?? 0) > 0).sort((a, b) => (b.usd ?? 0) - (a.usd ?? 0));
   const accounts = { txc: txcAccount, isk: iskAccount, btc: btcAccount, ltc: ltcAccount, doge: dogeAccount };

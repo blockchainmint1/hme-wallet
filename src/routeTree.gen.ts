@@ -60,6 +60,7 @@ import { Route as ApiPublicBuildIdRouteImport } from './routes/api/public/build-
 import { Route as ApiPublicLatestReleaseRouteImport } from './routes/api/public/latest-release'
 import { Route as ApiTronSplatRouteImport } from './routes/api/tron.$'
 import { Route as ApiTsdLinkRouteImport } from './routes/api/tsd.link'
+import { Route as DesktopCurrencyCurrencyRouteImport } from './routes/desktop.currency.$currency'
 import { Route as WalletBtcReceiveRouteImport } from './routes/wallet.btc.receive'
 import { Route as WalletBtcSendRouteImport } from './routes/wallet.btc.send'
 import { Route as WalletDogeReceiveRouteImport } from './routes/wallet.doge.receive'
@@ -343,6 +344,11 @@ const ApiTsdLinkRoute = ApiTsdLinkRouteImport.update({
   path: '/api/tsd/link',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DesktopCurrencyCurrencyRoute = DesktopCurrencyCurrencyRouteImport.update({
+  id: '/currency/$currency',
+  path: '/currency/$currency',
+  getParentRoute: () => DesktopRoute,
+} as any)
 const WalletBtcReceiveRoute = WalletBtcReceiveRouteImport.update({
   id: '/btc/receive',
   path: '/btc/receive',
@@ -532,6 +538,7 @@ export interface FileRoutesByFullPath {
   '/api/public/latest-release': typeof ApiPublicLatestReleaseRoute
   '/api/tron/$': typeof ApiTronSplatRoute
   '/api/tsd/link': typeof ApiTsdLinkRoute
+  '/desktop/currency/$currency': typeof DesktopCurrencyCurrencyRoute
   '/wallet/btc/receive': typeof WalletBtcReceiveRoute
   '/wallet/btc/send': typeof WalletBtcSendRoute
   '/wallet/doge/receive': typeof WalletDogeReceiveRoute
@@ -610,6 +617,7 @@ export interface FileRoutesByTo {
   '/api/public/latest-release': typeof ApiPublicLatestReleaseRoute
   '/api/tron/$': typeof ApiTronSplatRoute
   '/api/tsd/link': typeof ApiTsdLinkRoute
+  '/desktop/currency/$currency': typeof DesktopCurrencyCurrencyRoute
   '/wallet/btc/receive': typeof WalletBtcReceiveRoute
   '/wallet/btc/send': typeof WalletBtcSendRoute
   '/wallet/doge/receive': typeof WalletDogeReceiveRoute
@@ -691,6 +699,7 @@ export interface FileRoutesById {
   '/api/public/latest-release': typeof ApiPublicLatestReleaseRoute
   '/api/tron/$': typeof ApiTronSplatRoute
   '/api/tsd/link': typeof ApiTsdLinkRoute
+  '/desktop/currency/$currency': typeof DesktopCurrencyCurrencyRoute
   '/wallet/btc/receive': typeof WalletBtcReceiveRoute
   '/wallet/btc/send': typeof WalletBtcSendRoute
   '/wallet/doge/receive': typeof WalletDogeReceiveRoute
@@ -773,6 +782,7 @@ export interface FileRouteTypes {
     | '/api/public/latest-release'
     | '/api/tron/$'
     | '/api/tsd/link'
+    | '/desktop/currency/$currency'
     | '/wallet/btc/receive'
     | '/wallet/btc/send'
     | '/wallet/doge/receive'
@@ -851,6 +861,7 @@ export interface FileRouteTypes {
     | '/api/public/latest-release'
     | '/api/tron/$'
     | '/api/tsd/link'
+    | '/desktop/currency/$currency'
     | '/wallet/btc/receive'
     | '/wallet/btc/send'
     | '/wallet/doge/receive'
@@ -931,6 +942,7 @@ export interface FileRouteTypes {
     | '/api/public/latest-release'
     | '/api/tron/$'
     | '/api/tsd/link'
+    | '/desktop/currency/$currency'
     | '/wallet/btc/receive'
     | '/wallet/btc/send'
     | '/wallet/doge/receive'
@@ -1348,6 +1360,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTsdLinkRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/desktop/currency/$currency': {
+      id: '/desktop/currency/$currency'
+      path: '/currency/$currency'
+      fullPath: '/desktop/currency/$currency'
+      preLoaderRoute: typeof DesktopCurrencyCurrencyRouteImport
+      parentRoute: typeof DesktopRoute
+    }
     '/wallet/btc/receive': {
       id: '/wallet/btc/receive'
       path: '/btc/receive'
@@ -1559,6 +1578,7 @@ interface DesktopRouteChildren {
   DesktopWalletsRoute: typeof DesktopWalletsRoute
   DesktopWatchAddRoute: typeof DesktopWatchAddRoute
   DesktopIndexRoute: typeof DesktopIndexRoute
+  DesktopCurrencyCurrencyRoute: typeof DesktopCurrencyCurrencyRoute
 }
 
 const DesktopRouteChildren: DesktopRouteChildren = {
@@ -1580,6 +1600,7 @@ const DesktopRouteChildren: DesktopRouteChildren = {
   DesktopWalletsRoute: DesktopWalletsRoute,
   DesktopWatchAddRoute: DesktopWatchAddRoute,
   DesktopIndexRoute: DesktopIndexRoute,
+  DesktopCurrencyCurrencyRoute: DesktopCurrencyCurrencyRoute,
 }
 
 const DesktopRouteWithChildren =
