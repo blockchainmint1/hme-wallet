@@ -10,6 +10,8 @@ export const Route = createFileRoute("/manifesto")({
           "Why HME Wallet exists: honest money, self custody, open code, no rent-seeking middlemen.",
       },
       { property: "og:title", content: "Manifesto — HME Wallet" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
       {
         property: "og:description",
         content: "Honest money. Self custody. Open code. No middlemen.",
