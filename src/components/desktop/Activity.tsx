@@ -20,7 +20,8 @@ import { suspiciousActivityReason, formatActivityAmount } from "@/lib/suspicious
 import { getTronHistory } from "@/lib/tron/api";
 import { explorerTxUrl as tronUrl } from "@/lib/tron/network";
 import { getSolanaHistory } from "@/lib/solana/api";
-import { BUILTIN_TOKENS_BY_CHAIN } from "@/lib/chains/erc20";
+import { getKnownTokens } from "@/lib/token-prefs";
+import { desktopTokenIdentity } from "@/lib/desktop/token-assets";
 import { matchesCurrency } from "@/lib/desktop/currency-history";
 import { decodeOmniSend, omniAmountFor } from "@/lib/txc/omni-decode";
 import { getOmniTxValidity } from "@/lib/txc/tokens.functions";
@@ -53,7 +54,7 @@ export function Activity({ preview=false, chainFilter="all", direction="all", as
       rows.push({id:`tsd:${tx.txid}`,currencyKey:"tsd",hash:tx.txid,chain:"txc",symbol:"TSD",value:formatTokenAmount(omniAmountFor(omni,own,incoming),true),incoming,at:tx.status.block_time?tx.status.block_time*1000:null,confirmed:tx.status.confirmed&&verdict?.valid===true,explorer:urls.txc(tx.txid),verificationPending:verdict?.valid!==true});continue;
     }
     const input=tx.vin.reduce((s,v)=>s+(v.prevout?.scriptpubkey_address&&own.has(v.prevout.scriptpubkey_address)?v.prevout.value:0),0);const output=tx.vout.reduce((s,v)=>s+(v.scriptpubkey_address&&own.has(v.scriptpubkey_address)?v.value:0),0);rows.push({currencyKey:chain,id:`${chain}:${tx.txid}`,hash:tx.txid,chain,symbol:chain.toUpperCase(),value:String(Math.abs(output-input)/1e8),incoming:input===0,at:tx.status.block_time?tx.status.block_time*1000:null,confirmed:tx.status.confirmed,explorer:urls[chain](tx.txid)});}});
-  chains.forEach((chain,i)=>{const list=evm[i]?.data?.transfers??[];list.forEach(t=>rows.push({currencyKey:t.category==="erc20"?(BUILTIN_TOKENS_BY_CHAIN[chain].find(token=>token.address.toLowerCase()===t.contractAddress?.toLowerCase())?`${chain}-${BUILTIN_TOKENS_BY_CHAIN[chain].find(token=>token.address.toLowerCase()===t.contractAddress?.toLowerCase())?.symbol}`:null):chain,id:`${chain}:${t.eventId??t.hash+":"+t.category+":"+t.contractAddress+":"+t.value}`,hash:t.hash,chain,symbol:t.asset,value:t.value,incoming:!t.outgoing,at:t.timestamp?Date.parse(t.timestamp):null,confirmed:true,explorer:EVM_CHAINS[chain].explorerTx(t.hash),reason:suspiciousActivityReason(t,list)}));});
+  chains.forEach((chain,i)=>{const list=evm[i]?.data?.transfers??[];list.forEach(t=>{const token=getKnownTokens(chain).find(token=>token.address.toLowerCase()===t.contractAddress?.toLowerCase());rows.push({currencyKey:t.category==="erc20"?(token?desktopTokenIdentity(chain,token).key:null):chain,id:`${chain}:${t.eventId??t.hash+":"+t.category+":"+t.contractAddress+":"+t.value}`,hash:t.hash,chain,symbol:t.asset,value:t.value,incoming:!t.outgoing,at:t.timestamp?Date.parse(t.timestamp):null,confirmed:true,explorer:EVM_CHAINS[chain].explorerTx(t.hash),reason:suspiciousActivityReason(t,list)});});});
   for(const t of tron.data??[])rows.push({currencyKey:t.kind==="trx"?"tron":`tron-${t.symbol}`,id:`tron:${t.txid}:${t.symbol}`,hash:t.txid,chain:"tron",symbol:t.symbol,value:String(Number(t.value)/10**t.decimals),incoming:t.to===d.tronAddress,at:t.timestamp,confirmed:t.confirmed,explorer:tronUrl(t.txid)});
   for(const t of sol.data??[])rows.push({currencyKey:"solana",id:`solana:${t.signature}`,hash:t.signature,chain:"solana",symbol:"SOL",value:String(t.lamports/1e9),incoming:t.incoming,at:t.blockTime?t.blockTime*1000:null,confirmed:t.confirmed,explorer:`https://solscan.io/tx/${encodeURIComponent(t.signature)}`});
   const selected=rows.filter(r=>(!assetFilter||matchesCurrency(r,assetFilter))&&(chainFilter==="all"||r.chain===chainFilter));
