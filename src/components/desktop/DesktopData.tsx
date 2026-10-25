@@ -378,6 +378,7 @@ function useDesktopBalances() {
     return { row, ready: !!source && !source.isError && !source.isFetching && (row.amount === 0 || (!!priceSource && !priceSource.isError && !priceSource.isFetching) || !!row.stable) && balanceHistoryBlockers([row]).length === 0 };
   });
   const latestSamples = useRef(samples);
+  const recordSamples = useRef<(() => void) | null>(null);
   const readiness = samples.map(s => `${s.row.key}:${s.ready}`).join(",");
   useEffect(() => { latestSamples.current = samples; });
   const historyFingerprint = vaultKey ?? rootKey;
@@ -393,11 +394,13 @@ function useDesktopBalances() {
       }
       window.dispatchEvent(new Event("hme:currency-history"));
     };
-    // Start after initial reads, then keep a stable sampling clock across price updates.
+    recordSamples.current = record;
+    // Keep a stable sampling clock across price updates and network readiness changes.
     const initial = setTimeout(record, 1000);
     const timer = setInterval(record, 300_000);
-    return () => { clearTimeout(initial); clearInterval(timer); };
-  }, [activeProfileId, historyFingerprint, readiness]);
+    return () => { recordSamples.current = null; clearTimeout(initial); clearInterval(timer); };
+  }, [activeProfileId, historyFingerprint]);
+  useEffect(() => { recordSamples.current?.(); }, [readiness]);
   const total = rows.reduce((s, r) => s + (r.usd ?? 0), 0);
   const valued = rows.filter((r) => (r.usd ?? 0) > 0).sort((a, b) => (b.usd ?? 0) - (a.usd ?? 0));
   const accounts = { txc: txcAccount, isk: iskAccount, btc: btcAccount, ltc: ltcAccount, doge: dogeAccount };
