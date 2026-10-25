@@ -11,7 +11,7 @@
 
 ## Desktop workspace
 - Desktop overview refresh uses an explicit balance/price query allowlist; privacy hides funded allocation rankings and counts, and Tron/Solana display retains address-only results. Why: viewing must not refresh spending quotes, disclose allocation, or retain unnecessary signing material.
-- Desktop uses a nested /desktop layout with inline unlock, dedicated pages and desktop-only data/presentation; phone routes render extracted shared payment screens with their original defaults. Why: one signing implementation avoids platform drift without replacing the mobile experience.
+- Desktop uses nested /desktop pages, inline unlock and a header variant of the shared profile picker; phone retains default presentation and shared payment screens. Why: layout must not fork signing, profile storage or mobile behavior.
 - Desktop balance history is profile-isolated device observations, recorded only for complete data and compatible asset coverage; never fabricate historical performance. Why: outages and changed coverage are not real portfolio losses.
 - Desktop Earn execution and Vault swaps stay unavailable pending their independent acceptance reviews. Why: a new presentation must not enable unverified spending paths.
 - Direct Earn uses a shared Ethereum-only fixed-ABI registry, public-address reads and an unconditional executor gate independent of display settings; keep Sky calls blocked until atomic output bounds are reviewed. Why: official contracts and preview reads alone do not enforce user minimums or certify upgrade safety.
