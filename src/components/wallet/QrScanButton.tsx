@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from "react";
 import { Camera, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
 
 type BarcodeDetectorLike = {
   detect: (source: CanvasImageSource) => Promise<Array<{ rawValue: string }>>;
@@ -30,19 +31,26 @@ declare global {
 export function QrScanButton({
   onScan,
   continuous = false,
+  progress,
+  complete = false,
+  onScanStart,
 }: {
   onScan: (text: string) => void;
   /** Keep scanning after each code (for animated multi-part QRs); caller decides when to stop via onClose. */
   continuous?: boolean;
+  progress?: { have: number; total: number } | null;
+  complete?: boolean;
+  onScanStart?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => { if (complete) setOpen(false); }, [complete]);
   return (
     <>
       <Button
         type="button"
         variant="outline"
         size="icon"
-        onClick={() => setOpen(true)}
+        onClick={() => { onScanStart?.(); setOpen(true); }}
         title="Scan QR"
         aria-label="Scan QR"
       >
@@ -50,6 +58,7 @@ export function QrScanButton({
       </Button>
       {open && (
         <ScannerDialog
+          progress={progress}
           onClose={() => setOpen(false)}
           onScan={(text) => {
             if (!continuous) setOpen(false);
@@ -61,7 +70,7 @@ export function QrScanButton({
   );
 }
 
-function ScannerDialog({ onClose, onScan }: { onClose: () => void; onScan: (t: string) => void }) {
+function ScannerDialog({ onClose, onScan, progress }: { onClose: () => void; onScan: (t: string) => void; progress?: { have: number; total: number } | null }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +102,9 @@ function ScannerDialog({ onClose, onScan }: { onClose: () => void; onScan: (t: s
           detector = null;
         }
       }
-      if (!detector) {
+      // Load the bundled fallback before asking for the camera, even when a
+      // native detector exists: some devices advertise it but fail on frames.
+      {
         try {
           const mod = await import("jsqr");
           jsQR = mod.default;
@@ -104,13 +115,13 @@ function ScannerDialog({ onClose, onScan }: { onClose: () => void; onScan: (t: s
       }
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" } },
+          video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
           audio: false,
         });
       } catch (e) {
         setError(
           e instanceof Error && e.name === "NotAllowedError"
-            ? "Camera access denied. Enable it in Settings → HME Wallet."
+            ? "Camera access denied. Allow camera access for this site or HME Wallet, then reopen the scanner. If the preview blocks it, open the wallet in its own tab."
             : e instanceof Error
               ? e.message
               : "Camera unavailable",
@@ -122,14 +133,17 @@ function ScannerDialog({ onClose, onScan }: { onClose: () => void; onScan: (t: s
         return;
       }
       const video = videoRef.current;
-      if (!video) return;
+      if (!video) { stream.getTracks().forEach((t) => t.stop()); return; }
       video.srcObject = stream;
       video.setAttribute("playsinline", "true");
       try {
         await video.play();
       } catch {
-        /* autoplay retries below on tick */
+        if (!cancelled) setError("Camera preview could not start. Close and reopen the scanner.");
+        stream.getTracks().forEach((t) => t.stop());
+        return;
       }
+      if (cancelled) return;
       setReady(true);
 
       const canvas = canvasRef.current ?? document.createElement("canvas");
@@ -153,9 +167,17 @@ function ScannerDialog({ onClose, onScan }: { onClose: () => void; onScan: (t: s
         if (video.readyState >= 2 && video.videoWidth > 0) {
           try {
             if (detector) {
-              const codes = await detector.detect(video);
-              if (codes.length > 0 && codes[0].rawValue) emit(codes[0].rawValue);
-            } else if (jsQR && ctx) {
+              try {
+                const codes = await detector.detect(video);
+                if (cancelled) return;
+                if (codes.length > 0 && codes[0].rawValue) {
+                  emit(codes[0].rawValue);
+                  raf = requestAnimationFrame(tick);
+                  return;
+                }
+              } catch { detector = null; }
+            }
+            if (jsQR && ctx) {
               const w = video.videoWidth;
               const h = video.videoHeight;
               canvas.width = w;
@@ -174,7 +196,7 @@ function ScannerDialog({ onClose, onScan }: { onClose: () => void; onScan: (t: s
       raf = requestAnimationFrame(tick);
     }
 
-    start();
+    void start();
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
@@ -188,29 +210,33 @@ function ScannerDialog({ onClose, onScan }: { onClose: () => void; onScan: (t: s
         <DialogHeader className="px-4 pt-4">
           <DialogTitle className="flex items-center justify-between">
             <span>Scan QR</span>
-            <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close scanner">
               <X className="h-4 w-4" />
-            </button>
+            </Button>
           </DialogTitle>
           <DialogDescription className="sr-only">
             Use your device camera to scan a wallet address QR code.
           </DialogDescription>
         </DialogHeader>
-        <div className="relative aspect-square bg-black">
+        <div className="relative aspect-square bg-muted">
           <video
             ref={videoRef}
-            className="absolute inset-0 w-full h-full object-cover"
+            className="absolute inset-0 w-full h-full object-contain"
             playsInline
             muted
             autoPlay
           />
-          <div className="pointer-events-none absolute inset-8 border-2 border-white/70 rounded-lg" />
+          <div className="pointer-events-none absolute inset-8 border-2 border-primary/70 rounded-lg" />
         </div>
-        <div className="p-4 text-xs text-muted-foreground min-h-[3rem]">
+        <div className="p-4 text-xs text-muted-foreground min-h-[3rem] space-y-2" role="status" aria-live="polite">
+          {progress && progress.total > 0 && <>
+            <Progress value={100 * progress.have / progress.total} aria-label="QR transfer progress" />
+            <p>{progress.have} of {progress.total} parts · {Math.floor(100 * progress.have / progress.total)}%</p>
+          </>}
           {error
             ? error
             : ready
-              ? "Point the camera at a wallet address QR code."
+              ? "Keep the entire QR code in view."
               : "Starting camera…"}
         </div>
       </DialogContent>
