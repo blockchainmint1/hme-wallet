@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { QrScanButton } from "@/components/wallet/QrScanButton";
+import { Progress } from "@/components/ui/progress";
 import { useWallet } from "@/lib/txc/wallet-context";
 import { createVaultWallet, saveWalletToNewProfile } from "@/lib/txc/storage";
 import { getSessionPassword } from "@/lib/txc/session-cache";
@@ -131,13 +132,18 @@ export function VaultPairingForm({ doneTo = "/wallet", backTo, backLabel = "Back
                 scan the QR it shows.
               </p>
               <div className="flex items-center gap-2">
-                <QrScanButton continuous onScan={onScanned} />
+                <QrScanButton continuous onScan={onScanned} progress={scanProgress} complete={Boolean(pairing)} onScanStart={() => {
+                  collectorRef.current = null;
+                  setScanProgress(null);
+                  setError(null);
+                }} />
                 <span className="text-xs text-muted-foreground">
                   {scanProgress && scanProgress.total > 1
                     ? `Reading animated QR… part ${scanProgress.have} of ${scanProgress.total} — keep pointing`
                     : "Scan the Vault pairing QR"}
                 </span>
               </div>
+              {scanProgress && <Progress value={100 * scanProgress.have / scanProgress.total} aria-label="Pairing progress" />}
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground">…or paste the pairing code:</p>
                 <Textarea
@@ -201,7 +207,7 @@ export function VaultPairingForm({ doneTo = "/wallet", backTo, backLabel = "Back
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanLine className="h-4 w-4 mr-2" />}
                   {busy ? "Adding…" : "Add Vault wallet"}
                 </Button>
-                <Button variant="ghost" onClick={() => { setPairing(null); setRaw(""); setError(null); }}>
+                <Button variant="ghost" onClick={() => { setPairing(null); setRaw(""); setError(null); collectorRef.current = null; setScanProgress(null); }}>
                   Start over
                 </Button>
               </div>

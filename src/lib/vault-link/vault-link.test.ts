@@ -35,6 +35,17 @@ describe("HMQR2 framing", () => {
     expect(c.add("HMQR:1/2:foo")).toBeNull();
     expect(c.add("HMQR:2/2:bar")).toBe("foobar");
   });
+  it("counts unique parts only and reports complete progress", () => {
+    const frames = toParts("q".repeat(1201));
+    const collector = new PartCollector();
+    collector.add(frames[0]);
+    collector.add(frames[0]);
+    expect(collector.progress).toEqual({ have: 1, total: 3 });
+    collector.add(frames[2]);
+    expect(collector.progress).toEqual({ have: 2, total: 3 });
+    expect(collector.add(frames[1])).toBe("q".repeat(1201));
+    expect(collector.progress).toEqual({ have: 3, total: 3 });
+  });
 });
 
 const VALID_PAIRING = JSON.stringify({

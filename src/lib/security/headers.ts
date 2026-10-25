@@ -44,6 +44,8 @@ const CSP_DIRECTIVES: Record<string, string> = {
   "style-src": "'self' 'unsafe-inline'",
   // All displayed icons are bundled; QR images use data URLs.
   "img-src": "'self' data: blob:",
+  // In-app QR scanning uses a local camera MediaStream; no remote video.
+  "media-src": "'self' blob:",
   "font-src": "'self' data:",
   "connect-src": CONNECT_SRC,
   "manifest-src": "'self'",
