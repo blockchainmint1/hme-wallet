@@ -6,12 +6,7 @@ export const Route = createFileRoute("/create")({
   validateSearch: (search: Record<string, unknown>): { add?: boolean } => ({
     add: search.add === true || search.add === "true" || search.add === "1" ? true : undefined,
   }),
-  head: () => ({
-    meta: [
-      { title: "Create wallet — HME Wallet" },
-      { name: "description", content: "Generate a new wallet and back up the seed phrase." },
-    ],
-  }),
+  head: () => ({ meta: [{ title: "Create wallet — Honest Money" }, { name: "description", content: "Create and back up an Honest Money seed wallet." }, { property: "og:title", content: "Create wallet — Honest Money" }, { property: "og:description", content: "Create and back up an Honest Money seed wallet." }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" }] }),
   component: Page,
 });
 function Page() { const { add } = Route.useSearch(); return <CreateWalletForm add={add}/>; }
