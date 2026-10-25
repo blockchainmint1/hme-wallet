@@ -44,9 +44,9 @@ function safeParse(raw: string | null): WatchWallet[] {
   }
 }
 
-export function listWatchWallets(): WatchWallet[] {
+export function listWatchWallets(profileId?: string): WatchWallet[] {
   if (typeof localStorage === "undefined") return [];
-  return safeParse(localStorage.getItem(STORAGE_KEY()));
+  return safeParse(localStorage.getItem(profileId === undefined ? STORAGE_KEY() : scopedKey(STORAGE_KEY_BASE, profileId)));
 }
 
 function persist(list: WatchWallet[]): void {
