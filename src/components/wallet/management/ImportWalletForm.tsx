@@ -7,8 +7,8 @@ import {
   rootFromSeed,
   deriveAddress,
 } from "@/lib/txc/wallet";
-import { saveWallet, saveWalletToNewProfile } from "@/lib/txc/storage";
-import { getSessionPassword, saveSession } from "@/lib/txc/session-cache";
+import { managedSeedPassword, saveManagedSeedWallet } from "@/lib/txc/managed-seed-save";
+import { saveSession } from "@/lib/txc/session-cache";
 import { assessPassword } from "@/lib/security/password-strength";
 import { useWallet } from "@/lib/txc/wallet-context";
 import { getAddressStats } from "@/lib/txc/mempool";
@@ -180,8 +180,7 @@ async function scanKindForImport(
 export function ImportWalletForm({ desktop = false, add = false }: { desktop?: boolean; add?: boolean }) {
   const navigate = useNavigate();
   const { loadFromMemory, unlocked, profiles } = useWallet();
-  const [sessionPw] = useState<string | null>(() => getSessionPassword());
-  const addingProfile = !!add && !!unlocked && !!sessionPw;
+  const addingProfile = desktop || add;
   const [phrase, setPhrase] = useState("");
   const [name, setName] = useState("");
   const [passphrase, setPassphrase] = useState("");
@@ -211,15 +210,11 @@ export function ImportWalletForm({ desktop = false, add = false }: { desktop?: b
         label:
           name.trim() || (addingProfile ? `Wallet ${profiles.length + 1}` : "Imported wallet"),
       };
-      if (addingProfile) {
-        await saveWalletToNewProfile(u, sessionPw ?? "");
-      } else {
-        await saveWallet(u, password);
-      }
+      const savedPassword = await saveManagedSeedWallet(u, addingProfile, Boolean(unlocked), password);
       await loadFromMemory(u);
       // Cache the password with the new session so a full page reload right
       // after import doesn't hit the lock screen.
-      await saveSession(u, addingProfile ? sessionPw ?? "" : password);
+      await saveSession(u, savedPassword);
       navigate({ to: desktop ? "/desktop/wallets" : "/wallet" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Import failed");
@@ -242,6 +237,8 @@ export function ImportWalletForm({ desktop = false, add = false }: { desktop?: b
     if (busy) return;
     setError(null);
     setCandidates(null);
+    try { managedSeedPassword(addingProfile, Boolean(unlocked), password); }
+    catch (err) { setError(err instanceof Error ? err.message : "Unlock your wallet again."); return; }
 
     const m = normalizeMnemonic(phrase);
     if (!validateMnemonic(m)) {
@@ -399,6 +396,7 @@ export function ImportWalletForm({ desktop = false, add = false }: { desktop?: b
             <Loader2 className="h-4 w-4 animate-spin" /> {status}
           </div>
         )}
+        {error && <p role="alert" className="mt-4 text-sm text-destructive">{error}</p>}
       </main>
     );
   }

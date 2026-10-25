@@ -1,8 +1,8 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { generateMnemonic, generateMnemonicFromUserEntropy } from "@/lib/txc/wallet";
-import { saveWallet, saveWalletToNewProfile } from "@/lib/txc/storage";
-import { getSessionPassword, saveSession } from "@/lib/txc/session-cache";
+import { managedSeedPassword, saveManagedSeedWallet } from "@/lib/txc/managed-seed-save";
+import { saveSession } from "@/lib/txc/session-cache";
 import { useWallet } from "@/lib/txc/wallet-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,10 +36,8 @@ function clearDraftMnemonic() {
 export function CreateWalletForm({ desktop = false, add = false }: { desktop?: boolean; add?: boolean }) {
   const navigate = useNavigate();
   const { loadFromMemory, unlocked, profiles } = useWallet();
-  // Adding a vault only skips the password step while a session is alive —
-  // the new envelope is encrypted with the same password as the others.
-  const [sessionPw] = useState<string | null>(() => getSessionPassword());
-  const addingProfile = !!add && !!unlocked && !!sessionPw;
+  // Add intent never changes when the session expires.
+  const addingProfile = desktop || add;
   const [mnemonic, setMnemonic] = useState("");
   const words = mnemonic ? mnemonic.split(" ") : [];
   const [confirmedBackup, setConfirmedBackup] = useState(false);
@@ -89,6 +87,8 @@ export function CreateWalletForm({ desktop = false, add = false }: { desktop?: b
   async function finalize(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    try { managedSeedPassword(addingProfile, Boolean(unlocked), password); }
+    catch (err) { setError(err instanceof Error ? err.message : "Unlock your wallet again."); return; }
     if (!addingProfile) {
       const strength = assessPassword(password);
       if (!strength.ok) {
@@ -117,15 +117,11 @@ export function CreateWalletForm({ desktop = false, add = false }: { desktop?: b
       const u = { mnemonic, passphrase: "", // SLIP-0044 legacy path (m/44'/696969'/0') — matches the TXC Web Wallet
       // and wTXC bridge, so seeds move between them cleanly.
       kind: "bip44" as const, label: name.trim() || (addingProfile ? `Wallet ${profiles.length + 1}` : "Main wallet") };
-      if (addingProfile) {
-        await saveWalletToNewProfile(u, sessionPw ?? "");
-      } else {
-        await saveWallet(u, password);
-      }
+      const savedPassword = await saveManagedSeedWallet(u, addingProfile, Boolean(unlocked), password);
       await loadFromMemory(u);
       // Cache the password with the new session so a full page reload right
       // after creation doesn't hit the lock screen.
-      await saveSession(u, addingProfile ? sessionPw ?? "" : password);
+      await saveSession(u, savedPassword);
       clearDraftMnemonic();
       navigate({ to: desktop ? "/desktop/wallets" : "/wallet" });
     } catch (err) {
