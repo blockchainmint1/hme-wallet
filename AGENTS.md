@@ -21,7 +21,7 @@
 - Wide fine-pointer web browsers land on /desktop from /wallet unless "Phone view" was chosen (src/lib/desktop-pref.ts); APK and extension never redirect. Why: desktop default must never alter phone/APK/extension behavior.
 - Desktop's locked state stays at /desktop and unlocks inline via the shared WalletProvider. Why: hard navigation loses the ephemeral session key and must not bounce users into the mobile workspace.
 - Capability helpers stay unrestricted across builds; callers share features.
-- QR: local JS/media, one close, progress, stop on completion; 240-char Vault frames, frame-independent hash, bound unique chunks. Why: safe decoding.
+- QR: local JS/media, one close, progress, stop on completion; 240-char Vault frames, frame-independent hash, bound unique chunks; desktop codes grow, never phone/APK/extension. Why: safe decoding.
 - Public footer stays inside the content scroller. Why: legal links must not pin over or reduce readable homepage content.
 - Keep wallet Send/Receive outside the home content scroller; safe-area spacing applies once; hidden footers take no space. Why: phone actions stay at the bottom without an extra gap.
 
