@@ -12,7 +12,7 @@
 ## Desktop workspace
 - Desktop overview refresh uses an explicit balance/price query allowlist; privacy hides funded allocation rankings and counts, and Tron/Solana display retains address-only results. Why: viewing must not refresh spending quotes, disclose allocation, or retain unnecessary signing material.
 - Desktop management stays under /desktop with inline unlock, header picker and wallet library; shared forms retain phone defaults. Create/import use managed-seed-save: immutable add intent, fresh session checks at submission/save, initial setup refuses existing envelopes. Why: expired sessions cannot replace wallets.
-- Desktop charts store profile/fingerprint-isolated observations under the deletable balance-history prefix; portfolio requires complete coverage, currencies require their own data. Why: outages aren't losses; never invent history.
+- Charts use deletable balance-history keys isolated by profile/fingerprint; portfolio needs complete coverage, currencies their own data. Changed totals record immediately; unchanged points throttle. Explicit time windows, relative value bounds. Why: no invented history or hidden changes.
 - Desktop Earn stays paused; shared UTXO swap entry blocks Vault mode before quotes/orders/signing on all builds. Why: phone cannot bypass independent acceptance.
 - Direct Earn shares Ethereum-only fixed ABIs, public-address reads and an unconditional execution gate. Sky conversion estimates are bigint-only, distinguishing USDC, USDS and shares; intermediate-asset bounds never authorize final-share promises. Why: official contracts and previews do not enforce user minimums or attest upgrade safety.
 - Desktop features are profile-scoped, chains device-wide, separate from phone; token controls/catalogs are shared. Portfolio EVM customs use contract keys, no assumed peg; desktop custom sends stay unavailable. Why: preserve storage, valuation and signing boundaries.
@@ -20,9 +20,9 @@
 ## Shared platform capabilities and layout
 - Wide fine-pointer web browsers land on /desktop from /wallet unless "Phone view" was chosen (src/lib/desktop-pref.ts); APK and extension never redirect. Why: desktop default must never alter phone/APK/extension behavior.
 - Desktop's locked state stays at /desktop and unlocks inline through the shared WalletProvider; why: hard navigation intentionally loses the ephemeral session key and must not bounce users into the mobile workspace.
-- Keep capability helpers unrestricted across builds; callers share one feature set.
+- Capability helpers stay unrestricted across builds; callers share features.
 - QR: local JS/media, one close, progress, stop on completion; 240-char Vault frames, frame-independent hash, bound unique chunks. Why: safe decoding.
-- Render the public footer inside the frame's content scroller; why: legal links must not pin over or reduce the readable homepage content.
+- Public footer stays inside the content scroller. Why: legal links must not pin over or reduce readable homepage content.
 - Keep wallet Send/Receive outside the home content scroller and apply bottom safe-area spacing only once; hidden public footers must occupy no space. Why: phone actions must stay at the bottom without an extra gap.
 
 ## Release delivery is database-driven
@@ -34,7 +34,7 @@
 The extension packages the full web app: `bun scripts/build-extension.mjs` runs `vite build`, renders the SPA shell into `extension/popup.html`/`index.html` with inline scripts externalised (MV3 CSP), and `server-fn-bridge` forwards `/_serverFn`+`/api` to mobile.honest.money when `isExtension()`. `src/extension/popup.tsx` is only the approval window (`approve.html`). Why: one app, every fix ships to web, APK and extension.
 
 - Extension web provider: `src/extension/inpage.ts` (EIP-6963 + `window.honestMoney`, `window.ethereum` only if free) → `content.ts` → `background.ts`; keys stay in approval popup. Why: sites never touch keys and signatures need approval.
-- Popup theme follows system by default with a light/dark override saved only in extension localStorage. Why: appearance should not change web/mobile settings or wallet data.
+- Popup theme follows system; light/dark override stays in extension localStorage. Why: don't change web/mobile settings or wallet data.
 
 ## Trusted ecosystem sites come from honest.money
 Registry/Hub use ecosystem-credential.server (current per-site HME convention); do not migrate partner signing implicitly. Spending requires fresh exact registry membership. Why: site recognition cannot authenticate payments.

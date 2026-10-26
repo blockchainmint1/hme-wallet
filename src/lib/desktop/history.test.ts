@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
-import { appendBalancePoint, balanceHistoryKey, balanceHistoryBlockers, clearBalanceHistory, readBalanceHistory } from "./history";
+import { appendBalancePoint, balanceHistoryKey, balanceHistoryBlockers, clearBalanceHistory, readBalanceHistory, portfolioChartWindow } from "./history";
 describe("desktop balance history", () => {
   beforeAll(() => {
     const store: Record<string, string> = {};
@@ -32,5 +32,22 @@ describe("desktop balance history", () => {
     expect(localStorage.getItem(own)).toBeNull(); expect(localStorage.getItem(other)).toBe("[]");
   });
   it("keeps points from other coverage sets instead of wiping them", () => { const saved = [{at: 1, usd: 100, coverage: "btc"}]; expect(appendBalancePoint(saved, {at: 600001, usd: 50, coverage: "btc,eth"}, true)).toEqual([{at: 1, usd: 100, coverage: "btc"}, {at: 600001, usd: 50, coverage: "btc,eth"}]); });
-  it("throttles points within five minutes of the last matching-coverage point", () => { const saved = [{at: 1, usd: 100, coverage: "btc"}]; expect(appendBalancePoint(saved, {at: 100000, usd: 101, coverage: "btc"}, true)).toEqual(saved); });
+  it("throttles unchanged points within five minutes", () => { const saved = [{at: 1, usd: 100, coverage: "btc"}]; expect(appendBalancePoint(saved, {at: 100000, usd: 100, coverage: "btc"}, true)).toEqual(saved); });
+  it("records a changed complete balance immediately", () => { const saved = [{at: 1, usd: 100, coverage: "btc"}]; expect(appendBalancePoint(saved, {at: 100000, usd: 101, coverage: "btc"}, true).at(-1)?.usd).toBe(101); });
+  it("does not append older observations", () => { const saved = [{at: 100000, usd: 100, coverage: "btc"}]; expect(appendBalancePoint(saved, {at: 1, usd: 101, coverage: "btc"}, true)).toEqual(saved); });
+  it("uses distinct day and month windows even with today's history only", () => {
+    const now = 40 * 86400000;
+    const points = [{at: now - 3600000, usd: 475440.40, coverage: "btc"}, {at: now, usd: 475540.40, coverage: "btc"}];
+    const day = portfolioChartWindow(points, "btc", "1D", now);
+    const month = portfolioChartWindow(points, "btc", "1M", now);
+    expect(day.timeDomain).toEqual([now - 86400000, now]);
+    expect(month.timeDomain).toEqual([now - 30 * 86400000, now]);
+    expect(month.visible).toEqual(points);
+    expect(day.valueDomain[0]).toBeGreaterThan(475000);
+    expect(day.valueDomain[1]).toBeGreaterThan(475540.40);
+  });
+  it("excludes older, future and differently covered observations", () => {
+    const now = 40 * 86400000;
+    expect(portfolioChartWindow([{at: 1, usd: 10, coverage: "btc"}, {at: now, usd: 20, coverage: "eth"}, {at: now + 1, usd: 30, coverage: "btc"}], "btc", "1D", now).visible).toEqual([]);
+  });
 });
