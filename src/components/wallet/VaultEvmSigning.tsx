@@ -16,12 +16,23 @@ export function VaultEvmSigning({ payload, chain, onSent, onBack }: { payload: s
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ have: number; total: number } | null>(null);
   const [complete, setComplete] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
   async function scan(frame: string) {
     if (processing.current) return;
+    let full: string | null;
     try {
-      const full = collector.current.add(frame);
+      full = collector.current.add(frame);
       setProgress(collector.current.progress);
-      if (!full) return;
+      setScanError(null);
+    } catch (e) {
+      collector.current = new PartCollector();
+      setProgress(null);
+      setComplete(false);
+      setScanError(e instanceof Error ? e.message : "Could not read that QR frame.");
+      return;
+    }
+    if (!full) return;
+    try {
       collector.current = new PartCollector();
       setComplete(true);
       if (!/^0x(?:[0-9a-fA-F]{2})+$/.test(full.trim())) throw new Error("That QR does not contain a signed Ethereum transaction.");
@@ -44,11 +55,12 @@ export function VaultEvmSigning({ payload, chain, onSent, onBack }: { payload: s
     <p className="text-sm text-muted-foreground">Scan with HME Vault, review the payment there, then scan its signed transaction here.</p>
     <VaultAnimatedQr text={payload} />
     <div className="flex items-center gap-2">
-      {!busy && <QrScanButton continuous onScan={(frame) => void scan(frame)} progress={progress} complete={complete} onScanStart={() => {
+      {!busy && <QrScanButton continuous onScan={(frame) => void scan(frame)} progress={progress} complete={complete} scanError={scanError} onScanStart={() => {
         collector.current = new PartCollector();
         setProgress(null);
         setComplete(false);
         setError(null);
+        setScanError(null);
       }} />}
       <span className="text-sm text-muted-foreground">{busy ? "Checking and broadcasting…" : progress && progress.total > 0 && !complete ? `Reading signed transaction: ${progress.have} of ${progress.total} parts` : "Scan signed transaction"}</span>
       {busy && <Loader2 className="h-4 w-4 animate-spin" />}

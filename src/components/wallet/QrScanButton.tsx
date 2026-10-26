@@ -34,6 +34,7 @@ export function QrScanButton({
   progress,
   complete = false,
   onScanStart,
+  scanError,
 }: {
   onScan: (text: string) => void;
   /** Keep scanning after each code; the caller stops it with complete. */
@@ -41,6 +42,7 @@ export function QrScanButton({
   progress?: { have: number; total: number } | null;
   complete?: boolean;
   onScanStart?: () => void;
+  scanError?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   useEffect(() => { if (complete) setOpen(false); }, [complete]);
@@ -59,6 +61,7 @@ export function QrScanButton({
       {open && (
         <ScannerDialog
           progress={progress}
+          scanError={scanError}
           onClose={() => setOpen(false)}
           onScan={(text) => {
             if (!continuous) setOpen(false);
@@ -70,7 +73,7 @@ export function QrScanButton({
   );
 }
 
-function ScannerDialog({ onClose, onScan, progress }: { onClose: () => void; onScan: (t: string) => void; progress?: { have: number; total: number } | null }) {
+function ScannerDialog({ onClose, onScan, progress, scanError }: { onClose: () => void; onScan: (t: string) => void; progress?: { have: number; total: number } | null; scanError?: string | null }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -233,6 +236,7 @@ function ScannerDialog({ onClose, onScan, progress }: { onClose: () => void; onS
             : ready
               ? "Keep the entire QR code in view."
               : "Starting camera…"}
+          {scanError && <p role="alert" className="text-destructive">{scanError} Keep scanning the Vault's current QR transfer.</p>}
         </div>
       </DialogContent>
     </Dialog>

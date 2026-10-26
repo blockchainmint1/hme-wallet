@@ -14,7 +14,33 @@
 import { payments, Psbt, Transaction } from "bitcoinjs-lib";
 import { deriveVaultAddress, VAULT_CHAIN_META } from "./derive";
 import type { VaultPairing, VaultUtxoChain } from "./pairing";
-import type { VaultUtxo } from "./scan";
+import type { VaultChainScan, VaultUtxo } from "./scan";
+
+/** Historical activity, not currently held coins, determines the next change address. */
+export function nextVaultChangeIndex(scan: Pick<VaultChainScan, "used">): number {
+  return scan.used.reduce((next, address) => address.change === 1 ? Math.max(next, address.index + 1) : next, 0);
+}
+
+/** Freeze all non-signature transaction fields to the reviewed unsigned PSBT. */
+export function verifySignedAgainstPsbt(hex: string, psbtBase64: string, context = "payment"): string {
+  const tx = Transaction.fromHex(hex.trim());
+  const psbt = Psbt.fromBase64(psbtBase64);
+  const bytesEqual = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((v, i) => v === b[i]);
+  const inputs = psbt.txInputs;
+  const outputs = psbt.txOutputs;
+  if (tx.version !== psbt.version || tx.locktime !== psbt.locktime || tx.ins.length !== inputs.length || tx.outs.length !== outputs.length ||
+      tx.ins.some((input, n) => {
+        const expected = inputs[n];
+        return !expected || !bytesEqual(input.hash, expected.hash) || input.index !== expected.index || input.sequence !== expected.sequence || (!input.script.length && !input.witness.length);
+      }) ||
+      tx.outs.some((output, n) => {
+        const expected = outputs[n];
+        return !expected || output.value !== expected.value || !bytesEqual(output.script, expected.script);
+      })) {
+    throw new Error(`The signed transaction does not match this ${context}. Nothing was broadcast.`);
+  }
+  return tx.getId();
+}
 
 function hexToBytes(hex: string): Uint8Array {
   const clean = hex.trim();
@@ -138,9 +164,9 @@ export function buildVaultPsbt(req: VaultPsbtRequest): BuiltVaultPsbt {
 
 /**
  * Verify a signed transaction hex returned by Vault: it must parse, and its
- * outputs must include every payment we asked for (address + value). We can't
- * re-derive the txid trustlessly without a full parser, but bitcoinjs gives
- * us one.
+ * outputs must include every payment we asked for (address + value).
+ * This is a readable secondary assertion, not sufficient broadcast authorization:
+ * callers must first run verifySignedAgainstPsbt against the frozen request.
  */
 export function verifySignedTx(
   hex: string,
