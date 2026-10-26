@@ -53,7 +53,7 @@ Registry/Hub use ecosystem-credential.server (current per-site HME convention); 
 
 ## Security boundaries
 - LI.FI shares immutable intent/bytes and session/deployment/server signing checks; nested semantic review is mandatory, no fallback. Single-block hop allowlisting adds compatibility only; distinct spenders use the approval-only sentinel. Omit integrator config; remain paused until independent route/release/device acceptance. Why: permitted entrypoints cannot authorize opaque instructions.
-- FixedFloat non-JSON 403 responses are access refusals, not invalid quotes; never retry order creation against alternate hosts or expose gateway bodies. Why: live-service access can differ from sandbox access and duplicate orders must be avoided.
+- Swap choices never silently fall back; returned orders must match the requested provider. FixedFloat HTML 403 means refusal; no alternate-host retries or body exposure. Why: honor payment intent, avoid duplicate orders and leaks.
 - THORChain quotes and order refreshes use liquidity_tolerance_bps against expected after-fee output, never feeless tolerance_bps; why: liquidity fees must not consume price protection or reject valid streaming quotes.
 - Read src/lib/security/AGENTS.md before changing security controls; why: shared guardrails cover web, Android and extension.
 - Card PIN verification and payment reservation run atomically in the database; why: concurrent taps cannot race limits or lockout.
