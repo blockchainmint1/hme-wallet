@@ -16,6 +16,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { QrScanButton } from "@/components/wallet/QrScanButton";
 import { VaultAnimatedQr } from "@/components/wallet/VaultAnimatedQr";
 import { TxidCard } from "@/components/wallet/TxidCard";
+import { useDesktopViewport } from "@/hooks/use-desktop-viewport";
+import { cn } from "@/lib/utils";
 import { PartCollector } from "@/lib/vault-link/qr-parts";
 import { buildVaultPsbt, nextVaultChangeIndex, verifySignedAgainstPsbt, verifySignedTx } from "@/lib/vault-link/psbt-build";
 import type { EvmIntent } from "@/lib/vault-link/evm-intent";
@@ -68,6 +70,7 @@ export function VaultSendDialog({
   const [scanProgress, setScanProgress] = useState<{ have: number; total: number } | null>(null);
   const [scanComplete, setScanComplete] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+  const desktop = useDesktopViewport();
 
   function resetScan() {
     collector.current = new PartCollector();
@@ -195,7 +198,14 @@ export function VaultSendDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md max-h-[90dvh] overflow-y-auto">
+      <DialogContent
+        className={cn(
+          "max-h-[90dvh] overflow-y-auto",
+          // The desktop code is drawn about twice as large, so the panel
+          // widens to keep all of it on screen.
+          desktop ? "max-w-[680px]" : "max-w-md",
+        )}
+      >
         <DialogHeader>
           <DialogTitle>Send {isEvm ? "EVM" : meta?.name} via Vault</DialogTitle>
           <DialogDescription>
