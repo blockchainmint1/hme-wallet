@@ -6,7 +6,7 @@
  * Nothing is ever signed here — this dialog only prepares and broadcasts.
  */
 import { useMemo, useRef, useState } from "react";
-import { Loader2, ScanLine } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -64,6 +64,16 @@ export function VaultSendDialog({
   const [error, setError] = useState<string | null>(null);
   const [evmChain, setEvmChain] = useState<EvmChainId>("eth");
   const collector = useRef(new PartCollector());
+  const processing = useRef(false);
+  const [scanProgress, setScanProgress] = useState<{ have: number; total: number } | null>(null);
+  const [scanComplete, setScanComplete] = useState(false);
+
+  function resetScan() {
+    collector.current = new PartCollector();
+    setScanProgress(null);
+    setScanComplete(false);
+    setError(null);
+  }
 
   const isEvm = chain === "evm";
   const meta = !isEvm ? VAULT_CHAIN_META[chain] : null;
@@ -138,11 +148,14 @@ export function VaultSendDialog({
   }
 
   async function onScanned(code: string) {
+    if (processing.current || step.name !== "show") return;
     try {
       const full = collector.current.add(code);
+      setScanProgress(collector.current.progress);
       if (!full) return; // waiting for more frames
       collector.current = new PartCollector();
-      if (step.name !== "show") return;
+      processing.current = true;
+      setScanComplete(true);
       setBusy(true);
       setError(null);
       try {
@@ -160,12 +173,15 @@ export function VaultSendDialog({
           setStep({ name: "done", txid: realTxid || txid });
         }
       } catch (e) {
+        processing.current = false;
         setError((e as Error).message);
       } finally {
         setBusy(false);
       }
     } catch (e) {
       collector.current = new PartCollector();
+      setScanProgress(null);
+      setScanComplete(true);
       setError((e as Error).message);
     }
   }
@@ -246,14 +262,14 @@ export function VaultSendDialog({
             </ol>
             <VaultAnimatedQr text={step.payload} />
             <div className="flex items-center gap-2">
-              <QrScanButton continuous onScan={(t) => void onScanned(t)} />
+              {!busy && <QrScanButton continuous onScan={(t) => void onScanned(t)} progress={scanProgress} complete={scanComplete} onScanStart={resetScan} />}
               <span className="text-xs text-muted-foreground">
-                {busy ? "Broadcasting…" : "Scan the signed transaction from Vault"}
+                {busy ? "Checking and broadcasting…" : scanProgress && scanProgress.total > 0 && !scanComplete ? `Reading signed transaction: ${scanProgress.have} of ${scanProgress.total} parts` : "Scan the signed transaction from Vault"}
               </span>
               {busy && <Loader2 className="h-4 w-4 animate-spin" />}
             </div>
             {error && <p className="text-xs text-destructive">{error}</p>}
-            <Button variant="ghost" size="sm" onClick={() => setStep({ name: "form" })}>
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => { resetScan(); processing.current = false; setStep({ name: "form" }); }}>
               Back
             </Button>
           </div>
