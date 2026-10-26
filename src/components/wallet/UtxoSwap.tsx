@@ -53,6 +53,7 @@ import {
 } from "@/lib/swap-providers/swap.functions";
 import { UTXO_SWAP_COINS } from "./utxo-swap-config";
 import { canTrackSwap, recordSwap, updateSwap, useSwapHistory, type SavedSwap } from "@/lib/swap-history";
+import { assertSwapProvider, selectedSwapQuote } from "@/lib/swap-providers/selection";
 
 type PlacedOrder = SwapOrder & { ref?: Record<string, string> };
 
@@ -177,7 +178,7 @@ function UtxoSwapInner({ coin, backTo }: { coin: UtxoSwapCoin; backTo: "/wallet"
   const list: SwapQuote[] = quotes.data?.quotes ?? [];
   const best = list[0] ?? null;
   const selected = useMemo(
-    () => list.find((q) => q.provider === provider) ?? best,
+    () => selectedSwapQuote(list, provider),
     [list, provider, best],
   );
 
@@ -231,6 +232,7 @@ function UtxoSwapInner({ coin, backTo }: { coin: UtxoSwapCoin; backTo: "/wallet"
 
   async function review() {
     setError(null);
+    if (busy || quotes.isFetching || amount !== debounced) return;
     if (!selected || !dest || !evmAddress || !refundAddress) return;
     const picked = selectInputs();
     if (!picked) {
@@ -254,6 +256,7 @@ function UtxoSwapInner({ coin, backTo }: { coin: UtxoSwapCoin; backTo: "/wallet"
           quoteId: null,
         },
       });
+      assertSwapProvider(selected.provider, order.provider);
       if (order.memo && new TextEncoder().encode(order.memo).length > OP_RETURN_MAX_BYTES) {
         setError(`This route's memo is too long for a ${cfg.ticker} transaction. Pick another route.`);
         return;
@@ -368,7 +371,7 @@ function UtxoSwapInner({ coin, backTo }: { coin: UtxoSwapCoin; backTo: "/wallet"
   }
 
   return (
-    <main className="mx-auto max-w-xl px-4 py-8">
+    <main className="mx-auto w-full max-w-xl shrink-0 px-4 pt-8 pb-[calc(2rem+env(safe-area-inset-bottom))]">
       <Link to={backTo} className="text-sm text-muted-foreground hover:text-foreground">
         ← Back
       </Link>
@@ -552,6 +555,7 @@ function UtxoSwapInner({ coin, backTo }: { coin: UtxoSwapCoin; backTo: "/wallet"
                     .join(" · ")}
                 </p>
               ) : null}
+              {provider && !selected && !quotes.isFetching && <p role="alert" className="text-xs text-destructive">Your selected {SWAP_PROVIDERS[provider].label} route is unavailable. Refresh or choose another route; we will not switch it for you.</p>}
             </div>
 
             {evmAddress && (
@@ -603,6 +607,7 @@ function UtxoSwapInner({ coin, backTo }: { coin: UtxoSwapCoin; backTo: "/wallet"
               disabled={
                 !selected ||
                 quotes.isFetching ||
+                amount !== debounced ||
                 belowMin ||
                 aboveMax ||
                 busy ||
