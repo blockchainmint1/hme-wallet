@@ -21,7 +21,24 @@ export function appendBalancePoint(points: BalancePoint[], point: BalancePoint, 
   // Keep points from other coverage sets; renderers filter to the coverage they display.
   const last = points.filter(p => p.coverage === point.coverage).at(-1);
   if (last && (point.at <= last.at || (point.at - last.at < 300_000 && point.usd === last.usd))) return points;
-  return [...points, point].slice(-2000);
+  return thinOlderBalancePoints([...points, point], point.at).slice(-2000);
+}
+
+/** Keep actual observations only: last sample in each five-minute older bucket,
+ * separately per coverage. Recent observations retain their full resolution. */
+export function thinOlderBalancePoints(points: BalancePoint[], now: number): BalancePoint[] {
+  const cutoff = now - 86400000;
+  const buckets = new Map<string, BalancePoint>();
+  const recent: BalancePoint[] = [];
+  for (const point of points) {
+    if (point.at >= cutoff) recent.push(point);
+    else {
+      const key = `${point.coverage}:${Math.floor(point.at / 300_000)}`;
+      const prior = buckets.get(key);
+      if (!prior || point.at > prior.at) buckets.set(key, point);
+    }
+  }
+  return [...buckets.values(), ...recent].sort((a, b) => a.at - b.at);
 }
 export function readBalanceHistory(profileId: string, fingerprint: string): BalancePoint[] {
   try { const data: unknown = JSON.parse(localStorage.getItem(balanceHistoryKey(profileId, fingerprint)) ?? "[]"); return Array.isArray(data) ? data.filter((p): p is BalancePoint => p && Number.isFinite(p.at) && Number.isFinite(p.usd) && p.usd >= 0 && typeof p.coverage === "string") : []; } catch { return []; }

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { canTrackSwap, recordSwap, readAllSwaps, swapsForWallet, updateSwap, type SavedSwap } from "./swap-history";
+import { canTrackSwap, recordSwap, recordOpenedSwap, openedSwapState, readAllSwaps, swapsForWallet, updateSwap, type SavedSwap } from "./swap-history";
 
 const destination = "0x14de43dc534c6911c46ca5ca44323e785f07e9ef";
 const swap: SavedSwap = { txid: "11".repeat(32), coin: "doge", provider: "fixedfloat", orderId: "order", token: "ref",
@@ -32,5 +32,32 @@ describe("swap history ownership and status", () => {
     expect(canTrackSwap({ ...swap, token: null })).toBe(false);
     expect(canTrackSwap({ ...swap, orderId: null })).toBe(false);
     expect(canTrackSwap({ ...swap, provider: "thorchain", orderId: null, token: null })).toBe(true);
+  });
+  it("records a profile-owned unpaid order without claiming broadcast or completion", () => {
+    recordOpenedSwap({...swap, profileId: "main", expiry: 100});
+    const opened = readAllSwaps()[0];
+    expect(opened.txid).toBe("");
+    expect(opened.lifecycle).toBe("opened");
+    expect(opened.done).toBe(false);
+    expect(canTrackSwap(opened)).toBe(false);
+    expect(swapsForWallet([opened], "other", destination)).toEqual([]);
+    expect(openedSwapState(opened, 99999)).toBe("opened");
+    expect(openedSwapState(opened, 100000)).toBe("expired");
+  });
+  it("upgrades the matching opened order on broadcast without duplicating or changing other profiles", () => {
+    recordOpenedSwap({...swap, profileId: "main"});
+    recordOpenedSwap({...swap, profileId: "other"});
+    recordOpenedSwap({...swap, profileId: "main"});
+    expect(readAllSwaps()).toHaveLength(2);
+    recordSwap({...swap, profileId: "main"});
+    expect(readAllSwaps()).toHaveLength(2);
+    expect(readAllSwaps()[0].lifecycle).toBe("sent");
+    expect(readAllSwaps()[0].txid).toBe(swap.txid);
+    expect(openedSwapState(readAllSwaps()[0])).toBeNull();
+    expect(readAllSwaps()[1].lifecycle).toBe("opened");
+  });
+  it("does not record THORChain quotes as opened instant-exchange orders", () => {
+    recordOpenedSwap({...swap, provider: "thorchain", profileId: "main"});
+    expect(readAllSwaps()).toEqual([]);
   });
 });
