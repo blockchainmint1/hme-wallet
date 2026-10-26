@@ -1,5 +1,7 @@
 # Vault wallets (offline signing via HME Vault)
 
+- Serialize Vault PSBT bytes with bounded, non-spread Base64 encoding; never use dependency toBase64 for browser preparation. Why: legacy previous transactions can exceed the browser argument stack limit without changing signing bytes.
+
 - EVM send routes resolve Vault balances only from the paired public address, never the random wrapping root; native and ERC-20 sends use restricted Vault intents and verify the complete signed transaction before broadcast. Why: displaying or signing for the wrapping anchor targets a different, empty wallet.
 - LTC/DOGE deposit-address swaps use paired scans, the paired EVM payout address and unsigned PSBTs; signed results must match every input/output, memo/change, version and locktime before broadcast. Why: the wrapping anchor cannot fund or receive Vault swaps.
 - Vault profiles are envelope `mode: "vault"` — random anchor like keyonly, no seed; watch-only account xpubs live in `pairing.ts` (scoped `hme.vault-link.v1`). Why: unlock/session/switch machinery stays byte-identical and no key material is ever stored.

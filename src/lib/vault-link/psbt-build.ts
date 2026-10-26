@@ -83,6 +83,18 @@ export interface BuiltVaultPsbt {
   changeAddress?: string;
 }
 
+/** Avoid dependency browser encoders spreading a whole transaction onto the call stack. */
+export function vaultBytesToBase64(bytes: Uint8Array): string {
+  const chunks: string[] = [];
+  for (let start = 0; start < bytes.length; start += 8192) {
+    let chunk = "";
+    const end = Math.min(start + 8192, bytes.length);
+    for (let i = start; i < end; i++) chunk += String.fromCharCode(bytes[i]);
+    chunks.push(chunk);
+  }
+  return btoa(chunks.join(""));
+}
+
 export function buildVaultPsbt(req: VaultPsbtRequest): BuiltVaultPsbt {
   const meta = VAULT_CHAIN_META[req.chain];
   const dust = req.dustSats ?? (req.chain === "txc" || req.chain === "isk" ? 10_000 : 546);
@@ -159,7 +171,7 @@ export function buildVaultPsbt(req: VaultPsbtRequest): BuiltVaultPsbt {
     });
   }
 
-  return { psbtBase64: psbt.toBase64(), feeSats, changeSats, changeAddress };
+  return { psbtBase64: vaultBytesToBase64(psbt.toBuffer()), feeSats, changeSats, changeAddress };
 }
 
 /**
