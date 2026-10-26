@@ -18,6 +18,10 @@ export interface SavedSwap {
   /** New records have explicit ownership; legacy ones are matched by payout address. */
   profileId?: string;
   checkedAt?: number;
+  /** Empty until the wallet broadcasts; never treat an opened order as a payment. */
+  lifecycle?: "opened" | "sent";
+  /** Provider expiry in Unix seconds, not a payment failure. */
+  expiry?: number | null;
   /** Deposit transaction id — unique per swap. */
   txid: string;
   coin: UtxoSwapCoin;
@@ -55,7 +59,7 @@ export function readAllSwaps(): SavedSwap[] {
     const list = JSON.parse(raw) as SavedSwap[];
     if (!Array.isArray(list)) return [];
     const now = Date.now();
-    return list.filter((s) => s && s.txid && now - s.createdAt < MAX_AGE_MS);
+    return list.filter((s) => s && (s.txid || (s.lifecycle === "opened" && s.orderId)) && now - s.createdAt < MAX_AGE_MS);
   } catch {
     return [];
   }
@@ -74,15 +78,36 @@ function writeAll(list: SavedSwap[]): void {
 export function recordSwap(
   swap: Omit<SavedSwap, "createdAt" | "done" | "failed" | "outboundTxid">,
 ): void {
+  const profileId = swap.profileId ?? activeProfileId();
+  const existing = readAllSwaps();
+  const opened = existing.find(s => s.lifecycle === "opened" && s.profileId === profileId && s.provider === swap.provider && !!swap.orderId && s.orderId === swap.orderId);
   const entry: SavedSwap = {
     ...swap,
-    profileId: swap.profileId ?? activeProfileId(),
-    createdAt: Date.now(),
+    profileId,
+    lifecycle: "sent",
+    createdAt: opened?.createdAt ?? Date.now(),
     done: false,
     failed: false,
     outboundTxid: null,
   };
-  writeAll([entry, ...readAllSwaps().filter((s) => s.txid !== swap.txid)]);
+  writeAll([entry, ...existing.filter((s) => s !== opened && s.txid !== swap.txid)]);
+}
+
+export function recordOpenedSwap(swap: Omit<SavedSwap, "txid" | "createdAt" | "done" | "failed" | "outboundTxid" | "lifecycle">): void {
+  if (swap.provider === "thorchain" || !swap.orderId) return;
+  const profileId = swap.profileId ?? activeProfileId();
+  const list = readAllSwaps();
+  if (list.some(s => s.profileId === profileId && s.provider === swap.provider && s.orderId === swap.orderId)) return;
+  writeAll([{ ...swap, profileId, txid: "", lifecycle: "opened", createdAt: Date.now(), done: false, failed: false, outboundTxid: null }, ...list]);
+}
+
+export function openedSwapState(s: Pick<SavedSwap, "lifecycle" | "expiry" | "txid">, now = Date.now()): "opened" | "expired" | null {
+  if (s.lifecycle !== "opened" || s.txid) return null;
+  return s.expiry != null && s.expiry * 1000 <= now ? "expired" : "opened";
+}
+
+export function savedSwapId(s: SavedSwap): string {
+  return s.txid || `${s.profileId}:${s.provider}:${s.orderId}`;
 }
 
 export function updateSwap(txid: string, patch: Partial<SavedSwap>): void {
@@ -97,8 +122,8 @@ export function swapsForWallet(swaps: SavedSwap[], profileId: string, destinatio
   return swaps.filter((s) => s.profileId ? s.profileId === profileId : !!destination && s.destination.toLowerCase() === destination.toLowerCase());
 }
 
-export function canTrackSwap(s: Pick<SavedSwap, "provider" | "orderId" | "token">): boolean {
-  return s.provider === "thorchain" || (!!s.orderId && (s.provider !== "fixedfloat" || !!s.token));
+export function canTrackSwap(s: Pick<SavedSwap, "provider" | "orderId" | "token" | "txid">): boolean {
+  return !!s.txid && (s.provider === "thorchain" || (!!s.orderId && (s.provider !== "fixedfloat" || !!s.token)));
 }
 
 /** All locally recorded swaps, newest first. Re-renders on any change. */

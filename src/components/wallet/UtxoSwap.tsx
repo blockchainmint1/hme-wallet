@@ -52,13 +52,14 @@ import {
   getSwapQuotes,
 } from "@/lib/swap-providers/swap.functions";
 import { UTXO_SWAP_COINS } from "./utxo-swap-config";
-import { canTrackSwap, recordSwap, updateSwap, useSwapHistory, type SavedSwap } from "@/lib/swap-history";
+import { canTrackSwap, recordOpenedSwap, openedSwapState, savedSwapId, recordSwap, updateSwap, useSwapHistory, type SavedSwap } from "@/lib/swap-history";
 import { assertSwapProvider, selectedSwapQuote } from "@/lib/swap-providers/selection";
 
 type PlacedOrder = SwapOrder & { ref?: Record<string, string> };
 
 type Stage =
   | { kind: "form" }
+  | { kind: "opened"; swap: SavedSwap }
   | { kind: "review"; order: PlacedOrder; feeSats: number; vsize: number; selected: number }
   | { kind: "vault-sign"; order: PlacedOrder; dest: StableDestination; payload: string; destination: string }
   | { kind: "sent"; txid: string; order: PlacedOrder; dest: StableDestination };
@@ -189,6 +190,10 @@ function UtxoSwapInner({ coin, backTo }: { coin: UtxoSwapCoin; backTo: "/wallet"
 
   /** Reopen the progress view for a swap recorded earlier. */
   function resumeSwap(s: SavedSwap) {
+    if (openedSwapState(s)) {
+      setStage({ kind: "opened", swap: s });
+      return;
+    }
     setStage({
       kind: "sent",
       txid: s.txid,
@@ -257,6 +262,9 @@ function UtxoSwapInner({ coin, backTo }: { coin: UtxoSwapCoin; backTo: "/wallet"
         },
       });
       assertSwapProvider(selected.provider, order.provider);
+      recordOpenedSwap({ coin, provider: order.provider, orderId: order.orderId,
+        token: order.ref?.["token"] ?? null, amountSats: order.amountSats, amountOut: order.amountOut,
+        dest, destination: evmAddress, profileId: activeProfileId, expiry: order.expiry });
       if (order.memo && new TextEncoder().encode(order.memo).length > OP_RETURN_MAX_BYTES) {
         setError(`This route's memo is too long for a ${cfg.ticker} transaction. Pick another route.`);
         return;
@@ -368,6 +376,20 @@ function UtxoSwapInner({ coin, backTo }: { coin: UtxoSwapCoin; backTo: "/wallet"
         onDone={() => navigate({ to: backTo })}
       />
     );
+  }
+
+  if (stage.kind === "opened") {
+    const s = stage.swap;
+    return <main className="mx-auto w-full max-w-xl shrink-0 px-4 py-8">
+      <Button variant="ghost" onClick={() => setStage({kind: "form"})}>← Back to swaps</Button>
+      <h1 className="mt-4 text-2xl font-semibold">{SWAP_PROVIDERS[s.provider].label} order</h1>
+      <p className="mt-3 text-sm">{openedSwapState(s) === "expired" ? "Order expired · not sent" : "Order opened · not sent"}</p>
+      <p className="mt-2 text-sm text-muted-foreground">This review opened an order. This wallet has not broadcast a payment for it.</p>
+      <p className="mt-5 text-sm">{cfg.format(s.amountSats)} → {s.amountOut.toLocaleString()} {s.dest.symbol}</p>
+      <p className="mt-2 break-all text-xs text-muted-foreground">Order: {s.orderId}</p>
+      {s.expiry && <p className="mt-2 text-xs text-muted-foreground">Expires {new Date(s.expiry * 1000).toLocaleString()}</p>}
+      {s.provider === "fixedfloat" && s.orderId && <a className="mt-4 inline-block text-sm underline" href={`https://ff.io/order/${encodeURIComponent(s.orderId)}${s.token ? `#${encodeURIComponent(s.token)}` : ""}`} target="_blank" rel="noreferrer">Open FixedFloat order</a>}
+    </main>;
   }
 
   return (
@@ -601,7 +623,7 @@ function UtxoSwapInner({ coin, backTo }: { coin: UtxoSwapCoin; backTo: "/wallet"
             )}
 
             <Button
-              className="w-full"
+              className="h-auto min-h-11 w-full whitespace-normal py-3"
               size="lg"
               onClick={review}
               disabled={
@@ -614,7 +636,7 @@ function UtxoSwapInner({ coin, backTo }: { coin: UtxoSwapCoin; backTo: "/wallet"
                 accountLoading || !evmAddress || !refundAddress
               }
             >
-              {busy ? "Setting up…" : "Review swap"}
+              {busy ? "Setting up…" : selected ? `Review via ${SWAP_PROVIDERS[selected.provider].label}${selected.provider !== "thorchain" ? " · opens an order" : ""}` : "Review swap"}
             </Button>
           </CardContent>
         </Card>
@@ -626,6 +648,7 @@ function UtxoSwapInner({ coin, backTo }: { coin: UtxoSwapCoin; backTo: "/wallet"
             <CardTitle>Review and swap</CardTitle>
             <CardDescription>
               Routed through {SWAP_PROVIDERS[stage.order.provider].label}.
+              {stage.order.provider !== "thorchain" && " Order opened; nothing sent. Editing leaves the unpaid order open until it expires."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
@@ -718,12 +741,11 @@ function RecentSwaps({
 }) {
   const swaps = useSwapHistory(profileId, destination).filter((s) => s.coin === coin);
   if (!swaps.length) return null;
-  const cfg = UTXO_SWAP_COINS[coin];
   return (
     <div className="mt-6">
       <h2 className="text-sm font-semibold">Your swaps</h2>
       <div className="mt-2 space-y-2">
-        {swaps.map((s) => <SavedSwapRow key={s.txid} swap={s} profileId={profileId} onOpen={onOpen} />)}
+        {swaps.map((s) => <SavedSwapRow key={savedSwapId(s)} swap={s} profileId={profileId} onOpen={onOpen} />)}
       </div>
     </div>
   );
@@ -731,6 +753,9 @@ function RecentSwaps({
 
 function SavedSwapRow({ swap: s, profileId, onOpen }: { swap: SavedSwap; profileId: string; onOpen: (s: SavedSwap) => void }) {
   const cfg = UTXO_SWAP_COINS[s.coin];
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { if (s.lifecycle !== "opened") return; const timer = setInterval(() => setNow(Date.now()), 60_000); return () => clearInterval(timer); }, [s.lifecycle]);
+  const opened = openedSwapState(s, now);
   const status = useSavedSwapStatus(s, profileId, !s.done && !s.failed);
   const current = status.data;
   const done = s.done || !!current?.outboundSent;
@@ -741,7 +766,7 @@ function SavedSwapRow({ swap: s, profileId, onOpen }: { swap: SavedSwap; profile
             onClick={() => onOpen(s)}
             className="h-auto w-full rounded-lg border border-border/60 bg-card/40 px-3 py-2 text-left whitespace-normal block"
           >
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="text-sm font-medium">
                 {cfg.format(s.amountSats)} →{" "}
                 {s.amountOut.toLocaleString(undefined, { maximumFractionDigits: 2 })}{" "}
@@ -756,7 +781,7 @@ function SavedSwapRow({ swap: s, profileId, onOpen }: { swap: SavedSwap; profile
                       : "bg-amber-500/15 text-amber-500"
                 }`}
               >
-                {done ? "Complete" : failed ? "Attention" : !canTrackSwap(s) || status.error || !current ? "Status unconfirmed" : "In progress"}
+                {opened ? opened === "expired" ? "Expired · not sent" : "Opened · not sent" : done ? "Complete" : failed ? "Attention" : !canTrackSwap(s) || status.error || !current ? "Status unconfirmed" : "In progress"}
               </span>
             </div>
             <p className="mt-0.5 text-xs text-muted-foreground">

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
-import { appendBalancePoint, balanceHistoryKey, balanceHistoryBlockers, clearBalanceHistory, readBalanceHistory, portfolioChartWindow } from "./history";
+import { appendBalancePoint, balanceHistoryKey, balanceHistoryBlockers, clearBalanceHistory, readBalanceHistory, portfolioChartWindow, thinOlderBalancePoints } from "./history";
 describe("desktop balance history", () => {
   beforeAll(() => {
     const store: Record<string, string> = {};
@@ -49,5 +49,23 @@ describe("desktop balance history", () => {
   it("excludes older, future and differently covered observations", () => {
     const now = 40 * 86400000;
     expect(portfolioChartWindow([{at: 1, usd: 10, coverage: "btc"}, {at: now, usd: 20, coverage: "eth"}, {at: now + 1, usd: 30, coverage: "btc"}], "btc", "1D", now).visible).toEqual([]);
+  });
+  it("thins observations older than 24 hours to five-minute buckets without invented values", () => {
+    const now = 3 * 86400000;
+    const points = Array.from({length: 4321}, (_, i) => ({at: i * 60000, usd: i, coverage: "btc"}));
+    const result = thinOlderBalancePoints(points, now);
+    expect(result.length).toBe(2017);
+    expect(result[0]).toEqual(points[4]);
+    expect(result.filter(p => p.at >= now - 86400000)).toEqual(points.slice(2880));
+    expect(result.every(p => points.includes(p))).toBe(true);
+  });
+  it("keeps older buckets isolated by coverage and maintains the 2000-point cap", () => {
+    const now = 3 * 86400000;
+    const points = [{at: 1, usd: 10, coverage: "btc"}, {at: 2, usd: 20, coverage: "eth"}];
+    expect(thinOlderBalancePoints(points, now)).toEqual(points);
+    const recent = Array.from({length: 2000}, (_, i) => ({at: now - 2000 + i, usd: i, coverage: "btc"}));
+    const next = appendBalancePoint(recent, {at: now, usd: 2000, coverage: "btc"}, true);
+    expect(next.length).toBe(2000);
+    expect(next.at(-1)?.usd).toBe(2000);
   });
 });
