@@ -12,7 +12,7 @@
 ## Desktop workspace
 - Desktop overview refresh uses an explicit balance/price query allowlist; privacy hides funded allocation rankings and counts, and Tron/Solana display retains address-only results. Why: viewing must not refresh spending quotes, disclose allocation, or retain unnecessary signing material.
 - Desktop management stays under /desktop with inline unlock, header picker and wallet library; shared forms retain phone defaults. Create/import use managed-seed-save: immutable add intent, fresh session checks at submission/save, initial setup refuses existing envelopes. Why: expired sessions cannot replace wallets.
-- Charts use deletable balance-history keys isolated by profile/fingerprint; portfolio needs complete coverage, currencies their own data. Changed totals record immediately; unchanged points throttle. Explicit time windows, relative value bounds. Why: no invented history or hidden changes.
+- Charts use deletable profile/fingerprint history; portfolio requires coverage. Changed totals record immediately; unchanged throttle. After 24h thin by coverage to real five-minute samples, cap 2000. Explicit time/value bounds. Why: bounded history without invention.
 - Desktop Earn stays paused; shared UTXO swap entry blocks Vault mode before quotes/orders/signing on all builds. Why: phone cannot bypass independent acceptance.
 - Direct Earn shares Ethereum-only fixed ABIs, public-address reads and an unconditional execution gate. Sky conversion estimates are bigint-only, distinguishing USDC, USDS and shares; intermediate-asset bounds never authorize final-share promises. Why: official contracts and previews do not enforce user minimums or attest upgrade safety.
 - Desktop features are profile-scoped, chains device-wide, separate from phone; token controls/catalogs are shared. Portfolio EVM customs use contract keys, no assumed peg; desktop custom sends stay unavailable. Why: preserve storage, valuation and signing boundaries.
@@ -49,7 +49,7 @@ Registry/Hub use ecosystem-credential.server (current per-site HME convention); 
 
 ## Vault wallets (offline signing via HME Vault)
 - Rules live in `src/lib/vault-link/AGENTS.md`; Cold Storage previews read explicit-profile public stores without switching; Vault preview scans reject failed reads. Why: preserve wallet state and avoid false zeros.
-- Swap history keeps its original key; new rows carry profile IDs, legacy rows match payout addresses, and opening refreshes provider status. Why: preserve records without cross-wallet display or invented completion.
+- Swap history retains key/profile ownership (legacy: payout address). Review records instant orders opened/not-sent with expiry; broadcast upgrades matching profile/provider/order; only txid rows poll. Why: no invented payments or cross-wallet records.
 
 ## Security boundaries
 - LI.FI shares immutable intent/bytes and session/deployment/server signing checks; nested semantic review is mandatory, no fallback. Single-block hop allowlisting adds compatibility only; distinct spenders use the approval-only sentinel. Omit integrator config; remain paused until independent route/release/device acceptance. Why: permitted entrypoints cannot authorize opaque instructions.
