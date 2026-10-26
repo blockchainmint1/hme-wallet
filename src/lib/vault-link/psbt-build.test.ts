@@ -3,7 +3,7 @@ import { Psbt, Transaction, payments } from "bitcoinjs-lib";
 import { rootFromSeed } from "@/lib/txc/wallet";
 import { deriveVaultAddress, VAULT_CHAIN_META } from "./derive";
 import type { VaultPairing, VaultUtxoChain } from "./pairing";
-import { buildVaultPsbt, nextVaultChangeIndex, verifySignedAgainstPsbt, verifySignedTx } from "./psbt-build";
+import { buildVaultPsbt, nextVaultChangeIndex, vaultBytesToBase64, verifySignedAgainstPsbt, verifySignedTx } from "./psbt-build";
 
 // Public fixtures derived from a deterministic test seed; never a user's wallet.
 function fixture(chain: VaultUtxoChain) {
@@ -62,6 +62,29 @@ const mutations: [string, (tx: Transaction) => void][] = [
   ["version", tx => { tx.version += 1; }],
   ["locktime", tx => { tx.locktime += 1; }],
 ];
+describe("Vault large browser encoding", () => {
+  it.each([0, 1, 2, 3, 8191, 8192, 8193, 200_000, 2_000_000])("preserves all %i bytes", (length) => {
+    const bytes = Uint8Array.from({ length }, (_, i) => i % 256);
+    expect(vaultBytesToBase64(bytes)).toBe(Buffer.from(bytes).toString("base64"));
+  });
+  it("prepares 390000 DOGE with a large legacy previous transaction and exact change", () => {
+    const { pairing, address, recipient } = fixture("doge");
+    const previous = new Transaction();
+    previous.addInput(new Uint8Array(32).fill(4), 0);
+    const script = payments.p2pkh({ pubkey: address.pubkey, network: VAULT_CHAIN_META.doge.network }).output;
+    if (!script) throw new Error("Missing fixture script");
+    previous.addOutput(script, 39_009_608_619_381n);
+    for (let i = 0; i < 6000; i++) previous.addOutput(script, 1000n);
+    expect(previous.toBuffer().length).toBeGreaterThan(200_000);
+    const built = buildVaultPsbt({ pairing, chain: "doge", inputs: [{ ...address, txid: previous.getId(), vout: 0, value: 39_009_608_619_381 }],
+      prevTxHex: { [`${previous.getId()}:0`]: previous.toHex() }, outputs: [{ address: recipient, valueSats: 39_000_000_000_000 }],
+      feeSats: 306_000, changePurpose: 44, changeIndex: 8 });
+    const parsed = Psbt.fromBase64(built.psbtBase64);
+    expect(parsed.txOutputs.map(o => o.value)).toEqual([39_000_000_000_000n, 9_608_313_381n]);
+    expect(parsed.data.inputs[0].nonWitnessUtxo).toEqual(previous.toBuffer());
+    expect(built.feeSats).toBe(306_000);
+  });
+});
 describe("Vault frozen transaction mutations", () => {
   it.each(mutations)("rejects altered %s", (_, mutate) => {
     const { tx, built } = fixture("btc");
