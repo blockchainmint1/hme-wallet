@@ -35,6 +35,43 @@ describe("HMQR2 framing", () => {
     expect(c.add("HMQR:1/2:foo")).toBeNull();
     expect(c.add("HMQR:2/2:bar")).toBe("foobar");
   });
+  it("accepts Vault's 240-character signing frames below the default frame threshold", () => {
+    const text = "ab".repeat(250);
+    const parts = toParts(text, 240);
+    expect(parts).toHaveLength(3);
+    const collector = new PartCollector();
+    expect(collector.add(parts[2])).toBeNull();
+    expect(collector.add(parts[0])).toBeNull();
+    expect(collector.add(parts[1])).toBe(text);
+  });
+  it("accepts a 480-character signed result in exactly two Vault frames", () => {
+    const text = "01".repeat(240);
+    const parts = toParts(text, 240);
+    expect(parts).toHaveLength(2);
+    const collector = new PartCollector();
+    expect(collector.add(parts[0])).toBeNull();
+    expect(collector.add(parts[1])).toBe(text);
+  });
+  it("still rejects altered content in small Vault frames", () => {
+    const parts = toParts("ab".repeat(200), 240);
+    const collector = new PartCollector();
+    collector.add(parts[0]);
+    expect(() => collector.add(parts[1].slice(0, -1) + "c")).toThrow("QR transfer was damaged");
+  });
+  it("rejects conflicting duplicate frames", () => {
+    const parts = toParts("a".repeat(700), 240);
+    const collector = new PartCollector();
+    collector.add(parts[0]);
+    expect(() => collector.add(parts[0].slice(0, -1) + "b")).toThrow("Conflicting QR part");
+  });
+  it("bounds cumulative unique chunks before a transfer completes", () => {
+    const collector = new PartCollector();
+    const chunk = "a".repeat(2000);
+    for (let n = 1; n <= 1572; n++) collector.add(`HMQR2:12345678:${n}/2000:${chunk}`);
+    // A duplicate consumes no extra budget; the next unique chunk exceeds 3 MiB.
+    expect(collector.add(`HMQR2:12345678:1/2000:${chunk}`)).toBeNull();
+    expect(() => collector.add(`HMQR2:12345678:1573/2000:${chunk}`)).toThrow("Transfer is too large");
+  });
   it("counts unique parts only and reports complete progress", () => {
     const frames = toParts("q".repeat(1201));
     const collector = new PartCollector();
