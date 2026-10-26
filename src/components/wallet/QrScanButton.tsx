@@ -13,7 +13,7 @@
  * (it is) and the page is HTTPS (it is).
  */
 import { useEffect, useRef, useState } from "react";
-import { Camera, X } from "lucide-react";
+import { Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
@@ -36,7 +36,7 @@ export function QrScanButton({
   onScanStart,
 }: {
   onScan: (text: string) => void;
-  /** Keep scanning after each code (for animated multi-part QRs); caller decides when to stop via onClose. */
+  /** Keep scanning after each code; the caller stops it with complete. */
   continuous?: boolean;
   progress?: { have: number; total: number } | null;
   complete?: boolean;
@@ -208,14 +208,9 @@ function ScannerDialog({ onClose, onScan, progress }: { onClose: () => void; onS
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-sm p-0 overflow-hidden">
         <DialogHeader className="px-4 pt-4">
-          <DialogTitle className="flex items-center justify-between">
-            <span>Scan QR</span>
-            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close scanner">
-              <X className="h-4 w-4" />
-            </Button>
-          </DialogTitle>
+          <DialogTitle className="pr-8">Scan QR</DialogTitle>
           <DialogDescription className="sr-only">
-            Use your device camera to scan a wallet address QR code.
+            Use your device camera to scan a QR code, including animated Vault transfers.
           </DialogDescription>
         </DialogHeader>
         <div className="relative aspect-square bg-muted">
