@@ -17,7 +17,7 @@ import { QrScanButton } from "@/components/wallet/QrScanButton";
 import { VaultAnimatedQr } from "@/components/wallet/VaultAnimatedQr";
 import { TxidCard } from "@/components/wallet/TxidCard";
 import { PartCollector } from "@/lib/vault-link/qr-parts";
-import { buildVaultPsbt, verifySignedTx } from "@/lib/vault-link/psbt-build";
+import { buildVaultPsbt, nextVaultChangeIndex, verifySignedAgainstPsbt, verifySignedTx } from "@/lib/vault-link/psbt-build";
 import type { EvmIntent } from "@/lib/vault-link/evm-intent";
 import { prepareVaultEvmSend, verifyVaultEvmSend } from "@/lib/vault-link/evm-send";
 import { chainIo, type VaultChainScan } from "@/lib/vault-link/scan";
@@ -67,11 +67,13 @@ export function VaultSendDialog({
   const processing = useRef(false);
   const [scanProgress, setScanProgress] = useState<{ have: number; total: number } | null>(null);
   const [scanComplete, setScanComplete] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   function resetScan() {
     collector.current = new PartCollector();
     setScanProgress(null);
     setScanComplete(false);
+    setScanError(null);
     setError(null);
   }
 
@@ -123,7 +125,7 @@ export function VaultSendDialog({
       outputs: [{ address: to.trim(), valueSats: sats }],
       feeSats,
       changePurpose: activePurpose ?? 44,
-      changeIndex: activeScan.utxos.filter((u) => u.change === 1).length,
+      changeIndex: nextVaultChangeIndex(activeScan),
     });
     setStep({ name: "show", payload: built.psbtBase64, expected: [{ address: to.trim(), valueSats: sats }] });
   }
@@ -151,6 +153,7 @@ export function VaultSendDialog({
     if (processing.current || step.name !== "show") return;
     try {
       const full = collector.current.add(code);
+      setScanError(null);
       setScanProgress(collector.current.progress);
       if (!full) return; // waiting for more frames
       collector.current = new PartCollector();
@@ -167,7 +170,8 @@ export function VaultSendDialog({
           const hash = await pub.sendRawTransaction({ serializedTransaction: hex as `0x${string}` });
           setStep({ name: "done", txid: hash });
         } else {
-          const { txid } = verifySignedTx(full, chain as VaultUtxoChain, step.expected);
+          const txid = verifySignedAgainstPsbt(full, step.payload);
+          verifySignedTx(full, chain as VaultUtxoChain, step.expected);
           const io = chainIo(chain as VaultUtxoChain);
           const realTxid = await io.broadcast(full.trim());
           setStep({ name: "done", txid: realTxid || txid });
@@ -181,8 +185,8 @@ export function VaultSendDialog({
     } catch (e) {
       collector.current = new PartCollector();
       setScanProgress(null);
-      setScanComplete(true);
-      setError((e as Error).message);
+      setScanComplete(false);
+      setScanError(e instanceof Error ? e.message : "Could not read that QR frame.");
     }
   }
 
@@ -262,7 +266,7 @@ export function VaultSendDialog({
             </ol>
             <VaultAnimatedQr text={step.payload} />
             <div className="flex items-center gap-2">
-              {!busy && <QrScanButton continuous onScan={(t) => void onScanned(t)} progress={scanProgress} complete={scanComplete} onScanStart={resetScan} />}
+              {!busy && <QrScanButton continuous onScan={(t) => void onScanned(t)} progress={scanProgress} complete={scanComplete} scanError={scanError} onScanStart={resetScan} />}
               <span className="text-xs text-muted-foreground">
                 {busy ? "Checking and broadcasting…" : scanProgress && scanProgress.total > 0 && !scanComplete ? `Reading signed transaction: ${scanProgress.have} of ${scanProgress.total} parts` : "Scan the signed transaction from Vault"}
               </span>
