@@ -21,6 +21,8 @@ import { EVM_CHAINS, type EvmChainId } from "@/lib/chains/evm";
 import { VaultBottomActions } from "@/components/wallet/VaultBottomActions";
 import { QrCode } from "@/components/wallet/QrCode";
 import type { VaultUtxoChain } from "@/lib/vault-link/pairing";
+import { pairedPurposes } from "@/lib/vault-link/snapshot";
+import { deriveVaultAddress } from "@/lib/vault-link/derive";
 import { formatFiat } from "@/lib/txc/units";
 export function AssetFlow({mode,asset,onAsset}:{mode:"send"|"receive";asset?:string;onAsset:(asset:string)=>void}){
  const d=useDesktopData(); const row=d.rows.find(r=>r.key===(asset??"txc")); const chain=row?assetChain(row):null;
