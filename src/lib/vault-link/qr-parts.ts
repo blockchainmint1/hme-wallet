@@ -70,4 +70,9 @@ export class PartCollector {
   get progress() {
     return { have: this.parts.size, total: this.total };
   }
+
+  /** One-based indexes, copied so display code cannot mutate collection. */
+  get receivedParts(): number[] {
+    return [...this.parts.keys()].sort((a, b) => a - b);
+  }
 }

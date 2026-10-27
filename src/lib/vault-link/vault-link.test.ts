@@ -4,6 +4,20 @@ import { parsePairing } from "./pairing";
 import { buildNativeIntent, buildErc20Intent } from "./evm-intent";
 
 describe("HMQR2 framing", () => {
+  it("identifies the exact missing piece in a 96-part transfer without counting duplicates", () => {
+    const frames = toParts("q".repeat(240 * 96), 240);
+    const collector = new PartCollector();
+    for (let i = frames.length - 1; i >= 0; i--) {
+      if (i !== 42) collector.add(frames[i]);
+    }
+    collector.add(frames[0]);
+    expect(collector.progress).toEqual({ have: 95, total: 96 });
+    expect(collector.receivedParts).toEqual(Array.from({ length: 96 }, (_, i) => i + 1).filter((n) => n !== 43));
+    collector.receivedParts.push(43);
+    expect(collector.receivedParts).not.toContain(43);
+    expect(collector.add(frames[42])).toBe("q".repeat(240 * 96));
+    expect(collector.receivedParts).toHaveLength(96);
+  });
   it("round-trips a short payload as a single frame", () => {
     const parts = toParts("hello");
     expect(parts).toEqual(["hello"]);
