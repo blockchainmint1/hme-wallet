@@ -23,11 +23,13 @@ export function VaultBottomActions({
   chain,
   receiveAddress,
   action = "both",
+  tsd = false,
 }: {
   pairing: VaultPairing;
   chain: string;
   receiveAddress: string | null;
   action?: "both" | "send" | "receive";
+  tsd?: boolean;
 }) {
   const qc = useQueryClient();
   const isUtxo = (UTXO as string[]).includes(chain);
@@ -38,6 +40,7 @@ export function VaultBottomActions({
   const [scans, setScans] = useState<VaultChainScan[] | null>(null);
 
   async function openSend() {
+    if (tsd && chain === "txc") { setScans([]); return; }
     if (!isUtxo) {
       setScans([]);
       return;
@@ -80,6 +83,7 @@ export function VaultBottomActions({
           pairing={pairing}
           chain={sendChain}
           scans={scans}
+          tsd={tsd}
           onClose={() => {
             setScans(null);
             void qc.invalidateQueries();
