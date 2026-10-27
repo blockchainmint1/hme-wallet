@@ -1,6 +1,7 @@
 # Vault wallets (offline signing via HME Vault)
 - TSD single sends use the dedicated property-39 builder with legacy TXC address #0 as sole input holder and change destination; broadcast requires frozen PSBT equivalence, genuine SIGHASH_ALL signatures and fresh profile/pairing/session/unspent/balance checks. Why: Omni reference selection can redirect tokens when native HD change rules are reused.
 - TSD receiving refuses non-legacy pairings; fee preparation shares builder input selection before downloading previous transactions. Why: receiving must remain spendable and unused coins must not cause unnecessary provider work.
+- TXC spent-input checks use fresh transaction-wide `/outspends` with an exact-index boolean; missing or malformed results fail closed. Why: the singular endpoint serves HTML without browser access headers.
 - QR playback controls operate on existing frame strings; receiver dots use copied one-based collector indexes, never inferred counts or sender acknowledgements. Why: replay missing pieces without changing signing bytes or claiming the offline Vault received them.
 
 - Serialize Vault PSBT bytes with bounded, non-spread Base64 encoding; never use dependency toBase64 for browser preparation. Why: legacy previous transactions can exceed the browser argument stack limit without changing signing bytes.

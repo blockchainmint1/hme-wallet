@@ -107,8 +107,29 @@ export interface Outspend {
 }
 
 /** Is this specific output still unspent (including by anything in the mempool)? */
-export function getOutspend(txid: string, vout: number): Promise<Outspend> {
-  return getJson<Outspend>(`/tx/${txid}/outspend/${vout}`);
+export async function getOutspend(txid: string, vout: number): Promise<Outspend> {
+  if (!/^[0-9a-fA-F]{64}$/.test(txid) || !Number.isSafeInteger(vout) || vout < 0) {
+    throw new Error("Invalid TXC output reference.");
+  }
+  // TXC exposes the transaction-wide Esplora endpoint. Its singular
+  // /outspend/:vout path returns the website shell without CORS headers.
+  // Always make a fresh read; absence or malformed data never means unspent.
+  let result: unknown;
+  try {
+    const res = await fetch(`${MEMPOOL_API}/tx/${txid}/outspends`, {
+      headers: { accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(`TXC service returned ${res.status}`);
+    result = await res.json();
+  } catch {
+    throw new Error("Could not check whether the TXC input is still unspent. Nothing was submitted. Try again when TXC is available.");
+  }
+  const output: unknown = Array.isArray(result) ? result[vout] : undefined;
+  if (!output || typeof output !== "object" || !("spent" in output) || typeof output.spent !== "boolean") {
+    throw new Error("TXC returned an invalid spent-input check. Nothing was submitted.");
+  }
+  return output as Outspend;
 }
 
 export interface FeeEstimates {
