@@ -60,6 +60,8 @@ export function VaultSendDialog({
   scans,
   onClose,
   tsd = false,
+  initialTo = "",
+  initialAmount = "",
 }: {
   pairing: VaultPairing;
   /** UTXO chain id, or "evm" for the paired Ethereum-style account. */
@@ -67,18 +69,20 @@ export function VaultSendDialog({
   scans: VaultChainScan[];
   onClose: () => void;
   tsd?: boolean;
+  initialTo?: string;
+  initialAmount?: string;
 }) {
   const fetchBalance = useServerFn(getTxcTokenBalance);
   const fetchProperties = useServerFn(getTxcTokenProperties);
   const [profileId] = useState(getActiveProfileId);
-  const pairingIdentity = JSON.stringify(pairing);
+  const [pairingIdentity] = useState(() => JSON.stringify(pairing));
   async function assertTsdSession() {
     const session = await loadSession();
     if (!session || session.mode !== "vault" || getActiveProfileId() !== profileId || JSON.stringify(loadPairing(profileId)) !== pairingIdentity) throw new Error("Wallet locked or changed. Reopen the TSD transfer from the intended Vault.");
   }
   const [step, setStep] = useState<Step>({ name: "form" });
-  const [to, setTo] = useState("");
-  const [amount, setAmount] = useState("");
+  const [to, setTo] = useState(initialTo);
+  const [amount, setAmount] = useState(initialAmount);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [evmChain, setEvmChain] = useState<EvmChainId>("eth");

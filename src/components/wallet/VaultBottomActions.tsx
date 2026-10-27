@@ -24,12 +24,16 @@ export function VaultBottomActions({
   receiveAddress,
   action = "both",
   tsd = false,
+  initialTo,
+  initialAmount,
 }: {
   pairing: VaultPairing;
   chain: string;
   receiveAddress: string | null;
   action?: "both" | "send" | "receive";
   tsd?: boolean;
+  initialTo?: string;
+  initialAmount?: string;
 }) {
   const qc = useQueryClient();
   const isUtxo = (UTXO as string[]).includes(chain);
@@ -84,6 +88,8 @@ export function VaultBottomActions({
           chain={sendChain}
           scans={scans}
           tsd={tsd}
+          initialTo={initialTo}
+          initialAmount={initialAmount}
           onClose={() => {
             setScans(null);
             void qc.invalidateQueries();
