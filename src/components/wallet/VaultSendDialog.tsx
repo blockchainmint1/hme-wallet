@@ -31,6 +31,13 @@ import { getFeeEstimates as iskFees } from "@/lib/isk/mempool";
 import { getFeeEstimates as btcFees } from "@/lib/btc/mempool";
 import { getFeeEstimates as ltcFees } from "@/lib/ltc/mempool";
 import { getFeeEstimates as dogeFees } from "@/lib/doge/mempool";
+import { useServerFn } from "@tanstack/react-start";
+import { getTxcTokenBalance, getTxcTokenProperties } from "@/lib/txc/tokens.functions";
+import { getAddressUtxos, getOutspend } from "@/lib/txc/mempool";
+import { buildVaultTsdPsbt, vaultTsdHolder, verifyVaultTsdSigned, type VaultTsdIntent } from "@/lib/vault-link/tsd-send";
+import { loadPairing } from "@/lib/vault-link/pairing";
+import { getActiveProfileId } from "@/lib/txc/storage";
+import { loadSession } from "@/lib/txc/session-cache";
 
 const FEE_FN: Record<VaultUtxoChain, () => Promise<{ halfHourFee: number }>> = {
   txc: txcFees,
@@ -44,7 +51,7 @@ const SATS = 100_000_000;
 
 type Step =
   | { name: "form" }
-  | { name: "show"; payload: string; expected: { address: string; valueSats: number }[] }
+  | { name: "show"; payload: string; expected: { address: string; valueSats: number }[]; tsdIntent?: VaultTsdIntent }
   | { name: "done"; txid: string };
 
 export function VaultSendDialog({
@@ -52,16 +59,30 @@ export function VaultSendDialog({
   chain,
   scans,
   onClose,
+  tsd = false,
+  initialTo = "",
+  initialAmount = "",
 }: {
   pairing: VaultPairing;
   /** UTXO chain id, or "evm" for the paired Ethereum-style account. */
   chain: VaultUtxoChain | "evm";
   scans: VaultChainScan[];
   onClose: () => void;
+  tsd?: boolean;
+  initialTo?: string;
+  initialAmount?: string;
 }) {
+  const fetchBalance = useServerFn(getTxcTokenBalance);
+  const fetchProperties = useServerFn(getTxcTokenProperties);
+  const [profileId] = useState(getActiveProfileId);
+  const [pairingIdentity] = useState(() => JSON.stringify(pairing));
+  async function assertTsdSession() {
+    const session = await loadSession();
+    if (!session || session.mode !== "vault" || getActiveProfileId() !== profileId || JSON.stringify(loadPairing(profileId)) !== pairingIdentity) throw new Error("Wallet locked or changed. Reopen the TSD transfer from the intended Vault.");
+  }
   const [step, setStep] = useState<Step>({ name: "form" });
-  const [to, setTo] = useState("");
-  const [amount, setAmount] = useState("");
+  const [to, setTo] = useState(initialTo);
+  const [amount, setAmount] = useState(initialAmount);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [evmChain, setEvmChain] = useState<EvmChainId>("eth");
@@ -139,11 +160,29 @@ export function VaultSendDialog({
     setStep({ name: "show", payload: json, expected: [] });
   }
 
+  async function buildTsd() {
+    if (chain !== "txc") throw new Error("TSD is only supported on TXC.");
+    await assertTsdSession();
+    const holder = vaultTsdHolder(pairing);
+    const [balance, properties, fees, coins] = await Promise.all([
+      fetchBalance({ data: { address: holder.address, propertyId: 39 } }),
+      fetchProperties({ data: { propertyIds: [39] } }), txcFees(), getAddressUtxos(holder.address),
+    ]);
+    if (properties[39]?.divisible !== true) throw new Error("Could not verify TSD property #39. Try again when TXC is available.");
+    const inputs = coins.filter(u => u.status.confirmed).map(u => ({ ...holder, txid: u.txid, vout: u.vout, value: u.value }));
+    const previous: Record<string, string> = {};
+    for (const u of inputs) previous[`${u.txid}:${u.vout}`] = await chainIo("txc").txHex(u.txid);
+    const built = buildVaultTsdPsbt({ pairing, recipient: to, amount, balance: balance.balance, feeRate: Math.ceil(fees.halfHourFee), inputs, prevTxHex: previous });
+    await assertTsdSession();
+    setStep({ name: "show", payload: built.psbtBase64, expected: [{ address: built.intent.recipient, valueSats: 10_000 }], tsdIntent: built.intent });
+  }
+
   async function build() {
     setBusy(true);
     setError(null);
     try {
-      if (isEvm) await buildEvm();
+      if (tsd) await buildTsd();
+      else if (isEvm) await buildEvm();
       else await buildUtxo();
     } catch (e) {
       setError((e as Error).message);
@@ -173,9 +212,23 @@ export function VaultSendDialog({
           const hash = await pub.sendRawTransaction({ serializedTransaction: hex as `0x${string}` });
           setStep({ name: "done", txid: hash });
         } else {
-          const txid = verifySignedAgainstPsbt(full, step.payload);
+          const txid = step.tsdIntent ? verifyVaultTsdSigned(full, step.payload) : verifySignedAgainstPsbt(full, step.payload);
           verifySignedTx(full, chain as VaultUtxoChain, step.expected);
           const io = chainIo(chain as VaultUtxoChain);
+          if (step.tsdIntent) {
+            await assertTsdSession();
+            const { Psbt } = await import("bitcoinjs-lib");
+            const psbt = Psbt.fromBase64(step.payload);
+            const checks = await Promise.all(psbt.txInputs.map(input => {
+              const txid = Array.from(input.hash).reverse().map(b => b.toString(16).padStart(2, "0")).join("");
+              return getOutspend(txid, input.index);
+            }));
+            if (checks.some(c => c.spent)) throw new Error("TXC inputs were already spent. Prepare a new TSD transfer.");
+            const bal = await fetchBalance({ data: { address: step.tsdIntent.sender, propertyId: 39 } });
+            const { tsdBalanceUnits } = await import("@/lib/vault-link/tsd-send");
+            if (tsdBalanceUnits(bal.balance) < tsdBalanceUnits(step.tsdIntent.amount)) throw new Error("The TSD balance changed. Prepare a new transfer.");
+            await assertTsdSession();
+          }
           const realTxid = await io.broadcast(full.trim());
           setStep({ name: "done", txid: realTxid || txid });
         }
@@ -193,7 +246,7 @@ export function VaultSendDialog({
     }
   }
 
-  const unit = isEvm ? EVM_CHAINS[evmChain].nativeSymbol : meta?.unit ?? "";
+  const unit = tsd ? "TSD" : isEvm ? EVM_CHAINS[evmChain].nativeSymbol : meta?.unit ?? "";
   const vaultNetworkName = isEvm ? "EVM" : (chain as string).toUpperCase();
 
   return (
@@ -207,7 +260,7 @@ export function VaultSendDialog({
         )}
       >
         <DialogHeader>
-          <DialogTitle>Send {isEvm ? "EVM" : meta?.name} via Vault</DialogTitle>
+          <DialogTitle>Send {tsd ? "TSD on TXC" : isEvm ? "EVM" : meta?.name} via Vault</DialogTitle>
           <DialogDescription>
             The transaction is prepared here and signed on your Vault device by QR.
           </DialogDescription>
@@ -228,7 +281,7 @@ export function VaultSendDialog({
                 </Select>
               </div>
             )}
-            {!isEvm && chainScans.length > 1 && (
+            {!isEvm && !tsd && chainScans.length > 1 && (
               <div className="space-y-1">
                 <Label>Address type</Label>
                 <Select value={String(activePurpose)} onValueChange={(v) => setPurpose(Number(v) as 44 | 49 | 84)}>
@@ -244,21 +297,21 @@ export function VaultSendDialog({
                 </Select>
               </div>
             )}
-            {!isEvm && activeScan && (
+            {!isEvm && !tsd && activeScan && (
               <p className="text-xs text-muted-foreground">
                 Available: {(activeScan.balanceSats / SATS).toLocaleString(undefined, { maximumFractionDigits: 8 })} {unit}
               </p>
             )}
             <div className="space-y-1">
-              <Label>To</Label>
+              <Label htmlFor="vault-send-to">To</Label>
               <div className="flex gap-2">
-                <Input value={to} onChange={(e) => setTo(e.target.value)} placeholder={isEvm ? "0x…" : "Address"} className="font-mono text-xs" />
+                <Input id="vault-send-to" value={to} onChange={(e) => setTo(e.target.value)} placeholder={isEvm ? "0x…" : "Address"} className="font-mono text-xs" />
                 <QrScanButton onScan={(t) => setTo(t.replace(/^[a-z]+:/i, "").split("?")[0])} />
               </div>
             </div>
             <div className="space-y-1">
-              <Label>Amount ({unit})</Label>
-              <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="0.0" />
+              <Label htmlFor="vault-send-amount">Amount ({unit})</Label>
+              <Input id="vault-send-amount" value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="0.0" />
             </div>
             {error && <p className="text-xs text-destructive">{error}</p>}
             <Button onClick={build} disabled={busy} className="w-full">
@@ -269,6 +322,14 @@ export function VaultSendDialog({
 
         {step.name === "show" && (
           <div className="space-y-3">
+            {step.tsdIntent && <dl className="space-y-2 border-b border-border pb-3 text-sm">
+              <div><dt className="text-muted-foreground">TSD · TXC Omni #39</dt><dd className="font-semibold">{step.tsdIntent.amount} TSD</dd></div>
+              <div><dt className="text-muted-foreground">Recipient</dt><dd className="break-all font-mono text-xs">{step.tsdIntent.recipient}</dd></div>
+              <div><dt className="text-muted-foreground">From · TXC address #0</dt><dd className="break-all font-mono text-xs">{step.tsdIntent.sender}</dd></div>
+              <div><dt className="text-muted-foreground">TXC network fee</dt><dd>{step.tsdIntent.feeSats / SATS} TXC</dd></div>
+              <div><dt className="text-muted-foreground">TXC accompanying payment</dt><dd>0.0001 TXC</dd></div>
+              <div><dt className="text-muted-foreground">Change to address #0</dt><dd>{step.tsdIntent.changeSats / SATS} TXC</dd></div>
+            </dl>}
             <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
               <li>On your Vault device, choose <span className="font-medium text-foreground">{vaultNetworkName}</span> and tap Scan.</li>
               <li>Point it at this code and review the payment on the Vault screen.</li>
