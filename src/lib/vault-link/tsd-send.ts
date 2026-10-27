@@ -18,6 +18,32 @@ export function vaultTsdHolder(pairing: VaultPairing) {
   return deriveVaultAddress(pairing, "txc", 44, 0, 0);
 }
 
+/** Receiving and spending must use the identical legacy token holder. */
+export function vaultTsdReceiveAddress(pairing: VaultPairing | null): string | null {
+  return pairing?.chains.txc?.["44"] ? vaultTsdHolder(pairing).address : null;
+}
+
+/** Same largest-first fee policy as the builder; select before any previous-tx downloads. */
+export function selectVaultTsdInputs(pairing: VaultPairing, inputs: VaultUtxo[], feeRate: number): VaultUtxo[] {
+  const holder = vaultTsdHolder(pairing);
+  if (!Number.isSafeInteger(feeRate) || feeRate < 1 || feeRate >= 5_000) throw new Error("The TXC fee estimate is unavailable or exceeds Vault's safety limit.");
+  const picked: VaultUtxo[] = [];
+  const seen = new Set<string>();
+  let total = 0;
+  for (const u of [...inputs].sort((a, b) => b.value - a.value)) {
+    const key = `${u.txid}:${u.vout}`;
+    if (seen.has(key)) throw new Error("Duplicate TXC input.");
+    seen.add(key);
+    if (u.purpose !== 44 || u.change !== 0 || u.index !== 0 || u.path !== holder.path || u.address !== holder.address || !equal(u.pubkey, holder.pubkey)) throw new Error("TSD fee inputs must belong to the paired TXC address #0.");
+    if (!Number.isSafeInteger(u.value) || u.value <= 0 || !Number.isSafeInteger(u.vout) || u.vout < 0) throw new Error("Invalid TXC input amount or output index.");
+    picked.push(u);
+    total += u.value;
+    if (!Number.isSafeInteger(total)) throw new Error("TXC input total exceeds the safe range.");
+    if (total >= TSD_REFERENCE_SATS + (10 + picked.length * 149 + 34 * 2 + 31) * feeRate) return picked;
+  }
+  throw new Error(`Add TXC for fees to the Vault's TSD address: ${holder.address}. TXC on other addresses cannot fund this TSD transfer.`);
+}
+
 /** Zero balances are allowed for display but never silently substitute for a failed read. */
 export function tsdBalanceUnits(balance: string): bigint {
   if (/^0(?:\.0{1,8})?$/.test(balance)) return 0n;
@@ -46,7 +72,7 @@ export function buildVaultTsdPsbt(req: {
   const seen = new Set<string>();
   let total = 0;
   let feeSats = 0;
-  for (const u of [...req.inputs].sort((a, b) => b.value - a.value)) {
+  for (const u of selectVaultTsdInputs(req.pairing, req.inputs, req.feeRate)) {
     const key = `${u.txid}:${u.vout}`;
     if (seen.has(key)) throw new Error("Duplicate TXC input.");
     seen.add(key);

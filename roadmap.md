@@ -1,4 +1,5 @@
 # Roadmap
+- [ ] Apply approved TSD audit follow-ups: legacy-only Receive and select fee inputs before previous-transaction downloads; verify and return updated audit evidence.
 - [x] Prepare shared single-recipient Vault TSD signing: property 39, address-zero holder/change, exact PSBT and genuine SIGHASH_ALL checks, fresh session/profile/pairing/balance/outspend checks; 92 tests pass and desktop QR/small-screen dialog verified with no broadcasts. Audit handoff prepared; native sends/swaps unchanged.
 - [ ] Release Vault TSD signing after independent review and tiny funded Vault/web/APK/extension acceptance. Blocker: external auditor, physical signing device and release packages; full phone-route and genuine signed-QR broadcast remain unverified.
 - [x] Add shared outgoing Vault QR pause/resume, previous/next and numbered selection; show received-piece dots/missing numbers in active wallet scanners. 70 tests pass; browser confirms replay, exact jsQR bytes and 95-of-96 missing part 43/completion, desktop/phone layouts. Auditor handoff supplied. HME Vault receiver dots require its team's changes; physical device acceptance, publication and packages remain pending.
