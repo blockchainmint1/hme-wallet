@@ -14,7 +14,7 @@ export function VaultEvmSigning({ payload, chain, onSent, onBack }: { payload: s
   const processing = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState<{ have: number; total: number } | null>(null);
+  const [progress, setProgress] = useState<{ have: number; total: number; received?: number[] } | null>(null);
   const [complete, setComplete] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   async function scan(frame: string) {
@@ -22,7 +22,7 @@ export function VaultEvmSigning({ payload, chain, onSent, onBack }: { payload: s
     let full: string | null;
     try {
       full = collector.current.add(frame);
-      setProgress(collector.current.progress);
+      setProgress({ ...collector.current.progress, received: collector.current.receivedParts });
       setScanError(null);
     } catch (e) {
       collector.current = new PartCollector();

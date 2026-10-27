@@ -1,4 +1,5 @@
 # Vault wallets (offline signing via HME Vault)
+- QR playback controls operate on existing frame strings; receiver dots use copied one-based collector indexes, never inferred counts or sender acknowledgements. Why: replay missing pieces without changing signing bytes or claiming the offline Vault received them.
 
 - Serialize Vault PSBT bytes with bounded, non-spread Base64 encoding; never use dependency toBase64 for browser preparation. Why: legacy previous transactions can exceed the browser argument stack limit without changing signing bytes.
 
