@@ -34,7 +34,7 @@ import { getFeeEstimates as dogeFees } from "@/lib/doge/mempool";
 import { useServerFn } from "@tanstack/react-start";
 import { getTxcTokenBalance, getTxcTokenProperties } from "@/lib/txc/tokens.functions";
 import { getAddressUtxos, getOutspend } from "@/lib/txc/mempool";
-import { buildVaultTsdPsbt, vaultTsdHolder, verifyVaultTsdSigned, type VaultTsdIntent } from "@/lib/vault-link/tsd-send";
+import { buildVaultTsdPsbt, selectVaultTsdInputs, vaultTsdHolder, verifyVaultTsdSigned, type VaultTsdIntent } from "@/lib/vault-link/tsd-send";
 import { loadPairing } from "@/lib/vault-link/pairing";
 import { getActiveProfileId } from "@/lib/txc/storage";
 import { loadSession } from "@/lib/txc/session-cache";
@@ -169,10 +169,11 @@ export function VaultSendDialog({
       fetchProperties({ data: { propertyIds: [39] } }), txcFees(), getAddressUtxos(holder.address),
     ]);
     if (properties[39]?.divisible !== true) throw new Error("Could not verify TSD property #39. Try again when TXC is available.");
-    const inputs = coins.filter(u => u.status.confirmed).map(u => ({ ...holder, txid: u.txid, vout: u.vout, value: u.value }));
+    const feeRate = Math.ceil(fees.halfHourFee);
+    const inputs = selectVaultTsdInputs(pairing, coins.filter(u => u.status.confirmed).map(u => ({ ...holder, txid: u.txid, vout: u.vout, value: u.value })), feeRate);
     const previous: Record<string, string> = {};
     for (const u of inputs) previous[`${u.txid}:${u.vout}`] = await chainIo("txc").txHex(u.txid);
-    const built = buildVaultTsdPsbt({ pairing, recipient: to, amount, balance: balance.balance, feeRate: Math.ceil(fees.halfHourFee), inputs, prevTxHex: previous });
+    const built = buildVaultTsdPsbt({ pairing, recipient: to, amount, balance: balance.balance, feeRate, inputs, prevTxHex: previous });
     await assertTsdSession();
     setStep({ name: "show", payload: built.psbtBase64, expected: [{ address: built.intent.recipient, valueSats: 10_000 }], tsdIntent: built.intent });
   }

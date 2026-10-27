@@ -4,7 +4,7 @@ import { rootFromSeed } from "@/lib/txc/wallet";
 import { TXC_NETWORK } from "@/lib/txc/network";
 import { deriveVaultAddress } from "./derive";
 import type { VaultPairing } from "./pairing";
-import { buildVaultTsdPsbt, verifyVaultTsdSigned } from "./tsd-send";
+import { buildVaultTsdPsbt, selectVaultTsdInputs, vaultTsdReceiveAddress, verifyVaultTsdSigned } from "./tsd-send";
 
 function fixture(value = 100_000_000) {
   const root = rootFromSeed(new Uint8Array(32).fill(7));
@@ -30,6 +30,28 @@ function signedFixture() {
 }
 
 describe("Vault TSD single-holder signing", () => {
+  it("receives only on paired legacy TXC address zero", () => {
+    const { request, holder } = fixture();
+    expect(vaultTsdReceiveAddress(request.pairing)).toBe(holder.address);
+  });
+  it.each(["49", "84"] as const)("does not issue a TSD receive address for purpose %s alone", purpose => {
+    const { root, request } = fixture();
+    const pairing: VaultPairing = { ...request.pairing, chains: { txc: { [purpose]: root.derivePath(`m/${purpose}'/696969'/0'`).neutered().toBase58() } } };
+    expect(vaultTsdReceiveAddress(pairing)).toBeNull();
+  });
+  it("selects only sufficient largest-first inputs and needs no hex for unused coins", () => {
+    const { request } = fixture();
+    const small = { ...request.inputs[0], txid: "ab".repeat(32), value: 100 };
+    const all = [small, ...request.inputs];
+    expect(selectVaultTsdInputs(request.pairing, all, 1)).toEqual(request.inputs);
+    const original = buildVaultTsdPsbt(request);
+    expect(buildVaultTsdPsbt({ ...request, inputs: all })).toEqual(original);
+  });
+  it("selects multiple coins when one does not cover reference and fee", () => {
+    const { request } = fixture(6_000);
+    const second = { ...request.inputs[0], txid: "cd".repeat(32) };
+    expect(selectVaultTsdInputs(request.pairing, [...request.inputs, second], 1)).toHaveLength(2);
+  });
   it("encodes exactly 1 TSD on property 39 and sends change to TXC address zero", () => {
     const f = fixture(); const built = buildVaultTsdPsbt(f.request);
     const psbt = Psbt.fromBase64(built.psbtBase64, { network: TXC_NETWORK });

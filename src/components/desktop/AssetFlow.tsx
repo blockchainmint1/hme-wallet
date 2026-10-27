@@ -21,8 +21,7 @@ import { EVM_CHAINS, type EvmChainId } from "@/lib/chains/evm";
 import { VaultBottomActions } from "@/components/wallet/VaultBottomActions";
 import { QrCode } from "@/components/wallet/QrCode";
 import type { VaultUtxoChain } from "@/lib/vault-link/pairing";
-import { pairedPurposes } from "@/lib/vault-link/snapshot";
-import { deriveVaultAddress } from "@/lib/vault-link/derive";
+import { vaultTsdReceiveAddress } from "@/lib/vault-link/tsd-send";
 import { formatFiat } from "@/lib/txc/units";
 export function AssetFlow({mode,asset,onAsset}:{mode:"send"|"receive";asset?:string;onAsset:(asset:string)=>void}){
  const d=useDesktopData(); const row=d.rows.find(r=>r.key===(asset??"txc")); const chain=row?assetChain(row):null;
@@ -31,10 +30,9 @@ export function AssetFlow({mode,asset,onAsset}:{mode:"send"|"receive";asset?:str
  const search={asset:row.symbol,token:row.key==="tsd"?"39":undefined};
  if(d.isVault&&!(chain in EVM_CHAINS)){
   const account=d.accounts[chain as VaultUtxoChain];const address=account?.data?.nextReceiveAddress??null;
-  // TSD (Omni) is received on the Vault's fixed TXC address #0 (legacy preferred), not a rotating address.
-  const txcPurposes=d.pairing?pairedPurposes(d.pairing,"txc"):[];const tsdPurpose=txcPurposes.includes(44)?44:txcPurposes[0];
-  const tsdAddress=row.key==="tsd"&&d.pairing&&tsdPurpose?deriveVaultAddress(d.pairing,"txc",tsdPurpose,0,0).address:null;
-  if(row.key==="tsd"&&mode==="receive")content=tsdAddress?<div className="py-8"><h2 className="text-xl font-semibold">Receive TSD · Cold Storage</h2><p className="mt-3 text-sm text-muted-foreground">Your Vault's TXC address #0. Only send TSD or TXC on the TEXITcoin network here.</p><div className="mt-8 flex flex-col items-center gap-4"><QrCode value={tsdAddress} copyValue={tsdAddress} size={260}/><code className="break-all text-center text-xs">{tsdAddress}</code></div></div>:<p className="py-10 text-sm text-muted-foreground">TXC is not paired with your Vault.</p>;
+  // TSD receive and spend both require the paired legacy TXC address #0.
+  const tsdAddress=row.key==="tsd"?vaultTsdReceiveAddress(d.pairing):null;
+  if(row.key==="tsd"&&mode==="receive")content=tsdAddress?<div className="py-8"><h2 className="text-xl font-semibold">Receive TSD · Cold Storage</h2><p className="mt-3 text-sm text-muted-foreground">Your Vault's TXC address #0. Only send TSD or TXC on the TEXITcoin network here.</p><div className="mt-8 flex flex-col items-center gap-4"><QrCode value={tsdAddress} copyValue={tsdAddress} size={260}/><code className="break-all text-center text-xs">{tsdAddress}</code></div></div>:<p className="py-10 text-sm text-muted-foreground">Pair the Vault's legacy TXC account to receive TSD.</p>;
   else content=d.pairing&&d.pairing.chains[chain as VaultUtxoChain]?<div className="py-8"><h2 className="text-xl font-semibold">{mode==="send"?"Send":"Receive"} {row.symbol} · Cold Storage</h2><p className="mt-3 text-sm text-muted-foreground">Signing stays on your offline Vault device.</p>{mode==="receive"&&address&&<div className="mt-8 flex flex-col items-center gap-4"><QrCode value={address} copyValue={address} size={260}/><code className="break-all text-center text-xs">{address}</code></div>}{mode==="send"&&<div className="mt-6 flex gap-3"><VaultBottomActions pairing={d.pairing} chain={chain} receiveAddress={address} action={mode} tsd={row.key==="tsd"}/></div>}</div>:<p className="py-10 text-sm text-muted-foreground">This network is not paired with your Vault.</p>;
  }else if(chain in EVM_CHAINS){content=mode==="send"?(row.custom?<p className="py-10 text-sm text-muted-foreground">Custom-token sending is available in Phone view. Confirm the contract address before approving.</p>:<EvmSend chain={chain as EvmChainId} search={search} backTo="/desktop"/>):<EvmReceive chain={chain as EvmChainId} backTo="/desktop"/>;}
  else if(mode==="send")switch(chain){case "txc":content=<SendPage search={search} backTo="/desktop"/>;break;case "btc":content=<SendBtcPage search={search} backTo="/desktop"/>;break;case "ltc":content=<SendLtcPage search={search} backTo="/desktop"/>;break;case "doge":content=<SendDogePage search={search} backTo="/desktop"/>;break;case "isk":content=<SendIskPage search={search} backTo="/desktop"/>;break;case "tron":content=<TronSend search={search} backTo="/desktop"/>;break;case "solana":content=<SolanaSend backTo="/desktop"/>;break;}
