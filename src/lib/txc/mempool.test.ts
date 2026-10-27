@@ -7,7 +7,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("TXC fresh spent-output checks", () => {
   it("uses the supported transaction-wide endpoint and exact output index", async () => {
-    const fetcher = vi.fn().mockResolvedValue(Response.json([{ spent: true }, { spent: false }]));
+    const fetcher = vi.fn().mockImplementation(async () => Response.json([{ spent: true }, { spent: false }]));
     vi.stubGlobal("fetch", fetcher);
     expect(await getOutspend(txid, 1)).toEqual({ spent: false });
     expect(fetcher).toHaveBeenCalledWith(`${MEMPOOL_API}/tx/${txid}/outspends`, {
