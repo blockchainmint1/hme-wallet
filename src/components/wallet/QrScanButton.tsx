@@ -39,7 +39,7 @@ export function QrScanButton({
   onScan: (text: string) => void;
   /** Keep scanning after each code; the caller stops it with complete. */
   continuous?: boolean;
-  progress?: { have: number; total: number } | null;
+  progress?: { have: number; total: number; received?: number[] } | null;
   complete?: boolean;
   onScanStart?: () => void;
   scanError?: string | null;
@@ -73,7 +73,7 @@ export function QrScanButton({
   );
 }
 
-function ScannerDialog({ onClose, onScan, progress, scanError }: { onClose: () => void; onScan: (t: string) => void; progress?: { have: number; total: number } | null; scanError?: string | null }) {
+function ScannerDialog({ onClose, onScan, progress, scanError }: { onClose: () => void; onScan: (t: string) => void; progress?: { have: number; total: number; received?: number[] } | null; scanError?: string | null }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -230,6 +230,7 @@ function ScannerDialog({ onClose, onScan, progress, scanError }: { onClose: () =
           {progress && progress.total > 0 && <>
             <Progress value={100 * progress.have / progress.total} aria-label="QR transfer progress" />
             <p>{progress.have} of {progress.total} parts · {Math.floor(100 * progress.have / progress.total)}%</p>
+            {progress.received && <ReceivedParts total={progress.total} received={progress.received} />}
           </>}
           {error
             ? error
@@ -241,6 +242,20 @@ function ScannerDialog({ onClose, onScan, progress, scanError }: { onClose: () =
       </DialogContent>
     </Dialog>
   );
+}
+
+function ReceivedParts({ total, received }: { total: number; received: number[] }) {
+  const captured = new Set(received);
+  const missing = Array.from({ length: total }, (_, i) => i + 1).filter((n) => !captured.has(n));
+  return <>
+    <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto py-1" aria-label="Received QR pieces">
+      {Array.from({ length: total }, (_, i) => {
+        const n = i + 1;
+        return <span key={n} role="img" aria-label={`Part ${n}: ${captured.has(n) ? "received" : "missing"}`} title={`Part ${n}: ${captured.has(n) ? "received" : "missing"}`} className={`h-2.5 w-2.5 shrink-0 rounded-full border ${captured.has(n) ? "border-primary bg-primary" : "border-muted-foreground bg-muted"}`} />;
+      })}
+    </div>
+    {missing.length > 0 && <p className="break-words">Missing: {missing.slice(0, 24).join(", ")}{missing.length > 24 ? ` · +${missing.length - 24} more` : ""}</p>}
+  </>;
 }
 
 /**

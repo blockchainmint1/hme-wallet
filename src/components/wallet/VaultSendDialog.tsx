@@ -67,7 +67,7 @@ export function VaultSendDialog({
   const [evmChain, setEvmChain] = useState<EvmChainId>("eth");
   const collector = useRef(new PartCollector());
   const processing = useRef(false);
-  const [scanProgress, setScanProgress] = useState<{ have: number; total: number } | null>(null);
+  const [scanProgress, setScanProgress] = useState<{ have: number; total: number; received?: number[] } | null>(null);
   const [scanComplete, setScanComplete] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const desktop = useDesktopViewport();
@@ -157,7 +157,7 @@ export function VaultSendDialog({
     try {
       const full = collector.current.add(code);
       setScanError(null);
-      setScanProgress(collector.current.progress);
+      setScanProgress({ ...collector.current.progress, received: collector.current.receivedParts });
       if (!full) return; // waiting for more frames
       collector.current = new PartCollector();
       processing.current = true;

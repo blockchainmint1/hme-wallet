@@ -36,7 +36,7 @@ export function VaultPairingForm({ doneTo = "/wallet", backTo, backLabel = "Back
   const [label, setLabel] = useState("Vault");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [scanProgress, setScanProgress] = useState<{ have: number; total: number } | null>(null);
+  const [scanProgress, setScanProgress] = useState<{ have: number; total: number; received?: number[] } | null>(null);
   const collectorRef = useRef<PartCollector | null>(null);
 
   function tryParse(text: string) {
@@ -62,7 +62,7 @@ export function VaultPairingForm({ doneTo = "/wallet", backTo, backLabel = "Back
     try {
       const collector = (collectorRef.current ??= new PartCollector());
       const done = collector.add(text);
-      setScanProgress(collector.progress);
+      setScanProgress({ ...collector.progress, received: collector.receivedParts });
       if (done) {
         collectorRef.current = null;
         setScanProgress(null);
