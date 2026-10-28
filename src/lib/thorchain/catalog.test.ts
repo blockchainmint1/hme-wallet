@@ -135,3 +135,25 @@ describe("assertQuoteFresh", () => {
     expect(() => assertQuoteFresh({ expiry: now / 1000 + 600, quotedAt: now - 300_000 }, now)).toThrow(/stale/);
   });
 });
+
+import { buildSwapMemo, THOR_CATALOG as C2 } from "./catalog";
+describe("buildSwapMemo (auditor 2026-10-28)", () => {
+  const evm = "0x1111111111111111111111111111111111111111";
+  it("accepts live terse gas codes d/l/e/f/s from THORNode", () => {
+    for (const [id, code] of [["doge", "d"], ["ltc", "l"], ["eth", "e"], ["base-eth", "f"], ["bsc-bnb", "s"]] as const) {
+      expect(C2[id].terse).toBe(code);
+    }
+    expect(validateSwapMemo(`=:e:${evm}:99000/1/0`, C2.eth, evm, "100000", 100)).toBe("99000");
+    expect(validateSwapMemo(`=:f:${evm}:99000/1/0`, C2["base-eth"], evm, "100000", 100)).toBe("99000");
+  });
+  it("EVM sources sign the full contract-suffixed asset", () => {
+    expect(buildSwapMemo(C2.eth, C2["usdc-base"], evm, "99000")).toBe(`=:${C2["usdc-base"].thorAsset}:${evm}:99000/1/0`);
+  });
+  it("UTXO sources use the terse gas code", () => {
+    expect(buildSwapMemo(C2.btc, C2.eth, evm, "99000")).toBe(`=:e:${evm}:99000/1/0`);
+  });
+  it("UTXO -> token uses the short form only when it matches exactly one live pool", () => {
+    expect(() => buildSwapMemo(C2.btc, C2["usdc-base"], evm, "99000", false)).toThrow(/too long/);
+    expect(buildSwapMemo(C2.btc, C2["usdc-base"], evm, "99000", true)).toBe(`=:BASE.USDC:${evm}:99000/1/0`);
+  });
+});

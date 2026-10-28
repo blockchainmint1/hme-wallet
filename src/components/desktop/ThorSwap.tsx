@@ -94,7 +94,7 @@ export function ThorSwap({ utxoSwapOn = true, evmSwapOn = false }: { utxoSwapOn?
     THOR_CATALOG[id].kind === "utxo" ? utxoSwapOn : evmSwapOn;
   const payable = available.filter(sourceAllowed);
 
-  const [from, setFrom] = useState<ThorAssetId>("usdc-eth");
+  const [from, setFrom] = useState<ThorAssetId>(evmSwapOn || !utxoSwapOn ? "usdc-eth" : "doge");
   const [to, setTo] = useState<ThorAssetId>("btc");
   const [amount, setAmount] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -172,7 +172,7 @@ export function ThorSwap({ utxoSwapOn = true, evmSwapOn = false }: { utxoSwapOn?
 
   const quote = useQuery({
     queryKey: ["thor-catalog-quote", from, to, debounced, destination],
-    enabled: isLocalSigner && available.includes(from) && available.includes(to) && rawIn > 0n && destinationValid,
+    enabled: isLocalSigner && available.includes(from) && sourceAllowed(from) && available.includes(to) && rawIn > 0n && destinationValid,
     queryFn: () => fetchQuote({ data: { from, to, amount: debounced, destination } }),
     staleTime: 30_000,
     retry: 0,
