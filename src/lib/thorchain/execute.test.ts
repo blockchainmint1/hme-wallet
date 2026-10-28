@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { decodeFunctionData, erc20Abi, getAddress, zeroAddress } from "viem";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { decodeFunctionData, erc20Abi, getAddress, zeroAddress, type WalletClient } from "viem";
 import { THOR_CATALOG, THOR_EVM_ROUTERS, thorRouterAbi, type ThorCatalogQuote } from "./catalog";
-import { makeThorGuard, planUtxoThorSwap, thorApprovalRequest, thorDepositRequest } from "./execute";
+import { executeEvmThorSwap, makeThorGuard, planUtxoThorSwap, thorApprovalRequest, thorDepositRequest } from "./execute";
+
+const rpc = vi.hoisted(() => ({ readContract: vi.fn(), waitForTransactionReceipt: vi.fn(), send: vi.fn() }));
+vi.mock("@/lib/chains/evm", () => ({ evmClient: () => rpc }));
+vi.mock("@/lib/chains/evm-send", () => ({ sendEvmTransaction: rpc.send }));
 
 const BTC_DEST = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4";
 const INBOUND = getAddress("0x718f6c9df785bc4e32a0db0f4e4b6a9b0e8a0e8a");
@@ -135,5 +139,78 @@ describe("planUtxoThorSwap", () => {
     const big = [{ txid: "c".repeat(64), vout: 0, value: 500_000 }];
     const plan = planUtxoThorSwap("doge", big, 80_000, 1000);
     expect(plan!.feeSats).toBe(316_000);
+  });
+});
+
+describe("ERC-20 approval confirmation sequence", () => {
+  const walletClient = { account: { address: INBOUND } } as unknown as WalletClient;
+  beforeEach(() => {
+    vi.resetAllMocks();
+    rpc.send.mockResolvedValue(`0x${"a".repeat(64)}`);
+    rpc.waitForTransactionReceipt.mockResolvedValue({ status: "success" });
+  });
+
+  it("does not prepare a 10,000 USDC deposit until approval confirms", async () => {
+    const q = quoteFixture({ rawIn: "10000000000", amountIn: "1000000000000" });
+    rpc.readContract.mockResolvedValueOnce(0n).mockResolvedValueOnce(10_000_000_000n);
+    let confirm: ((value: { status: string }) => void) | undefined;
+    rpc.waitForTransactionReceipt.mockImplementationOnce(() => new Promise((resolve) => { confirm = resolve; }));
+    const execution = executeEvmThorSwap({ quote: q, walletClient });
+    await vi.waitFor(() => expect(rpc.waitForTransactionReceipt).toHaveBeenCalledTimes(1));
+    expect(rpc.send).toHaveBeenCalledTimes(1);
+    if (!confirm) throw new Error("Receipt wait missing");
+    confirm({ status: "success" });
+    await execution;
+    expect(rpc.send).toHaveBeenCalledTimes(2);
+    const decoded = decodeFunctionData({ abi: thorRouterAbi, data: rpc.send.mock.calls[1]?.[2].data });
+    expect(decoded.functionName).toBe("depositWithExpiry");
+    expect(decoded.args?.[2]).toBe(10_000_000_000n);
+  });
+
+  it("confirms a stale allowance reset before exact approval and deposit", async () => {
+    rpc.readContract.mockResolvedValueOnce(9n).mockResolvedValueOnce(0n).mockResolvedValueOnce(1_000_000_000n);
+    await executeEvmThorSwap({ quote: quoteFixture(), walletClient });
+    expect(rpc.waitForTransactionReceipt).toHaveBeenCalledTimes(2);
+    expect(rpc.send).toHaveBeenCalledTimes(3);
+    expect(decodeFunctionData({ abi: erc20Abi, data: rpc.send.mock.calls[0]?.[2].data }).args?.[1]).toBe(0n);
+    expect(decodeFunctionData({ abi: erc20Abi, data: rpc.send.mock.calls[1]?.[2].data }).args?.[1]).toBe(1_000_000_000n);
+  });
+
+  it("never deposits after a reverted approval", async () => {
+    rpc.readContract.mockResolvedValue(0n);
+    rpc.waitForTransactionReceipt.mockResolvedValue({ status: "reverted" });
+    await expect(executeEvmThorSwap({ quote: quoteFixture(), walletClient })).rejects.toThrow(/approval failed/);
+    expect(rpc.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("never deposits after an uncertain approval confirmation", async () => {
+    rpc.readContract.mockResolvedValue(0n);
+    rpc.waitForTransactionReceipt.mockRejectedValue(new Error("timeout"));
+    await expect(executeEvmThorSwap({ quote: quoteFixture(), walletClient })).rejects.toThrow(/could not be verified/);
+    expect(rpc.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("never deposits when a successful receipt leaves the wrong allowance", async () => {
+    rpc.readContract.mockResolvedValue(0n);
+    await expect(executeEvmThorSwap({ quote: quoteFixture(), walletClient })).rejects.toThrow(/allowance does not match/);
+    expect(rpc.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses a confirmed exact approval without sending another approval", async () => {
+    rpc.readContract.mockResolvedValue(1_000_000_000n);
+    await executeEvmThorSwap({ quote: quoteFixture(), walletClient });
+    expect(rpc.send).toHaveBeenCalledTimes(1);
+    expect(rpc.waitForTransactionReceipt).not.toHaveBeenCalled();
+  });
+
+  it("stops if the quote ages out while waiting for approval", async () => {
+    const q = quoteFixture();
+    rpc.readContract.mockResolvedValue(0n);
+    rpc.waitForTransactionReceipt.mockImplementation(async () => {
+      q.quotedAt = Date.now() - 300_000;
+      return { status: "success" };
+    });
+    await expect(executeEvmThorSwap({ quote: q, walletClient })).rejects.toThrow(/stale/);
+    expect(rpc.send).toHaveBeenCalledTimes(1);
   });
 });
