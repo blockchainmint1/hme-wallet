@@ -5,8 +5,7 @@ import { prepareVaultThorSwap, verifyVaultThorResult, validateVaultThorQuote, va
 import { deriveVaultAddress, VAULT_CHAIN_META } from "./derive";
 import type { VaultPairing } from "./pairing";
 import type { ThorCatalogQuote } from "@/lib/thorchain/catalog";
-import * as btcNode from "@/lib/btc/mempool";
-import * as dogeNode from "@/lib/doge/mempool";
+import { chainIo } from "./scan";
 import { vaultSwapExecutionAllowed } from "@/lib/security/vault-swap-policy";
 
 const root = rootFromSeed(new Uint8Array(32).fill(13));
@@ -20,7 +19,7 @@ async function fixture(coin: "btc" | "doge") {
   const output = coin === "btc" ? payments.p2wpkh({ pubkey:holder.pubkey,network:VAULT_CHAIN_META[coin].network }).output : payments.p2pkh({pubkey:holder.pubkey,network:VAULT_CHAIN_META[coin].network}).output;
   if (!output) throw new Error("Missing fixture script");
   previous.addOutput(output, 400_000_000n);
-  const mock = vi.spyOn(coin === "btc" ? btcNode : dogeNode,"getTxHex").mockResolvedValue(previous.toHex());
+  const mock = vi.spyOn(chainIo(coin),"txHex").mockResolvedValue(previous.toHex());
   const input = {...holder,txid:previous.getId(),vout:0,value:400_000_000};
   const prepared = await prepareVaultThorSwap(pairing,quote(coin),[input],coin === "btc" ? 1 : 1000);
   const psbt = Psbt.fromBase64(prepared.payload,{network:VAULT_CHAIN_META[coin].network});
