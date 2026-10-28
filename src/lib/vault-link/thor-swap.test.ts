@@ -7,6 +7,9 @@ import type { VaultPairing } from "./pairing";
 import type { ThorCatalogQuote } from "@/lib/thorchain/catalog";
 import { chainIo } from "./scan";
 import { vaultSwapExecutionAllowed } from "@/lib/security/vault-swap-policy";
+import { privateKeyToAccount } from "viem/accounts";
+import * as evmModule from "@/lib/chains/evm";
+import { THOR_EVM_ROUTERS } from "@/lib/thorchain/catalog";
 
 const root = rootFromSeed(new Uint8Array(32).fill(13));
 const pairing: VaultPairing = { v: 1, fp: Array.from(root.fingerprint, b => b.toString(16).padStart(2,"0")).join(""), pairedAt: 0, chains: { btc: { "84": root.derivePath("m/84'/0'/0'").neutered().toBase58() }, doge: { "44": root.derivePath("m/44'/3'/0'").neutered().toBase58() } }, evm: { address: "0x1111111111111111111111111111111111111111", path: "m/44'/60'/0'/0/0" } };
@@ -67,5 +70,27 @@ describe("review-only Vault THORChain preparation", () => {
   });
   it("refuses a BTC fee at the fixed Vault cap", async () => {
     await expect(prepareVaultThorSwap(pairing,quote("btc"),[],5000)).rejects.toThrow(/safety limit/);
+  });
+  it("prepares exact ERC-20 approval/reset/deposit requests without broadcasting", async () => {
+    const signer = privateKeyToAccount(`0x${"11".repeat(32)}`);
+    const p = {...pairing,evm:{address:signer.address,path:"m/44'/60'/0'/0/0"}};
+    const q: ThorCatalogQuote = {...quote("btc"),from:"usdc-eth",to:"btc",rawIn:"1000000000",amountIn:"100000000000",inbound:"0x2222222222222222222222222222222222222222",router:THOR_EVM_ROUTERS.eth,destination:deriveVaultAddress(pairing,"btc",84,0,0).address};
+    q.memo=`=:b:${q.destination}:99000000/1/0`;
+    let allowance=0n;
+    const broadcast = vi.fn(() => {throw new Error("No broadcast allowed")});
+    const client = { readContract:vi.fn(async (args:{functionName:string}) => args.functionName === "allowance" ? allowance : 1000000000n), getTransactionCount:vi.fn(async()=>7),estimateGas:vi.fn(async()=>65000n),estimateFeesPerGas:vi.fn(async()=>({maxFeePerGas:30000000000n,maxPriorityFeePerGas:1000000000n})),getBalance:vi.fn(async()=>1000000000000000000n),sendRawTransaction:broadcast };
+    const mock=vi.spyOn(evmModule,"evmClient").mockReturnValue(client as unknown as ReturnType<typeof evmModule.evmClient>);
+    for (const [value,action] of [[0n,"approval"],[1n,"approval-reset"],[1000000000n,"evm-deposit"]] as const) {
+      allowance=value;
+      const prepared=await prepareVaultThorSwap(p,q,[],0);
+      expect(prepared.action).toBe(action);
+      expect(JSON.parse(prepared.payload).format).toBe("hm-thor-swap");
+      const tx=prepared.evm;
+      if (!tx) throw new Error("Missing EVM plan");
+      const sign = (overrides={}) => signer.signTransaction({to:tx.to,value:BigInt(tx.value),data:tx.data,nonce:tx.nonce,chainId:tx.chainId,gas:BigInt(tx.gas),type:"eip1559",maxFeePerGas:BigInt(tx.maxFeePerGas ?? "0"),maxPriorityFeePerGas:BigInt(tx.maxPriorityFeePerGas ?? "0"),...overrides});
+      await expect(verifyVaultThorResult(await sign(),prepared)).resolves.toBeUndefined();
+      for (const change of [{chainId:8453},{nonce:8},{data:"0x"},{gas:1n},{value:1n},{maxFeePerGas:1n},{to:signer.address}]) await expect(verifyVaultThorResult(await sign(change),prepared)).rejects.toThrow();
+    }
+    expect(broadcast).not.toHaveBeenCalled();mock.mockRestore();
   });
 });
