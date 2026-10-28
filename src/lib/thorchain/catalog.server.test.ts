@@ -111,7 +111,7 @@ describe("fetchCatalogQuote", () => {
     expect(quoteCall).toContain("streaming_interval=1");
     expect(quoteCall).toContain("streaming_quantity=0");
     expect(quoteCall).not.toContain("affiliate");
-    expect(quoteCall).not.toContain("tolerance_bps=");
+    expect(quoteCall).not.toMatch(/[?&]tolerance_bps=/);
   });
 
   it("refuses when the quote's deposit address differs from the inbound record", async () => {
