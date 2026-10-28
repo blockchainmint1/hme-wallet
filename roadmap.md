@@ -1,12 +1,11 @@
 # Roadmap
 
-## Current: Full THORChain integration on desktop swap page (Bobby, Oct 28)
-- [ ] Verify what TSD Bridge's EVM audit actually covered vs our wallet's EVM signer
-- [ ] Route catalog: all THORChain routes among wallet-supported coins (BTC, DOGE, LTC, ETH, BSC, Base, XRP, USDC/USDT on ETH/Base); TXC excluded (not on THORChain)
-- [ ] Desktop swap page: source + destination pickers, amount, auto-filled destination from wallet, live quote, min receive, fees, expiry
-- [ ] Sending: UTXO sources via existing audited THOR flow; EVM sources via new restricted THOR-only executor (fixed router, memo-bound calldata, exact approvals); XRP via existing XRP send with memo
-- [ ] Keep LI.FI aggregator gate intact; Vault mode swaps stay blocked
-- [ ] Tests + browser verification + auditor pack before publishing
+## Done: Full THORChain integration on desktop swap page (Oct 28)
+- [x] Route catalog: 11 assets / 110 routes (BTC, DOGE, LTC, ETH, Base ETH, BNB, USDC/USDT on ETH/Base/BSC); TXC excluded (no THORChain pool), XRP excluded (no XRP support in wallet)
+- [x] Desktop swap page rebuilt: source/destination pickers, auto-filled payout address, live quotes, min receive, fees, ETA, recent-swap tracking
+- [x] Sending: UTXO via audited builders + OP_RETURN memo; EVM via quote-rebuilt calldata with beforeSign guard; exact-amount ERC-20 approvals; LI.FI gate untouched; Vault swaps stay blocked
+- [x] 477 tests, typecheck, build, browser verification (live USDC→BTC and BTC→USDC quotes, zero broadcasts)
+- [ ] Auditor review of Honest-Money-THORChain-Catalog-Audit.zip, then tiny funded device test per source kind, then publish
 
 ## Pending from earlier
 - [ ] Publish pending desktop changes (chart, holdings sort, Vault QR size, TSD receive/signing, swap provider fixes) after audit sign-off
