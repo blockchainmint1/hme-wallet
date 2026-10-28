@@ -103,7 +103,7 @@ export function ThorSwap({ utxoSwapOn = true, evmSwapOn = false }: { utxoSwapOn?
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sent, setSent] = useState<{ txid: string; quote: ThorCatalogQuote } | null>(null);
+  const [sent, setSent] = useState<{ txid: string; quote: ThorCatalogQuote; state: "waiting" | "confirmed" | "pending" | "broadcast" } | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(amount), 500);
@@ -262,6 +262,7 @@ export function ThorSwap({ utxoSwapOn = true, evmSwapOn = false }: { utxoSwapOn?
       setSent({ txid, quote: finalQuote, state: depositState });
     } catch (err) {
       hapticError();
+      setSent(null);
       setError(friendlyBroadcastError(err));
     } finally {
       setBusy(false);
