@@ -4,7 +4,7 @@ import { THOR_CATALOG, THOR_EVM_ROUTERS, thorRouterAbi, type ThorCatalogQuote } 
 import { makeThorGuard, planUtxoThorSwap, thorApprovalRequest, thorDepositRequest } from "./execute";
 
 const BTC_DEST = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4";
-const INBOUND = getAddress("0x718f6c9df785bc4e32a0db0f4e4b6a9b0e8a0e8a12");
+const INBOUND = getAddress("0x718f6c9df785bc4e32a0db0f4e4b6a9b0e8a0e8a");
 
 function quoteFixture(over: Partial<ThorCatalogQuote> = {}): ThorCatalogQuote {
   const now = Date.now();
