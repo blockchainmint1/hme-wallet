@@ -1,7 +1,7 @@
 /** Review-only THORChain preparation. This module never signs or broadcasts. */
 import { address, payments, Psbt, script, Transaction } from "bitcoinjs-lib";
 import * as ecc from "@bitcoinerlab/secp256k1";
-import { erc20Abi, parseTransaction, recoverTransactionAddress, type Address, type Hex } from "viem";
+import { erc20Abi, parseTransaction, recoverTransactionAddress, type Address, type Hex, type TransactionSerialized } from "viem";
 import { THOR_CATALOG, THOR_EVM_ROUTERS, assertQuoteFresh, validateSwapMemo, validateThorDestination, toThorUnits, type ThorCatalogQuote, type ThorAssetId } from "@/lib/thorchain/catalog";
 import { thorApprovalRequest, thorDepositRequest } from "@/lib/thorchain/execute";
 import { EVM_CHAINS, evmClient, type EvmChainId } from "@/lib/chains/evm";
@@ -105,7 +105,7 @@ export async function prepareVaultThorSwap(pairing: VaultPairing, quote: ThorCat
     if (u.purpose === 44) psbt.addInput({ hash: u.txid, index: u.vout, nonWitnessUtxo: previous.toBuffer(), bip32Derivation: derivation, sighashType: Transaction.SIGHASH_ALL });
     else {
       const redeemScript = u.purpose === 49 ? payments.p2wpkh({ pubkey: u.pubkey, network: VAULT_CHAIN_META[coin].network }).output : undefined;
-      psbt.addInput({ hash: u.txid, index: u.vout, witnessUtxo: prev, redeemScript, bip32Derivation: derivation, sighashType: Transaction.SIGHASH_ALL });
+      psbt.addInput({ hash: u.txid, index: u.vout, witnessUtxo: prev, ...(redeemScript ? { redeemScript } : {}), bip32Derivation: derivation, sighashType: Transaction.SIGHASH_ALL });
     }
   }
   // THORChain deposit first, change to FIRST INPUT holder, memo last.
@@ -133,7 +133,7 @@ export async function verifyVaultThorResult(hex: string, prepared: VaultThorPrep
   if (prepared.evm) {
     const expected = prepared.evm;
     const tx = parseTransaction(hex as Hex);
-    const signer = await recoverTransactionAddress({ serializedTransaction: hex as Hex });
+    const signer = await recoverTransactionAddress({ serializedTransaction: hex as TransactionSerialized });
     const same = (a: string | undefined, b: string) => a?.toLowerCase() === b.toLowerCase();
     if (!same(signer, expected.from) || tx.chainId !== expected.chainId || tx.nonce !== expected.nonce || !same(tx.to ?? undefined, expected.to) || !same(tx.data ?? "0x", expected.data) || (tx.value ?? 0n) !== BigInt(expected.value) || tx.gas !== BigInt(expected.gas) || tx.type !== expected.type || tx.accessList?.length) throw new Error("Signed swap fields changed.");
     if (expected.type === "legacy" ? tx.gasPrice !== BigInt(expected.gasPrice ?? "0") : tx.maxFeePerGas !== BigInt(expected.maxFeePerGas ?? "0") || tx.maxPriorityFeePerGas !== BigInt(expected.maxPriorityFeePerGas ?? "0")) throw new Error("Signed fee changed.");
