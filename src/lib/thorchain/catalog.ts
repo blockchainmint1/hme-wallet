@@ -44,7 +44,7 @@ export interface ThorAssetMeta {
   /** THORChain chain code used for halt flags and inbound records. */
   thorChain: "BTC" | "DOGE" | "LTC" | "ETH" | "BASE" | "BSC";
   kind: "utxo" | "evm-native" | "evm-token";
-  /** Chain-native decimals (BTC/LTC/DOGE 8, ETH/BNB 18, USDC/USDT 6). */
+  /** Chain-native decimals (BTC/LTC/DOGE 8, ETH/BNB 18, USDC/USDT 6 on ETH/Base, 18 on BNB Chain). */
   decimals: number;
   /** ERC-20 contract for evm-token assets. */
   contract?: Address;
@@ -68,9 +68,9 @@ export const THOR_CATALOG: Record<ThorAssetId, ThorAssetMeta> = {
   "bsc-bnb": { id: "bsc-bnb", thorAsset: "BSC.BNB", symbol: "BNB", label: "BNB Chain", chain: "bsc", thorChain: "BSC", kind: "evm-native", decimals: 18, terse: "s" },
   "usdc-eth": { id: "usdc-eth", thorAsset: "ETH.USDC-0XA0B86991C6218B36C1D19D4A2E9EB0CE3606EB48", symbol: "USDC", label: "USDC on Ethereum", chain: "eth", thorChain: "ETH", kind: "evm-token", decimals: 6, contract: getAddress("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48") },
   "usdc-base": { id: "usdc-base", thorAsset: "BASE.USDC-0X833589FCD6EDB6E08F4C7C32D4F71B54BDA02913", symbol: "USDC", label: "USDC on Base", chain: "base", thorChain: "BASE", kind: "evm-token", decimals: 6, contract: getAddress("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913") },
-  "usdc-bsc": { id: "usdc-bsc", thorAsset: "BSC.USDC-0X8AC76A51CC950D9822D68B83FE1AD97B32CD580D", symbol: "USDC", label: "USDC on BNB Chain", chain: "bsc", thorChain: "BSC", kind: "evm-token", decimals: 6, contract: getAddress("0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d") },
+  "usdc-bsc": { id: "usdc-bsc", thorAsset: "BSC.USDC-0X8AC76A51CC950D9822D68B83FE1AD97B32CD580D", symbol: "USDC", label: "USDC on BNB Chain", chain: "bsc", thorChain: "BSC", kind: "evm-token", decimals: 18, contract: getAddress("0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d") },
   "usdt-eth": { id: "usdt-eth", thorAsset: "ETH.USDT-0XDAC17F958D2EE523A2206206994597C13D831EC7", symbol: "USDT", label: "USDT on Ethereum", chain: "eth", thorChain: "ETH", kind: "evm-token", decimals: 6, contract: getAddress("0xdAC17F958D2ee523a2206206994597C13D831ec7") },
-  "usdt-bsc": { id: "usdt-bsc", thorAsset: "BSC.USDT-0X55D398326F99059FF775485246999027B3197955", symbol: "USDT", label: "USDT on BNB Chain", chain: "bsc", thorChain: "BSC", kind: "evm-token", decimals: 6, contract: getAddress("0x55d398326f99059ff775485246999027B3197955") },
+  "usdt-bsc": { id: "usdt-bsc", thorAsset: "BSC.USDT-0X55D398326F99059FF775485246999027B3197955", symbol: "USDT", label: "USDT on BNB Chain", chain: "bsc", thorChain: "BSC", kind: "evm-token", decimals: 18, contract: getAddress("0x55d398326f99059ff775485246999027B3197955") },
 };
 
 export const THOR_ASSET_IDS = Object.keys(THOR_CATALOG) as ThorAssetId[];
