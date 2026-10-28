@@ -149,10 +149,15 @@ export function validateSwapMemo(
   }
   const parts = memo.split(":");
   const [action, asset, payout, limit] = parts;
+  // THORChain memos may use the short asset form (BASE.USDC) instead of the
+  // full contract-suffixed form. The short form is unambiguous per chain in
+  // our catalog, so accepting it cannot redirect to a different token.
+  const shortAsset = to.thorAsset.split("-")[0]!;
+  const assetOk = [to.thorAsset, shortAsset].some((a) => a.toUpperCase() === (asset ?? "").toUpperCase());
   if (
     parts.length !== 4 ||
     !["=", "SWAP", "s"].includes(action ?? "") ||
-    (asset ?? "").toUpperCase() !== to.thorAsset.toUpperCase() ||
+    !assetOk ||
     payout !== destination
   ) {
     throw new Error("THORChain memo changed the destination, asset or added a fee recipient.");

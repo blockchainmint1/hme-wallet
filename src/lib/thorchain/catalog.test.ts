@@ -93,6 +93,17 @@ describe("validateSwapMemo", () => {
   it("is case-insensitive on the asset only", () => {
     expect(validateSwapMemo(`SWAP:btc.btc:${dest}:1219301/1/0`, btc, dest, "1231618", 100)).toBe("1219301");
   });
+  it("accepts THORChain's short asset form for tokens", () => {
+    const usdc = THOR_CATALOG["usdc-base"];
+    const evmDest = "0x9858EfFD232B4033E47d90003D41EC34EcaEda94";
+    expect(validateSwapMemo(`=:BASE.USDC:${evmDest}:8021335707/1/0`, usdc, evmDest, "8102359300", 100)).toBe("8021335707");
+    expect(validateSwapMemo(`=:BASE.USDC-0X833589FCD6EDB6E08F4C7C32D4F71B54BDA02913:${evmDest}:8021335707/1/0`, usdc, evmDest, "8102359300", 100)).toBe("8021335707");
+  });
+  it("rejects a short-form asset from a different chain", () => {
+    const usdc = THOR_CATALOG["usdc-base"];
+    const evmDest = "0x9858EfFD232B4033E47d90003D41EC34EcaEda94";
+    expect(() => validateSwapMemo(`=:ETH.USDC:${evmDest}:8021335707/1/0`, usdc, evmDest, "8102359300", 100)).toThrow(/destination|asset/);
+  });
 });
 
 describe("router pins", () => {
