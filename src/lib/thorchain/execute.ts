@@ -149,8 +149,16 @@ export function makeThorGuard(expected: { to: Address; value: bigint; data: Hex 
 export async function executeEvmThorSwap(args: {
   quote: ThorCatalogQuote;
   walletClient: WalletClient;
-}): Promise<{ hash: string }> {
-  const { quote, walletClient } = args;
+  /**
+   * Fetch a fresh quote after approvals confirm. Approvals depend only on the
+   * pinned router and exact amount, so a slow Ethereum confirmation must not
+   * leave the deposit signing against an expired quote.
+   */
+  refreshQuote?: () => Promise<ThorCatalogQuote>;
+}): Promise<{ hash: string; quote: ThorCatalogQuote }> {
+  const { walletClient, refreshQuote } = args;
+  let quote = args.quote;
+  const checkFresh = () => { if (!refreshQuote) assertQuoteFresh(quote); };
   const from = THOR_CATALOG[quote.from];
   if (!from || from.kind === "utxo") throw new Error("Not an EVM THORChain route.");
   assertQuoteFresh(quote);
@@ -171,7 +179,7 @@ export async function executeEvmThorSwap(args: {
       const request = thorApprovalRequest(quote, reset);
       const guard = makeThorGuard(request);
       const hash = await sendEvmTransaction(chainId, walletClient, request, (prepared) => {
-        assertQuoteFresh(quote);
+        checkFresh();
         guard(prepared);
       });
       let receipt;
@@ -183,7 +191,7 @@ export async function executeEvmThorSwap(args: {
       if (receipt.status !== "success") {
         throw new Error(`Token approval failed (${hash}). The swap deposit was not sent.`);
       }
-      assertQuoteFresh(quote);
+      checkFresh();
       const expected = reset ? 0n : BigInt(quote.rawIn);
       if (await readAllowance() !== expected) {
         throw new Error("Confirmed token allowance does not match this swap. The swap deposit was not sent.");
@@ -196,6 +204,19 @@ export async function executeEvmThorSwap(args: {
       if (allowance > 0n) await sendApproval(true);
       await sendApproval(false);
     }
+    if (refreshQuote) {
+      const approved = quote;
+      const fresh = await refreshQuote();
+      if (fresh.from !== approved.from || fresh.to !== approved.to || fresh.rawIn !== approved.rawIn
+        || fresh.destination !== approved.destination
+        || (fresh.router ?? "").toLowerCase() !== (approved.router ?? "").toLowerCase()) {
+        throw new Error("The refreshed swap quote no longer matches your approval. The swap deposit was not sent.");
+      }
+      quote = fresh;
+      if (await readAllowance() !== BigInt(quote.rawIn)) {
+        throw new Error("Confirmed token allowance does not match this swap. The swap deposit was not sent.");
+      }
+    }
   }
 
   const deposit = thorDepositRequest(quote);
@@ -204,7 +225,23 @@ export async function executeEvmThorSwap(args: {
     assertQuoteFresh(quote);
     guard(prepared);
   });
-  return { hash };
+  return { hash, quote };
+}
+
+/**
+ * Wait for the deposit to be mined. "confirmed" only on a successful receipt;
+ * "pending" when confirmation could not be observed in time (the deposit may
+ * still land). A reverted deposit throws.
+ */
+export async function waitForThorDeposit(chainId: EvmChainId, hash: string): Promise<"confirmed" | "pending"> {
+  let receipt;
+  try {
+    receipt = await evmClient(chainId).waitForTransactionReceipt({ hash: hash as Hex, confirmations: 1, timeout: 180_000 });
+  } catch {
+    return "pending";
+  }
+  if (receipt.status !== "success") throw new Error(`The swap deposit failed on-chain (${hash}). Your funds did not leave your wallet except for gas.`);
+  return "confirmed";
 }
 
 export interface UtxoSwapPlan {

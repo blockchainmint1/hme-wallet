@@ -213,4 +213,25 @@ describe("ERC-20 approval confirmation sequence", () => {
     await expect(executeEvmThorSwap({ quote: q, walletClient })).rejects.toThrow(/stale/);
     expect(rpc.send).toHaveBeenCalledTimes(1);
   });
+
+  it("approves first, then deposits against a refreshed quote", async () => {
+    const stale = quoteFixture();
+    stale.quotedAt = Date.now() - 100_000;
+    rpc.readContract.mockResolvedValueOnce(0n).mockResolvedValue(1_000_000_000n);
+    rpc.waitForTransactionReceipt.mockImplementation(async () => {
+      stale.quotedAt = Date.now() - 300_000;
+      return { status: "success" };
+    });
+    const fresh = quoteFixture();
+    const result = await executeEvmThorSwap({ quote: stale, walletClient, refreshQuote: async () => fresh });
+    expect(result.quote).toBe(fresh);
+    expect(rpc.send).toHaveBeenCalledTimes(2);
+  });
+
+  it("refuses the deposit when the refreshed quote changes the amount", async () => {
+    rpc.readContract.mockResolvedValueOnce(0n).mockResolvedValue(1_000_000_000n);
+    const refreshQuote = async () => quoteFixture({ rawIn: "2000000000" });
+    await expect(executeEvmThorSwap({ quote: quoteFixture(), walletClient, refreshQuote })).rejects.toThrow(/no longer matches/);
+    expect(rpc.send).toHaveBeenCalledTimes(1);
+  });
 });
