@@ -15,3 +15,4 @@
 - LI.FI swaps stay paused and the Relay Tron bridge stays removed until the review acceptance steps pass; this is intentional, not broken.
 - EIP-712 signing stays off and nonce-based CSP is deferred for the packaged APK/extension shells until a signed-shell design is reviewed.
 - Native NFC card reading and native iOS are intentionally out of scope; typed card codes and iPhone web install remain.
+- NectarPay invoice relay forwards only strict invoice ID + `t` nonce, exact `{option}` POST bodies, rate-limited per client (nectar-pay-policy.ts). Why: public route must not let anyone poke arbitrary invoices or flood the partner.
