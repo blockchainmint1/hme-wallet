@@ -92,7 +92,8 @@ export function thorDepositRequest(quote: ThorCatalogQuote): { to: Address; valu
   const from = THOR_CATALOG[quote.from];
   if (!from || from.kind === "utxo" || !quote.router) throw new Error("Not an EVM THORChain route.");
   assertQuoteFresh(quote);
-  const asset = from.kind === "evm-native" ? zeroAddress : from.contract!;
+  const asset = from.kind === "evm-native" ? zeroAddress : from.contract;
+  if (!asset) throw new Error("Token contract unavailable.");
   return {
     to: quote.router as Address,
     value: from.kind === "evm-native" ? BigInt(quote.rawIn) : 0n,
@@ -158,23 +159,51 @@ export async function executeEvmThorSwap(args: {
   const chainId = from.chain as EvmChainId;
 
   if (from.kind === "evm-token") {
+    if (!from.contract || !quote.router) throw new Error("Token route unavailable.");
     const pub = evmClient(chainId);
-    const allowance = (await pub.readContract({
-      address: from.contract!,
+    const readAllowance = async () => (await pub.readContract({
+      address: from.contract as Address,
       abi: erc20Abi,
       functionName: "allowance",
       args: [account.address as Address, quote.router as Address],
     })) as bigint;
-    if (allowance > 0n) {
-      const reset = thorApprovalRequest(quote, true);
-      await sendEvmTransaction(chainId, walletClient, reset, makeThorGuard(reset));
+    const sendApproval = async (reset: boolean) => {
+      const request = thorApprovalRequest(quote, reset);
+      const guard = makeThorGuard(request);
+      const hash = await sendEvmTransaction(chainId, walletClient, request, (prepared) => {
+        assertQuoteFresh(quote);
+        guard(prepared);
+      });
+      let receipt;
+      try {
+        receipt = await pub.waitForTransactionReceipt({ hash, confirmations: 1, timeout: 120_000 });
+      } catch {
+        throw new Error(`Token approval confirmation could not be verified (${hash}). The swap deposit was not sent. Check the approval before retrying.`);
+      }
+      if (receipt.status !== "success") {
+        throw new Error(`Token approval failed (${hash}). The swap deposit was not sent.`);
+      }
+      assertQuoteFresh(quote);
+      const expected = reset ? 0n : BigInt(quote.rawIn);
+      if (await readAllowance() !== expected) {
+        throw new Error("Confirmed token allowance does not match this swap. The swap deposit was not sent.");
+      }
+    };
+    const allowance = await readAllowance();
+    // An already-confirmed exact approval is safe to reuse after a failed
+    // deposit preparation; never create unnecessary reset/approval sends.
+    if (allowance !== BigInt(quote.rawIn)) {
+      if (allowance > 0n) await sendApproval(true);
+      await sendApproval(false);
     }
-    const approval = thorApprovalRequest(quote);
-    await sendEvmTransaction(chainId, walletClient, approval, makeThorGuard(approval));
   }
 
   const deposit = thorDepositRequest(quote);
-  const hash = await sendEvmTransaction(chainId, walletClient, deposit, makeThorGuard(deposit));
+  const guard = makeThorGuard(deposit);
+  const hash = await sendEvmTransaction(chainId, walletClient, deposit, (prepared) => {
+    assertQuoteFresh(quote);
+    guard(prepared);
+  });
   return { hash };
 }
 

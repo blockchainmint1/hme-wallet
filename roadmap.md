@@ -1,5 +1,9 @@
 # Roadmap
 
+## USDC THORChain send error (Oct 28)
+- [x] Wait for successful approval confirmations and verify exact allowance before preparing the deposit; 72 targeted tests pass, build OK, auditor note delivered
+- [ ] Independent review, tiny funded verification and publication of approval-wait fix (requires auditor and funded device test)
+
 ## Vault THORChain signing preparation (Oct 28)
 - [x] Compare HME Vault commit 5b3dde71: THORChain memos and EVM approvals/deposits explicitly unsupported
 - [x] Wire paired-address desktop quotes, unsigned UTXO requests and proposed EVM review protocol; signed-result verification; no broadcast

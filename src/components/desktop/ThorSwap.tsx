@@ -365,7 +365,7 @@ export function ThorSwap({ utxoSwapOn = true, evmSwapOn = false }: { utxoSwapOn?
           )}
         </div>
 
-        {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
+        {error && <p className="mt-4 break-words text-sm text-destructive">{error}</p>}
 
         <div className="mt-6 flex items-center gap-3">
           <Button
