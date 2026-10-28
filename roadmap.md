@@ -2,7 +2,8 @@
 
 ## USDC THORChain send error (Oct 28)
 - [x] Wait for successful approval confirmations and verify exact allowance before preparing the deposit; 72 targeted tests pass, build OK, auditor note delivered
-- [ ] Independent review, tiny funded verification and publication of approval-wait fix (requires auditor and funded device test)
+- [x] Approve first, then refresh quote before deposit; deposit confirmation shown honestly (76 swap checks pass)
+- [ ] Auditor review of export, publish, ~20 USDC test (exercises reset), then 10,000 USDC
 
 ## Vault THORChain signing preparation (Oct 28)
 - [x] Compare HME Vault commit 5b3dde71: THORChain memos and EVM approvals/deposits explicitly unsupported
