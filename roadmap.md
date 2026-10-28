@@ -1,9 +1,9 @@
 # Roadmap
 
 ## Vault THORChain signing preparation (Oct 28)
-- [ ] Compare current HME Vault signing protocol and supported swap reviews
-- [ ] Wire paired-address desktop quoting and offline swap preparation with frozen intent verification
-- [ ] Run regression and browser checks; deliver auditor handoff
+- [x] Compare HME Vault commit 5b3dde71: THORChain memos and EVM approvals/deposits explicitly unsupported
+- [x] Wire paired-address desktop quotes, unsigned UTXO requests and proposed EVM review protocol; signed-result verification; no broadcast
+- [x] 486 regression tests, build OK, browser live quote + mocked-RPC unsigned QR preparation, zero broadcasts; auditor handoff prepared
 - [ ] Independent coordinated Vault review and tiny funded device tests before enabling broadcast
 
 ## Done: Full THORChain integration on desktop swap page (Oct 28)
