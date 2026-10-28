@@ -171,7 +171,7 @@ export async function fetchCatalogQuote(input: ThorCatalogQuoteInput): Promise<T
     rawIn: rawIn.toString(),
     amountIn,
     destination: input.destination,
-    inbound: from.kind === "utxo" ? inbound.address! : THOR_CATALOG[from.id].kind === "utxo" ? inbound.address! : inbound.address!,
+    inbound: inbound.address!,
     router: from.kind === "utxo" ? null : THOR_EVM_ROUTERS[from.chain as keyof typeof THOR_EVM_ROUTERS],
     memo: q.memo,
     expiry,
