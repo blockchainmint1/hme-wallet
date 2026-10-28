@@ -13,8 +13,8 @@ export const Route = createFileRoute("/desktop/settings")({
   component: DesktopSettings,
 });
 const features: { id: FeatureId; label: string }[] = [
-  { id: "utxoSwap", label: "LTC / DOGE swaps" },
-  { id: "evmSwap", label: "EVM swap visibility · execution paused" },
+  { id: "utxoSwap", label: "BTC / LTC / DOGE swaps" },
+  { id: "evmSwap", label: "EVM swaps · THORChain router only (LI.FI paused)" },
   { id: "sharedWallets", label: "Shared wallet visibility" },
   { id: "confirmLast4", label: "Confirm last 4 of recipient address" },
   { id: "hideSpamTokens", label: "Hide spam tokens" },

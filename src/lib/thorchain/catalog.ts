@@ -48,7 +48,7 @@ export interface ThorAssetMeta {
   decimals: number;
   /** ERC-20 contract for evm-token assets. */
   contract?: Address;
-  /** THORChain's terse memo alias, only where verified live (e.g. "b" for BTC). */
+  /** THORChain's terse gas-asset memo code, as observed in live THORNode memos (b, d, l, e, f, s). */
   terse?: string;
 }
 
@@ -61,11 +61,11 @@ export const THOR_EVM_ROUTERS: Record<ThorEvmChain, Address> = {
 
 export const THOR_CATALOG: Record<ThorAssetId, ThorAssetMeta> = {
   btc: { id: "btc", thorAsset: "BTC.BTC", symbol: "BTC", label: "Bitcoin", chain: "btc", thorChain: "BTC", kind: "utxo", decimals: 8, terse: "b" },
-  doge: { id: "doge", thorAsset: "DOGE.DOGE", symbol: "DOGE", label: "Dogecoin", chain: "doge", thorChain: "DOGE", kind: "utxo", decimals: 8 },
-  ltc: { id: "ltc", thorAsset: "LTC.LTC", symbol: "LTC", label: "Litecoin", chain: "ltc", thorChain: "LTC", kind: "utxo", decimals: 8 },
-  eth: { id: "eth", thorAsset: "ETH.ETH", symbol: "ETH", label: "Ethereum", chain: "eth", thorChain: "ETH", kind: "evm-native", decimals: 18 },
-  "base-eth": { id: "base-eth", thorAsset: "BASE.ETH", symbol: "ETH", label: "ETH on Base", chain: "base", thorChain: "BASE", kind: "evm-native", decimals: 18 },
-  "bsc-bnb": { id: "bsc-bnb", thorAsset: "BSC.BNB", symbol: "BNB", label: "BNB Chain", chain: "bsc", thorChain: "BSC", kind: "evm-native", decimals: 18 },
+  doge: { id: "doge", thorAsset: "DOGE.DOGE", symbol: "DOGE", label: "Dogecoin", chain: "doge", thorChain: "DOGE", kind: "utxo", decimals: 8, terse: "d" },
+  ltc: { id: "ltc", thorAsset: "LTC.LTC", symbol: "LTC", label: "Litecoin", chain: "ltc", thorChain: "LTC", kind: "utxo", decimals: 8, terse: "l" },
+  eth: { id: "eth", thorAsset: "ETH.ETH", symbol: "ETH", label: "Ethereum", chain: "eth", thorChain: "ETH", kind: "evm-native", decimals: 18, terse: "e" },
+  "base-eth": { id: "base-eth", thorAsset: "BASE.ETH", symbol: "ETH", label: "ETH on Base", chain: "base", thorChain: "BASE", kind: "evm-native", decimals: 18, terse: "f" },
+  "bsc-bnb": { id: "bsc-bnb", thorAsset: "BSC.BNB", symbol: "BNB", label: "BNB Chain", chain: "bsc", thorChain: "BSC", kind: "evm-native", decimals: 18, terse: "s" },
   "usdc-eth": { id: "usdc-eth", thorAsset: "ETH.USDC-0XA0B86991C6218B36C1D19D4A2E9EB0CE3606EB48", symbol: "USDC", label: "USDC on Ethereum", chain: "eth", thorChain: "ETH", kind: "evm-token", decimals: 6, contract: getAddress("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48") },
   "usdc-base": { id: "usdc-base", thorAsset: "BASE.USDC-0X833589FCD6EDB6E08F4C7C32D4F71B54BDA02913", symbol: "USDC", label: "USDC on Base", chain: "base", thorChain: "BASE", kind: "evm-token", decimals: 6, contract: getAddress("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913") },
   "usdc-bsc": { id: "usdc-bsc", thorAsset: "BSC.USDC-0X8AC76A51CC950D9822D68B83FE1AD97B32CD580D", symbol: "USDC", label: "USDC on BNB Chain", chain: "bsc", thorChain: "BSC", kind: "evm-token", decimals: 6, contract: getAddress("0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d") },
@@ -177,6 +177,38 @@ export function validateSwapMemo(
     throw new Error("THORChain minimum does not protect the quoted payout.");
   }
   return minimum.toString();
+}
+
+/**
+ * Build the memo this wallet actually signs from its own validated parts —
+ * never THORNode's memo string. EVM sources (no size limit) always use the
+ * full contract-suffixed asset. UTXO sources use the shortest form that fits
+ * THORChain's 80-byte OP_RETURN: the terse gas code, the full asset, or — for
+ * tokens only — the short ticker form, but only when the caller has verified
+ * it matches exactly one live pool (`shortIsUnique`).
+ */
+export const OP_RETURN_MEMO_MAX = 80;
+export function buildSwapMemo(
+  from: ThorAssetMeta,
+  to: ThorAssetMeta,
+  destination: string,
+  minimumOut: string,
+  shortIsUnique = false,
+): string {
+  if (!positiveInteger(minimumOut)) throw new Error("Invalid THORChain minimum payout.");
+  validateThorDestination(to, destination);
+  const tail = `:${destination}:${minimumOut}/1/0`;
+  if (from.kind !== "utxo") return `=:${to.thorAsset}${tail}`;
+  const candidates = [
+    ...(to.terse ? [to.terse] : []),
+    to.thorAsset,
+    ...(to.kind === "evm-token" && shortIsUnique ? [to.thorAsset.split("-")[0]!] : []),
+  ];
+  for (const asset of candidates) {
+    const memo = `=:${asset}${tail}`;
+    if (new TextEncoder().encode(memo).length <= OP_RETURN_MEMO_MAX) return memo;
+  }
+  throw new Error(`This route's swap instruction is too long for a ${from.symbol} transaction. Pick another route.`);
 }
 
 /** A validated, frozen quote ready for review and signing. */

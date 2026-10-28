@@ -11,6 +11,7 @@ import {
   parseAssetAmount,
   toThorUnits,
   validateSwapMemo,
+  buildSwapMemo,
   validateThorDestination,
   type ThorAssetId,
   type ThorAssetMeta,
@@ -159,6 +160,11 @@ export async function fetchCatalogQuote(input: ThorCatalogQuoteInput): Promise<T
     throw new Error("THORChain gave an expiring quote. Try again.");
   }
   const minimumOut = validateSwapMemo(q.memo, to, input.destination, q.expected_amount_out, toleranceBps);
+  // Sign our own memo, rebuilt from validated parts, never THORNode's string.
+  const shortForm = to.thorAsset.split("-")[0]!.toUpperCase();
+  const shortIsUnique =
+    [...state.live].filter((a) => a.split("-")[0] === shortForm).length === 1;
+  const memo = buildSwapMemo(from, to, input.destination, minimumOut, shortIsUnique);
   const seconds =
     typeof q.total_swap_seconds === "number" ? q.total_swap_seconds
     : typeof q.outbound_delay_seconds === "number" ? q.outbound_delay_seconds
@@ -173,7 +179,7 @@ export async function fetchCatalogQuote(input: ThorCatalogQuoteInput): Promise<T
     destination: input.destination,
     inbound: inbound.address!,
     router: from.kind === "utxo" ? null : THOR_EVM_ROUTERS[from.chain as keyof typeof THOR_EVM_ROUTERS],
-    memo: q.memo,
+    memo,
     expiry,
     expectedOut: q.expected_amount_out,
     minimumOut,

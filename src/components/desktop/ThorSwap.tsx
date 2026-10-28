@@ -58,6 +58,7 @@ import {
 } from "@/lib/thorchain/execute";
 import type { ThorUtxoCoin } from "@/lib/thorchain/catalog";
 import { VaultThorSwap } from "./VaultThorSwap";
+import { assertThorchainEvmExecution } from "@/lib/security/execution-policy";
 
 const UTXO_SCANS: Record<ThorUtxoCoin, (root: never) => Promise<UtxoAccountLike & { nextReceiveAddress: string }>> = {
   btc: (root) => scanBtcAccount(root, BTC_DEFAULT_KIND) as never,
@@ -75,7 +76,7 @@ function fmtSeconds(s: number | null): string {
   return `~${Math.round(s / 60)} min`;
 }
 
-export function ThorSwap() {
+export function ThorSwap({ utxoSwapOn = true, evmSwapOn = false }: { utxoSwapOn?: boolean; evmSwapOn?: boolean } = {}) {
   const { root, unlocked, activeProfileId } = useWallet();
   const qc = useQueryClient();
   const fetchRoutes = useServerFn(getThorCatalogRoutes);
@@ -87,8 +88,13 @@ export function ThorSwap() {
 
   const routes = useQuery({ queryKey: ["thor-catalog-routes"], queryFn: () => fetchRoutes(), staleTime: 5 * 60_000 });
   const available = routes.data ?? [];
+  // Pay-with options follow the desktop toggles: BTC/LTC/DOGE sources need
+  // the UTXO swap toggle, ETH/Base/BNB sources need the EVM swap toggle.
+  const sourceAllowed = (id: ThorAssetId) =>
+    THOR_CATALOG[id].kind === "utxo" ? utxoSwapOn : evmSwapOn;
+  const payable = available.filter(sourceAllowed);
 
-  const [from, setFrom] = useState<ThorAssetId>("usdc-eth");
+  const [from, setFrom] = useState<ThorAssetId>(evmSwapOn || !utxoSwapOn ? "usdc-eth" : "doge");
   const [to, setTo] = useState<ThorAssetId>("btc");
   const [amount, setAmount] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -166,7 +172,7 @@ export function ThorSwap() {
 
   const quote = useQuery({
     queryKey: ["thor-catalog-quote", from, to, debounced, destination],
-    enabled: isLocalSigner && available.includes(from) && available.includes(to) && rawIn > 0n && destinationValid,
+    enabled: isLocalSigner && available.includes(from) && sourceAllowed(from) && available.includes(to) && rawIn > 0n && destinationValid,
     queryFn: () => fetchQuote({ data: { from, to, amount: debounced, destination } }),
     staleTime: 30_000,
     retry: 0,
@@ -210,6 +216,7 @@ export function ThorSwap() {
       assertQuoteFresh(q);
       const ok = await confirmWithBiometric(`Confirm swapping ${fromMeta.symbol}`);
       if (!ok) throw new Error("Confirmation was cancelled. Nothing was sent.");
+      if (!sourceAllowed(q.from)) throw new Error("Swaps from this asset are turned off in desktop settings. Nothing was sent.");
       let txid: string;
       if (utxoSource) {
         if (!sourceAccount.data) throw new Error("Source account is still loading.");
@@ -223,6 +230,7 @@ export function ThorSwap() {
         const walletClient = createWalletClient({
           account, chain: EVM_CHAINS[chain].viemChain, transport: http(`/api/evm/${chain}`),
         });
+        assertThorchainEvmExecution(evmSwapOn);
         const result = await executeEvmThorSwap({ quote: q, walletClient });
         txid = result.hash;
       }
@@ -296,7 +304,7 @@ export function ThorSwap() {
             <Select value={from} onValueChange={(v) => pickFrom(v as ThorAssetId)}>
               <SelectTrigger id="thor-from" aria-label="Pay with"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {available.map((id) => (
+                {payable.map((id) => (
                   <SelectItem key={id} value={id}>{THOR_CATALOG[id].label}</SelectItem>
                 ))}
               </SelectContent>

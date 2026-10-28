@@ -31,7 +31,7 @@ function Page() {
             </Button>
           </div>
         ) : (
-          <ThorSwap key={d.activeProfileId} />
+          <ThorSwap key={d.activeProfileId} utxoSwapOn={utxoSwapOn} evmSwapOn={evmSwapOn} />
         )}
       </div>
     </>
