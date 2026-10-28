@@ -157,3 +157,20 @@ describe("buildSwapMemo (auditor 2026-10-28)", () => {
     expect(buildSwapMemo(C2.btc, C2["usdc-base"], evm, "99000", true)).toBe(`=:BASE.USDC:${evm}:99000/1/0`);
   });
 });
+
+describe("token decimals match on-chain decimals()", () => {
+  it("pins every stablecoin's decimals", async () => {
+    const { THOR_CATALOG: A } = await import("./catalog");
+    expect(A["usdc-eth"].decimals).toBe(6);
+    expect(A["usdc-base"].decimals).toBe(6);
+    expect(A["usdt-eth"].decimals).toBe(6);
+    expect(A["usdc-bsc"].decimals).toBe(18);
+    expect(A["usdt-bsc"].decimals).toBe(18);
+  });
+  it("100 USDC on BNB Chain is 100e18 raw and 100e8 THOR units", async () => {
+    const { THOR_CATALOG: A, parseAssetAmount, toThorUnits } = await import("./catalog");
+    const raw = parseAssetAmount("100", A["usdc-bsc"].decimals);
+    expect(raw).toBe(100n * 10n ** 18n);
+    expect(toThorUnits(raw, 18)).toBe("10000000000");
+  });
+});
