@@ -11,6 +11,7 @@ import {
   parseAssetAmount,
   toThorUnits,
   validateSwapMemo,
+  buildSwapMemo,
   validateThorDestination,
   type ThorAssetId,
   type ThorAssetMeta,
