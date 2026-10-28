@@ -48,6 +48,8 @@ export interface ThorAssetMeta {
   decimals: number;
   /** ERC-20 contract for evm-token assets. */
   contract?: Address;
+  /** THORChain's terse memo alias, only where verified live (e.g. "b" for BTC). */
+  terse?: string;
 }
 
 /** Pinned THORChain routers, verified against live inbound_addresses. */
@@ -58,7 +60,7 @@ export const THOR_EVM_ROUTERS: Record<ThorEvmChain, Address> = {
 };
 
 export const THOR_CATALOG: Record<ThorAssetId, ThorAssetMeta> = {
-  btc: { id: "btc", thorAsset: "BTC.BTC", symbol: "BTC", label: "Bitcoin", chain: "btc", thorChain: "BTC", kind: "utxo", decimals: 8 },
+  btc: { id: "btc", thorAsset: "BTC.BTC", symbol: "BTC", label: "Bitcoin", chain: "btc", thorChain: "BTC", kind: "utxo", decimals: 8, terse: "b" },
   doge: { id: "doge", thorAsset: "DOGE.DOGE", symbol: "DOGE", label: "Dogecoin", chain: "doge", thorChain: "DOGE", kind: "utxo", decimals: 8 },
   ltc: { id: "ltc", thorAsset: "LTC.LTC", symbol: "LTC", label: "Litecoin", chain: "ltc", thorChain: "LTC", kind: "utxo", decimals: 8 },
   eth: { id: "eth", thorAsset: "ETH.ETH", symbol: "ETH", label: "Ethereum", chain: "eth", thorChain: "ETH", kind: "evm-native", decimals: 18 },
@@ -149,13 +151,12 @@ export function validateSwapMemo(
   }
   const parts = memo.split(":");
   const [action, asset, payout, limit] = parts;
-  // THORChain memos may use the short asset form (BASE.USDC) or the terse
-  // symbol (b for BTC.BTC) instead of the full contract-suffixed form. The
-  // bare symbol is only accepted when it is unique across our catalog, so it
-  // can never resolve to a different asset (USDC/USDT stay full-or-short only).
+  // THORChain memos may use the short asset form (BASE.USDC) or a verified
+  // terse alias (b for BTC.BTC) instead of the full contract-suffixed form.
+  // Only explicit per-asset aliases are accepted, so a memo can never resolve
+  // to a different asset.
   const shortAsset = to.thorAsset.split("-")[0]!;
-  const symbolUnique = THOR_ASSET_IDS.filter((id) => THOR_CATALOG[id].symbol === to.symbol).length === 1;
-  const accepted = [to.thorAsset, shortAsset, ...(symbolUnique ? [to.symbol] : [])];
+  const accepted = [to.thorAsset, shortAsset, ...(to.terse ? [to.terse] : [])];
   const assetOk = accepted.some((a) => a.toUpperCase() === (asset ?? "").toUpperCase());
   if (
     parts.length !== 4 ||
