@@ -53,6 +53,7 @@ import {
   THOR_UTXO_COINS,
   executeEvmThorSwap,
   executeUtxoThorSwap,
+  waitForThorDeposit,
   planUtxoThorSwap,
   type UtxoAccountLike,
 } from "@/lib/thorchain/execute";
@@ -102,7 +103,7 @@ export function ThorSwap({ utxoSwapOn = true, evmSwapOn = false }: { utxoSwapOn?
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sent, setSent] = useState<{ txid: string; quote: ThorCatalogQuote } | null>(null);
+  const [sent, setSent] = useState<{ txid: string; quote: ThorCatalogQuote; state: "waiting" | "confirmed" | "pending" | "broadcast" } | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(amount), 500);
@@ -218,6 +219,8 @@ export function ThorSwap({ utxoSwapOn = true, evmSwapOn = false }: { utxoSwapOn?
       if (!ok) throw new Error("Confirmation was cancelled. Nothing was sent.");
       if (!sourceAllowed(q.from)) throw new Error("Swaps from this asset are turned off in desktop settings. Nothing was sent.");
       let txid: string;
+      let finalQuote = q;
+      let depositState: "confirmed" | "pending" | "broadcast" = "broadcast";
       if (utxoSource) {
         if (!sourceAccount.data) throw new Error("Source account is still loading.");
         const result = await executeUtxoThorSwap({
@@ -231,8 +234,15 @@ export function ThorSwap({ utxoSwapOn = true, evmSwapOn = false }: { utxoSwapOn?
           account, chain: EVM_CHAINS[chain].viemChain, transport: http(`/api/evm/${chain}`),
         });
         assertThorchainEvmExecution(evmSwapOn);
-        const result = await executeEvmThorSwap({ quote: q, walletClient });
+        const result = await executeEvmThorSwap({
+          quote: q,
+          walletClient,
+          refreshQuote: () => fetchQuote({ data: { from: q.from, to: q.to, amount: debounced, destination: q.destination } }),
+        });
         txid = result.hash;
+        finalQuote = result.quote;
+        setSent({ txid, quote: finalQuote, state: "waiting" });
+        depositState = await waitForThorDeposit(chain, txid);
       }
       hapticSuccess();
       recordSwap({
@@ -241,17 +251,18 @@ export function ThorSwap({ utxoSwapOn = true, evmSwapOn = false }: { utxoSwapOn?
         provider: "thorchain",
         orderId: null,
         token: null,
-        amountSats: Number(q.amountIn),
-        amountOut: thorUnitsToNumber(q.expectedOut),
+        amountSats: Number(finalQuote.amountIn),
+        amountOut: thorUnitsToNumber(finalQuote.expectedOut),
         dest: { asset: toMeta.thorAsset, symbol: toMeta.symbol, chain: toMeta.chain, label: toMeta.label },
-        destination: q.destination,
+        destination: finalQuote.destination,
         profileId: activeProfileId,
       });
       void qc.invalidateQueries({ queryKey: ["thor-src-account"] });
       void qc.invalidateQueries({ queryKey: ["thor-src-evm"] });
-      setSent({ txid, quote: q });
+      setSent({ txid, quote: finalQuote, state: depositState });
     } catch (err) {
       hapticError();
+      setSent(null);
       setError(friendlyBroadcastError(err));
     } finally {
       setBusy(false);
@@ -275,8 +286,16 @@ export function ThorSwap({ utxoSwapOn = true, evmSwapOn = false }: { utxoSwapOn?
       : EVM_CHAINS[THOR_CATALOG[sent.quote.from].chain as EvmChainId].explorerTx(sent.txid);
     return (
       <div className="py-8">
-        <h2 className="text-xl font-semibold">Swap sent</h2>
+        <h2 className="text-xl font-semibold">
+          {sent.state === "waiting" ? "Waiting for deposit to confirm…"
+            : sent.state === "confirmed" ? "Deposit confirmed"
+            : sent.state === "pending" ? "Deposit sent — not confirmed yet"
+            : "Swap sent"}
+        </h2>
         <p className="mt-3 max-w-xl text-sm text-muted-foreground">
+          {sent.state === "waiting" ? "Your deposit was broadcast. Don't close this page until it confirms. "
+            : sent.state === "pending" ? "We couldn't see the confirmation yet; check the deposit link before trying again. "
+            : ""}
           {fmtUnits(sent.quote.amountIn)} {THOR_CATALOG[sent.quote.from].symbol} is on its way to THORChain.
           Expected payout: about {fmtUnits(sent.quote.expectedOut)} {THOR_CATALOG[sent.quote.to].symbol} to{" "}
           <span className="font-mono text-xs">{sent.quote.destination}</span>, usually within{" "}
