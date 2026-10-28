@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeFunctionData, erc20Abi } from "viem";
+import { decodeFunctionData, erc20Abi, getAddress } from "viem";
 import { assertThorBtcExecution, THOR_USDC, thorBtcApproval, thorBtcDeposit, thorBtcMemoMinimum, thorRouterAbi, usdcRaw, validateThorBtcIntent, validateThorBtcQuote, type ThorBtcQuote } from "./usdc-btc";
 const destination = "bc1qup236qj2mr87ml9388ydm33tuhtdckk33j68qx";
 const now = 1793174400000;
@@ -12,7 +12,7 @@ describe("Direct THORChain USDC to Bitcoin", () => {
   it("binds actual deposit ABI to USDC raw units, vault, memo and expiry", () => {
     const q = quote(); const tx = thorBtcDeposit(q, now); const decoded = decodeFunctionData({ abi: thorRouterAbi, data: tx.data });
     expect(tx.to).toBe(THOR_USDC.eth.router); expect(tx.value).toBe(0n);
-    expect(decoded.functionName).toBe("depositWithExpiry"); expect(decoded.args).toEqual([q.inbound, THOR_USDC.eth.token, 1000123456n, q.memo, BigInt(q.expiry)]);
+    expect(decoded.functionName).toBe("depositWithExpiry"); expect(decoded.args).toEqual([getAddress(q.inbound), THOR_USDC.eth.token, 1000123456n, q.memo, BigInt(q.expiry)]);
   });
   it("binds Base deposit to Base USDC and router", () => {
     const q = quote(); const base = { ...q, intent: { ...q.intent, network: "base" as const }, router: THOR_USDC.base.router };
