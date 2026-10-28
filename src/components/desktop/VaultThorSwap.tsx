@@ -75,9 +75,8 @@ export function VaultThorSwap({ profileId }: { profileId: string }) {
     if (!prepared || processing.current || verified) return;
     let signed: string | null;
     try {
-      const result = collector.current.add(text);
-      setProgress({ have: result.have, total: result.total, received: collector.current.receivedParts });
-      signed = result.done ? collector.current.result() : null;
+      signed = collector.current.add(text);
+      setProgress({ ...collector.current.progress, received: collector.current.receivedParts });
     } catch (e) { resetScan(); setScanError(e instanceof Error ? e.message : "Damaged QR transfer. Start again."); return; }
     if (!signed) return;
     processing.current = true; setBusy(true);
