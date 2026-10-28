@@ -129,9 +129,11 @@ describe("planUtxoThorSwap", () => {
     expect(planUtxoThorSwap("btc", utxos, 200_000, 10)).toBeNull();
   });
   it("accounts for the OP_RETURN memo size", () => {
-    const plan = planUtxoThorSwap("doge", utxos, 80_000, 1000);
-    // 10 overhead + 148 in + 68 out + 90 memo = 316 vB → 316,000 sats at 1000 sat/vB
+    // 10 overhead + 148 in + 68 out + 90 memo = 316 vB → 316,000 sats at 1000 sat/vB,
+    // so 150,000 sats of inputs cannot cover an 80,000-sat swap.
+    expect(planUtxoThorSwap("doge", utxos, 80_000, 1000)).toBeNull();
+    const big = [{ txid: "c".repeat(64), vout: 0, value: 500_000 }];
+    const plan = planUtxoThorSwap("doge", big, 80_000, 1000);
     expect(plan!.feeSats).toBe(316_000);
-    expect(plan).toBeNull();
   });
 });
