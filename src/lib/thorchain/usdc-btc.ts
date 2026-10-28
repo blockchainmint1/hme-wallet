@@ -42,7 +42,7 @@ export function thorBtcMemoMinimum(memo: string, destination: string, expected: 
   const parts = memo.split(":");
   const [action, asset, payout, limit] = parts;
   if (parts.length !== 4 || !["=", "SWAP", "s"].includes(action ?? "") || !["B", "BTC", "BTC.BTC"].includes((asset ?? "").toUpperCase()) || payout !== destination) throw new Error("THORChain memo changed the Bitcoin destination, asset or fee recipient.");
-  const match = /^([1-9]\d{0,77})(?:\/1\/(0|[1-9]\d{0,9}))?$/.exec(limit ?? "");
+  const match = /^([1-9]\d{0,77})\/1\/(0)$/.exec(limit ?? "");
   if (!match?.[1]) throw new Error("THORChain memo has an unsupported price limit or streaming format.");
   const minimum = BigInt(match[1]);
   const expectedSats = BigInt(expected);

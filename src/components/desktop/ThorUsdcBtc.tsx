@@ -42,13 +42,13 @@ export function ThorUsdcBtc({ network }: { network: ThorUsdcNetwork }) {
     </form>
     {quote && <div className="mt-8 border-t border-border pt-6"><h3 className="font-semibold">{expired ? "Quote expired" : "THORChain quote"}</h3><dl className="mt-4 space-y-3 text-sm">
       <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Estimated receive</dt><dd className="font-semibold">{btc(quote.expectedSats)} BTC</dd></div>
-      <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Minimum receive · 1% protection</dt><dd>{btc(quote.minimumSats)} BTC</dd></div>
+      <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Requested minimum · 99% of quote</dt><dd>{btc(quote.minimumSats)} BTC</dd></div>
       <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Exchange + BTC payout fees, included</dt><dd>{btc(quote.feeSats)} BTC</dd></div>
       <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Honest Money fee</dt><dd>0 USDC</dd></div>
       <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Estimated swap time</dt><dd>{quote.seconds === null ? "Unavailable" : `${Math.ceil(quote.seconds)} seconds`}</dd></div>
       <div><dt className="text-muted-foreground">BTC destination</dt><dd className="mt-1 break-all font-mono text-xs">{quote.intent.destination}</dd></div>
     </dl><p className="mt-4 text-xs text-muted-foreground">Ethereum / Base gas is additional and paid in ETH. The quote is not a gas estimate.</p>
-    <Button className="mt-6" disabled>Swap unavailable — awaiting independent review</Button></div>}
+    <p className="mt-3 text-xs text-muted-foreground">This estimate answers your amount request; THORChain does not echo that amount in its response. It is not a verified payment or guaranteed payout.</p><Button className="mt-6" disabled>Swap unavailable — awaiting independent review</Button></div>}
     <p className="mt-6 border-t border-border pt-4 text-sm text-muted-foreground">Quote only. No USDC approval, order or payment is created. Direct THORChain spending is awaiting independent review and device testing.</p>
   </div>;
 }

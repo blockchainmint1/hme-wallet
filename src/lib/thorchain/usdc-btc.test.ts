@@ -27,6 +27,7 @@ describe("Direct THORChain USDC to Bitcoin", () => {
   it("enforces a 1% after-fee minimum", () => { expect(thorBtcMemoMinimum(quote().memo, destination, "1000000", 1)).toBe("990000"); expect(() => thorBtcMemoMinimum(`=:b:${destination}:989999/1/0`, destination, "1000000", 1)).toThrow(); });
   it.each([`=:b:${destination}:990000/1/0:affiliate:25`, `=:ETH.ETH:${destination}:990000`, `=:b:${destination}:0`, `=:b:${destination}:990000/2/0`, `=:b:${destination}:990000/1/2`, `=:b:${destination}:1000001`, `=:b:${destination}:99e4`])("rejects altered or opaque memo %s", memo => { expect(() => thorBtcMemoMinimum(memo, destination, "1000000", 1)).toThrow(); });
   it("rejects redirected destination", () => { expect(() => thorBtcMemoMinimum(quote().memo, "1BoatSLRHtKNngkdXEeobR76b53LETtpyT", "1000000", 1)).toThrow(); });
+  it("requires the exact automatic single-block streaming request even if the provider allows more", () => { expect(() => thorBtcMemoMinimum(`=:b:${destination}:990000/1/1`, destination, "1000000", 100)).toThrow(); });
   it("rejects a changed router", () => { expect(() => validateThorBtcQuote({ ...quote(), router: THOR_USDC.base.router }, now)).toThrow(); });
   it("rejects expiring quotes", () => { expect(() => validateThorBtcQuote({ ...quote(), expiry: now / 1000 + 60 }, now)).toThrow(); });
   it("rejects stale observations", () => { expect(() => validateThorBtcQuote(quote(), now + 60_001)).toThrow(); });
