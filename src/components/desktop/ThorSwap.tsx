@@ -57,6 +57,7 @@ import {
   type UtxoAccountLike,
 } from "@/lib/thorchain/execute";
 import type { ThorUtxoCoin } from "@/lib/thorchain/catalog";
+import { VaultThorSwap } from "./VaultThorSwap";
 
 const UTXO_SCANS: Record<ThorUtxoCoin, (root: never) => Promise<UtxoAccountLike & { nextReceiveAddress: string }>> = {
   btc: (root) => scanBtcAccount(root, BTC_DEFAULT_KIND) as never,
@@ -81,6 +82,7 @@ export function ThorSwap() {
   const fetchQuote = useServerFn(getThorCatalogQuote);
 
   const fingerprint = root ? rootFingerprintHex(root) : null;
+  const isLocalSigner = !!root && unlocked?.mode !== "vault" && unlocked?.mode !== "keyonly";
   const evmAddress = useMemo(() => (root ? deriveEvmAccount(root).address : null), [root]);
 
   const routes = useQuery({ queryKey: ["thor-catalog-routes"], queryFn: () => fetchRoutes(), staleTime: 5 * 60_000 });
@@ -108,8 +110,8 @@ export function ThorSwap() {
   const utxoSource = fromMeta.kind === "utxo" ? (fromMeta.chain as ThorUtxoCoin) : null;
   const sourceAccount = useQuery({
     queryKey: ["thor-src-account", utxoSource, fingerprint],
-    enabled: !!root && !!utxoSource,
-    queryFn: () => UTXO_SCANS[utxoSource!](root as never),
+    enabled: isLocalSigner && !!utxoSource,
+    queryFn: () => { if (!utxoSource || !root) throw new Error("Source unavailable."); return UTXO_SCANS[utxoSource](root as never); },
     staleTime: 30_000,
   });
   const sourceFees = useQuery({
@@ -120,7 +122,7 @@ export function ThorSwap() {
   });
   const evmSourceBalance = useQuery({
     queryKey: ["thor-src-evm", from, evmAddress],
-    enabled: !!evmAddress && fromMeta.kind !== "utxo",
+    enabled: isLocalSigner && !!evmAddress && fromMeta.kind !== "utxo",
     queryFn: async () => {
       const pub = evmClient(fromMeta.chain as EvmChainId);
       const native = await pub.getBalance({ address: evmAddress! });
@@ -138,8 +140,8 @@ export function ThorSwap() {
   const utxoDest = toMeta.kind === "utxo" ? (toMeta.chain as ThorUtxoCoin) : null;
   const destScan = useQuery({
     queryKey: ["thor-dest-addr", utxoDest, fingerprint],
-    enabled: !!root && !!utxoDest,
-    queryFn: () => UTXO_SCANS[utxoDest!](root as never),
+    enabled: isLocalSigner && !!utxoDest,
+    queryFn: () => { if (!utxoDest || !root) throw new Error("Destination unavailable."); return UTXO_SCANS[utxoDest](root as never); },
     staleTime: 60_000,
   });
   const autoDestination = toMeta.kind === "utxo" ? destScan.data?.nextReceiveAddress ?? null : evmAddress;
@@ -164,7 +166,7 @@ export function ThorSwap() {
 
   const quote = useQuery({
     queryKey: ["thor-catalog-quote", from, to, debounced, destination],
-    enabled: available.includes(from) && available.includes(to) && rawIn > 0n && destinationValid,
+    enabled: isLocalSigner && available.includes(from) && available.includes(to) && rawIn > 0n && destinationValid,
     queryFn: () => fetchQuote({ data: { from, to, amount: debounced, destination } }),
     staleTime: 30_000,
     retry: 0,
@@ -200,7 +202,7 @@ export function ThorSwap() {
 
   async function send() {
     const q = quote.data;
-    if (!q || !root || !unlocked || busy) return;
+    if (!q || !root || !unlocked || !isLocalSigner || busy) return;
     setConfirmOpen(false);
     setBusy(true);
     setError(null);
@@ -249,15 +251,7 @@ export function ThorSwap() {
   }
 
   if (unlocked?.mode === "vault") {
-    return (
-      <div className="py-8">
-        <h2 className="text-xl font-semibold">Cold Storage swaps are paused</h2>
-        <p className="mt-3 max-w-xl text-sm text-muted-foreground">
-          The Vault device's readable swap approval, transaction ordering and final safety checks need
-          coordinated corrections before another swap can be signed. Switch to a hot wallet profile to swap.
-        </p>
-      </div>
-    );
+    return <VaultThorSwap key={activeProfileId} profileId={activeProfileId} />;
   }
   if (unlocked?.mode === "keyonly") {
     return (

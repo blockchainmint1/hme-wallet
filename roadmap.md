@@ -1,5 +1,11 @@
 # Roadmap
 
+## Vault THORChain signing preparation (Oct 28)
+- [x] Compare HME Vault commit 5b3dde71: THORChain memos and EVM approvals/deposits explicitly unsupported
+- [x] Wire paired-address desktop quotes, unsigned UTXO requests and proposed EVM review protocol; signed-result verification; no broadcast
+- [x] 486 regression tests, build OK, browser live quote + mocked-RPC unsigned QR preparation, zero broadcasts; auditor handoff prepared
+- [ ] Independent coordinated Vault review and tiny funded device tests before enabling broadcast
+
 ## Done: Full THORChain integration on desktop swap page (Oct 28)
 - [x] Route catalog: 11 assets / 110 routes (BTC, DOGE, LTC, ETH, Base ETH, BNB, USDC/USDT on ETH/Base/BSC); TXC excluded (no THORChain pool), XRP excluded (no XRP support in wallet)
 - [x] Desktop swap page rebuilt: source/destination pickers, auto-filled payout address, live quotes, min receive, fees, ETA, recent-swap tracking

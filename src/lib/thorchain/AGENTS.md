@@ -6,7 +6,7 @@
 - Amounts are bigint-only and capped at THORChain's 1e8 precision, so displayed = quoted = signed. Why: no float rounding can skim value.
 - EVM execution (`execute.ts`) rebuilds calldata from the frozen quote and enforces it with a `beforeSign` guard on every signing attempt; ERC-20 sources approve the exact quoted amount (resetting stale allowances first), never unlimited. Why: a tampered request can never be signed.
 - UTXO execution reuses the chain builders with the memo in an OP_RETURN (80-byte standardness limit; over-long memos refuse the route). Why: the memo is the swap instruction.
-- Vault profiles stay blocked from swaps; phone keeps the existing LTC/DOGE multi-provider screen. Why: offline swap signing needs the coordinated Vault corrections first.
+- Vault profiles may quote and prepare review-only requests through VaultThorSwap; no Vault broadcast path exists and phone swaps remain blocked. Why: current offline signer rejects swap memos and approvals, requiring coordinated protocol review and release acceptance.
 
 ## Legacy LTC/DOGE phone flow
 - `thornode.server.ts` / `swap.functions.ts` / `assets.ts` serve the phone's multi-provider screen; quotes use `liquidity_tolerance_bps` against expected after-fee output. Why: liquidity fees must not consume price protection or reject valid streaming quotes.

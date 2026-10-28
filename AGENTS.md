@@ -48,7 +48,7 @@ Registry/Hub use ecosystem-credential.server (current per-site HME convention); 
 - Partners pay via `/api/public/card/pay` signed with `HME_ECOSYSTEM`; over-limit taps go to Telegram approvers via `/api/public/telegram/webhook`. Owner actions are wallet-signed envelopes, never accounts. Why: no extra service and no email logins.
 
 ## Vault wallets (offline signing via HME Vault)
-- Read `src/lib/vault-link/AGENTS.md` for signing rules; TSD uses a shared token-aware flow. Cold Storage reads explicit-profile public stores without switching and rejects failed scans. Why: protect wallets.
+- Read `src/lib/vault-link/AGENTS.md`: TSD is token-aware; THORChain Vault preparation never broadcasts. Cold Storage reads explicit profiles without switching and rejects failed scans. Why: protect wallets.
 - Swap history retains key/profile ownership (legacy: payout address). Review records instant orders opened/not-sent with expiry; broadcast upgrades matching profile/provider/order; only txid rows poll. Why: no invented payments or cross-wallet records.
 
 ## Security boundaries
