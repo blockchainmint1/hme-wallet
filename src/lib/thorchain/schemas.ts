@@ -15,6 +15,10 @@ export const thorQuoteInput = z.object({
 
 export type ThorQuoteInput = z.infer<typeof thorQuoteInput>;
 
+// EVM deposit hashes carry a 0x prefix; THORNode tracks them without it.
 export const thorStatusInput = z.object({
-  txid: z.string().regex(/^[0-9a-fA-F]{64}$/),
+  txid: z
+    .string()
+    .regex(/^(0x)?[0-9a-fA-F]{64}$/)
+    .transform((s) => s.replace(/^0x/i, "").toUpperCase()),
 });
