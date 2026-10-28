@@ -752,7 +752,7 @@ function RecentSwaps({
 }
 
 function SavedSwapRow({ swap: s, profileId, onOpen }: { swap: SavedSwap; profileId: string; onOpen: (s: SavedSwap) => void }) {
-  const cfg = UTXO_SWAP_COINS[s.coin];
+  const cfg = UTXO_SWAP_COINS[s.coin as UtxoSwapCoin];
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { if (s.lifecycle !== "opened") return; const timer = setInterval(() => setNow(Date.now()), 60_000); return () => clearInterval(timer); }, [s.lifecycle]);
   const opened = openedSwapState(s, now);
