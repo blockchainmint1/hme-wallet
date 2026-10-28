@@ -24,7 +24,7 @@ const NODES = [
 /** Transient node states worth retrying on another endpoint. */
 const RETRYABLE = /invalid height|context did not contain|unavailable|timeout|fetch|abort|502|503/i;
 
-async function nodeGet<T>(path: string): Promise<T> {
+export async function nodeGet<T>(path: string): Promise<T> {
   let lastErr: unknown = null;
   for (const base of NODES) {
     try {

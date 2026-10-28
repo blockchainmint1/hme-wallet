@@ -582,7 +582,7 @@ function UtxoSwapInner({ coin, backTo }: { coin: UtxoSwapCoin; backTo: "/wallet"
 
             {evmAddress && (
               <p className="text-xs text-muted-foreground">
-                Payout address ({dest ? EVM_CHAINS[dest.chain].name : "EVM"}):{" "}
+                Payout address ({dest ? (EVM_CHAINS as Record<string, { name: string }>)[dest.chain]?.name ?? "EVM" : "EVM"}):{" "}
                 <code className="font-mono break-all">{evmAddress}</code>
               </p>
             )}
@@ -752,7 +752,7 @@ function RecentSwaps({
 }
 
 function SavedSwapRow({ swap: s, profileId, onOpen }: { swap: SavedSwap; profileId: string; onOpen: (s: SavedSwap) => void }) {
-  const cfg = UTXO_SWAP_COINS[s.coin];
+  const cfg = UTXO_SWAP_COINS[s.coin as UtxoSwapCoin];
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { if (s.lifecycle !== "opened") return; const timer = setInterval(() => setNow(Date.now()), 60_000); return () => clearInterval(timer); }, [s.lifecycle]);
   const opened = openedSwapState(s, now);
@@ -768,7 +768,7 @@ function SavedSwapRow({ swap: s, profileId, onOpen }: { swap: SavedSwap; profile
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="text-sm font-medium">
-                {cfg.format(s.amountSats)} →{" "}
+                {cfg ? cfg.format(s.amountSats) : `${(s.amountSats / 100_000_000).toLocaleString(undefined, { maximumFractionDigits: 8 })} ${s.coin.toUpperCase()}`} →{" "}
                 {s.amountOut.toLocaleString(undefined, { maximumFractionDigits: 2 })}{" "}
                 {s.dest.symbol}
               </span>
@@ -900,11 +900,11 @@ function SwapProgress({
                 </a>
               </>
             )}
-            {status.data?.outboundTxid && (
+            {status.data?.outboundTxid && (EVM_CHAINS as Record<string, { explorerTx: (h: string) => string }>)[dest.chain] && (
               <>
                 <br />
                 <a
-                  href={EVM_CHAINS[dest.chain].explorerTx(
+                  href={(EVM_CHAINS as Record<string, { explorerTx: (h: string) => string }>)[dest.chain]!.explorerTx(
                     `0x${status.data.outboundTxid.replace(/^0x/, "")}`,
                   )}
                   target="_blank"

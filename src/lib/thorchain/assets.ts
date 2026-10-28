@@ -26,8 +26,8 @@ export interface StableDestination {
   asset: string;
   /** Display symbol, e.g. USDC */
   symbol: string;
-  /** Our EVM chain id, so we can show the right network name / explorer. */
-  chain: "eth" | "base" | "bsc";
+  /** Our chain id, so we can show the right network name / explorer. Widened to string for the desktop THORChain catalog, whose destinations include UTXO chains. */
+  chain: "eth" | "base" | "bsc" | string;
   label: string;
 }
 

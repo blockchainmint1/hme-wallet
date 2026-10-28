@@ -24,7 +24,8 @@ export interface SavedSwap {
   expiry?: number | null;
   /** Deposit transaction id — unique per swap. */
   txid: string;
-  coin: UtxoSwapCoin;
+  /** Source coin id — UtxoSwapCoin for phone swaps, any catalog id for desktop THORChain routes. */
+  coin: UtxoSwapCoin | string;
   provider: SwapProviderId;
   /** Provider order id (SideShift / FixedFloat). */
   orderId: string | null;
