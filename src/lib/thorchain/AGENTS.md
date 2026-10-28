@@ -1,0 +1,3 @@
+# Direct USDC-to-BTC
+- Keep this protocol separate from LI.FI and native TSD Bridge custody; quote-only, with unsigned ABI builders for audit, never an executable sender. Why: router provenance, approval recovery, pre-sign/broadcast freshness, independent review and funded device acceptance are outstanding.
+- Bind quotes to the exact Ethereum/Base USDC contract, BTC mainnet destination, after-fee minimum, fresh expiry and current inbound/router; use bigint decimal conversion and forbid affiliates/provider fallback. Why: displayed amounts and destinations must match protocol instructions on every build.
