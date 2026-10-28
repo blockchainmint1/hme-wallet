@@ -149,11 +149,14 @@ export function validateSwapMemo(
   }
   const parts = memo.split(":");
   const [action, asset, payout, limit] = parts;
-  // THORChain memos may use the short asset form (BASE.USDC) instead of the
-  // full contract-suffixed form. The short form is unambiguous per chain in
-  // our catalog, so accepting it cannot redirect to a different token.
+  // THORChain memos may use the short asset form (BASE.USDC) or the terse
+  // symbol (b for BTC.BTC) instead of the full contract-suffixed form. The
+  // bare symbol is only accepted when it is unique across our catalog, so it
+  // can never resolve to a different asset (USDC/USDT stay full-or-short only).
   const shortAsset = to.thorAsset.split("-")[0]!;
-  const assetOk = [to.thorAsset, shortAsset].some((a) => a.toUpperCase() === (asset ?? "").toUpperCase());
+  const symbolUnique = THOR_ASSET_IDS.filter((id) => THOR_CATALOG[id].symbol === to.symbol).length === 1;
+  const accepted = [to.thorAsset, shortAsset, ...(symbolUnique ? [to.symbol] : [])];
+  const assetOk = accepted.some((a) => a.toUpperCase() === (asset ?? "").toUpperCase());
   if (
     parts.length !== 4 ||
     !["=", "SWAP", "s"].includes(action ?? "") ||
