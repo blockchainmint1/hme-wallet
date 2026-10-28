@@ -89,7 +89,7 @@ describe("review-only Vault THORChain preparation", () => {
       if (!tx) throw new Error("Missing EVM plan");
       const sign = (overrides={}) => signer.signTransaction({to:tx.to,value:BigInt(tx.value),data:tx.data,nonce:tx.nonce,chainId:tx.chainId,gas:BigInt(tx.gas),type:"eip1559",maxFeePerGas:BigInt(tx.maxFeePerGas ?? "0"),maxPriorityFeePerGas:BigInt(tx.maxPriorityFeePerGas ?? "0"),...overrides});
       await expect(verifyVaultThorResult(await sign(),prepared)).resolves.toBeUndefined();
-      for (const change of [{chainId:8453},{nonce:8},{data:"0x"},{gas:1n},{value:1n},{maxFeePerGas:1n},{to:signer.address}]) await expect(verifyVaultThorResult(await sign(change),prepared)).rejects.toThrow();
+      for (const change of [{chainId:8453},{nonce:8},{data:"0x"},{gas:1n},{value:1n},{maxFeePerGas:40000000000n},{to:signer.address}]) await expect(verifyVaultThorResult(await sign(change),prepared)).rejects.toThrow();
     }
     expect(broadcast).not.toHaveBeenCalled();mock.mockRestore();
   });
