@@ -24,6 +24,7 @@ import { Route as ApiZcuExplorerBaseRouteImport } from './routes/api/zcu-explore
 import { Route as DesktopIndexRouteImport } from './routes/desktop.index'
 import { Route as DesktopActivityRouteImport } from './routes/desktop.activity'
 import { Route as DesktopAppsRouteImport } from './routes/desktop.apps'
+import { Route as DesktopBulkSendRouteImport } from './routes/desktop.bulk-send'
 import { Route as DesktopCreateRouteImport } from './routes/desktop.create'
 import { Route as DesktopEarnRouteImport } from './routes/desktop.earn'
 import { Route as DesktopImportRouteImport } from './routes/desktop.import'
@@ -162,6 +163,11 @@ const DesktopActivityRoute = DesktopActivityRouteImport.update({
 const DesktopAppsRoute = DesktopAppsRouteImport.update({
   id: '/apps',
   path: '/apps',
+  getParentRoute: () => DesktopRoute,
+} as any)
+const DesktopBulkSendRoute = DesktopBulkSendRouteImport.update({
+  id: '/bulk-send',
+  path: '/bulk-send',
   getParentRoute: () => DesktopRoute,
 } as any)
 const DesktopCreateRoute = DesktopCreateRouteImport.update({
@@ -501,6 +507,7 @@ export interface FileRoutesByFullPath {
   '/api/zcu-explorer-base': typeof ApiZcuExplorerBaseRoute
   '/desktop/activity': typeof DesktopActivityRoute
   '/desktop/apps': typeof DesktopAppsRoute
+  '/desktop/bulk-send': typeof DesktopBulkSendRoute
   '/desktop/create': typeof DesktopCreateRoute
   '/desktop/earn': typeof DesktopEarnRoute
   '/desktop/import': typeof DesktopImportRoute
@@ -580,6 +587,7 @@ export interface FileRoutesByTo {
   '/api/zcu-explorer-base': typeof ApiZcuExplorerBaseRoute
   '/desktop/activity': typeof DesktopActivityRoute
   '/desktop/apps': typeof DesktopAppsRoute
+  '/desktop/bulk-send': typeof DesktopBulkSendRoute
   '/desktop/create': typeof DesktopCreateRoute
   '/desktop/earn': typeof DesktopEarnRoute
   '/desktop/import': typeof DesktopImportRoute
@@ -662,6 +670,7 @@ export interface FileRoutesById {
   '/api/zcu-explorer-base': typeof ApiZcuExplorerBaseRoute
   '/desktop/activity': typeof DesktopActivityRoute
   '/desktop/apps': typeof DesktopAppsRoute
+  '/desktop/bulk-send': typeof DesktopBulkSendRoute
   '/desktop/create': typeof DesktopCreateRoute
   '/desktop/earn': typeof DesktopEarnRoute
   '/desktop/import': typeof DesktopImportRoute
@@ -745,6 +754,7 @@ export interface FileRouteTypes {
     | '/api/zcu-explorer-base'
     | '/desktop/activity'
     | '/desktop/apps'
+    | '/desktop/bulk-send'
     | '/desktop/create'
     | '/desktop/earn'
     | '/desktop/import'
@@ -824,6 +834,7 @@ export interface FileRouteTypes {
     | '/api/zcu-explorer-base'
     | '/desktop/activity'
     | '/desktop/apps'
+    | '/desktop/bulk-send'
     | '/desktop/create'
     | '/desktop/earn'
     | '/desktop/import'
@@ -905,6 +916,7 @@ export interface FileRouteTypes {
     | '/api/zcu-explorer-base'
     | '/desktop/activity'
     | '/desktop/apps'
+    | '/desktop/bulk-send'
     | '/desktop/create'
     | '/desktop/earn'
     | '/desktop/import'
@@ -1106,6 +1118,13 @@ declare module '@tanstack/react-router' {
       path: '/apps'
       fullPath: '/desktop/apps'
       preLoaderRoute: typeof DesktopAppsRouteImport
+      parentRoute: typeof DesktopRoute
+    }
+    '/desktop/bulk-send': {
+      id: '/desktop/bulk-send'
+      path: '/bulk-send'
+      fullPath: '/desktop/bulk-send'
+      preLoaderRoute: typeof DesktopBulkSendRouteImport
       parentRoute: typeof DesktopRoute
     }
     '/desktop/create': {
@@ -1562,6 +1581,7 @@ declare module '@tanstack/react-router' {
 interface DesktopRouteChildren {
   DesktopActivityRoute: typeof DesktopActivityRoute
   DesktopAppsRoute: typeof DesktopAppsRoute
+  DesktopBulkSendRoute: typeof DesktopBulkSendRoute
   DesktopCreateRoute: typeof DesktopCreateRoute
   DesktopEarnRoute: typeof DesktopEarnRoute
   DesktopImportRoute: typeof DesktopImportRoute
@@ -1584,6 +1604,7 @@ interface DesktopRouteChildren {
 const DesktopRouteChildren: DesktopRouteChildren = {
   DesktopActivityRoute: DesktopActivityRoute,
   DesktopAppsRoute: DesktopAppsRoute,
+  DesktopBulkSendRoute: DesktopBulkSendRoute,
   DesktopCreateRoute: DesktopCreateRoute,
   DesktopEarnRoute: DesktopEarnRoute,
   DesktopImportRoute: DesktopImportRoute,

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, Outlet } from "@tanstack/react-router";
-import { ArrowUpRight, ArrowDownLeft, ArrowLeftRight, ChartNoAxesCombined, CircleDollarSign, Globe2, History, Landmark, LockKeyhole, Menu, PanelLeftClose, ShieldCheck, Smartphone, Settings, Eye, EyeOff } from "lucide-react";
+import { ArrowUpRight, ArrowDownLeft, ArrowLeftRight, ChartNoAxesCombined, CircleDollarSign, Globe2, History, Landmark, LockKeyhole, Menu, PanelLeftClose, ShieldCheck, Smartphone, Settings, Eye, EyeOff, Users } from "lucide-react";
 import { useWallet } from "@/lib/txc/wallet-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ const pages = [
   {to:"/desktop", label:"Portfolio", icon:ChartNoAxesCombined},
   {to:"/desktop/activity", label:"Transactions", icon:History},
   {to:"/desktop/send", label:"Send", icon:ArrowUpRight},
+  {to:"/desktop/bulk-send", label:"Send to many", icon:Users},
   {to:"/desktop/receive", label:"Receive", icon:ArrowDownLeft},
   {to:"/desktop/swap", label:"Swap", icon:ArrowLeftRight},
   {to:"/desktop/stablecoins", label:"Stablecoins", icon:CircleDollarSign},
