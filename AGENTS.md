@@ -44,7 +44,6 @@ Registry/Hub use ecosystem-credential.server (current per-site HME convention); 
 - The top camera routes safe bare HTTPS ecosystem manifests through the same link approval page as Settings, after payment and sign-in recognition; recognition never grants trust or shares keys. Why: Seeds uses bare manifest URLs and must not require a different scanner.
 
 ## Tap card (NFC) service
-- We are the card service: card pockets live on HME-reserved branch 1107' (card N = `m/44'/696969'/1107'/0/N`, owner signing key `/1/0`); only that pocket key is sent to the backend, AES-GCM encrypted with `CARD_KEY_ENC` (`src/lib/card/*`). Why: a tapped card must pay while the phone is offline, and the blast radius must stay one small pocket. Trading pocket rotation skips reserved branches.
 - Partners pay via `/api/public/card/pay` signed with `HME_ECOSYSTEM`; over-limit taps go to Telegram approvers via `/api/public/telegram/webhook`. Owner actions are wallet-signed envelopes, never accounts. Why: no extra service and no email logins.
 
 ## Vault wallets (offline signing via HME Vault)
@@ -55,7 +54,7 @@ Registry/Hub use ecosystem-credential.server (current per-site HME convention); 
 - LI.FI shares immutable intent/bytes and session/deployment/server signing checks; nested semantic review is mandatory, no fallback. Single-block hop allowlisting adds compatibility only; distinct spenders use the approval-only sentinel. Omit integrator config; remain paused until independent route/release/device acceptance. Why: permitted entrypoints cannot authorize opaque instructions.
 - Swap choices never silently fall back; returned orders must match the requested provider. FixedFloat HTML 403 means refusal; no alternate-host retries or body exposure. Why: honor payment intent, avoid duplicate orders and leaks.
 - THORChain quotes and order refreshes use liquidity_tolerance_bps against expected after-fee output, never feeless tolerance_bps; why: liquidity fees must not consume price protection or reject valid streaming quotes.
-- Read nested AGENTS.md in security, chains, vault-link and thorchain before edits; shared rules cover all builds.
+- Read nested AGENTS.md in security, chains, vault-link, thorchain, card and txc before edits; shared rules cover all builds.
 - Card PIN verification and payment reservation run atomically in the database; why: concurrent taps cannot race limits or lockout.
 
 ## Settings scope (app-wide vs per-wallet)
@@ -64,10 +63,6 @@ Registry/Hub use ecosystem-credential.server (current per-site HME convention); 
 - Settings page is grouped "This device" (app-wide) vs "This wallet — <label>" (per-wallet). Why: users must see which scope they're editing.
 - Activity filtering is independent, device-wide and recoverable; counterfeit contracts override claimed direction; pending tracking uses raw history. Why: logs cannot prove signatures.
 
-## EVM history
-- Shared web/APK/extension history rules live in src/lib/chains/AGENTS.md; read before edits. Why: durable caching and pagination protect costs and real payments.
-
 ## UTXO history
 - Per-address history fetches merge through fetchMergedAddressTxs (src/lib/address-txs.ts); when every address fetch fails it throws so React Query keeps the last-known list. Why: an indexer outage must never overwrite good cached history with an empty list.
 
-- Subdirectories (e.g. src/lib/txc) have their own AGENTS.md; read before editing there.
