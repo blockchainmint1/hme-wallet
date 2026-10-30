@@ -40,13 +40,16 @@ export function Activity({ preview=false, chainFilter="all", direction="all", as
   const evm=useQueries({queries:chains.map(chain=>({queryKey:["evm-history",chain,d.evmAddress,d.activeProfileId],enabled:!!d.evmAddress,queryFn:async()=>{if(!d.evmAddress)throw new Error("Address unavailable");const result=await fetchEvm({data:{chain,address:d.evmAddress}});if(result.unavailable)throw new Error("History unavailable");return result;},staleTime:300_000}))});
   const tron=useQuery({queryKey:["tron-history",d.tronAddress,d.activeProfileId],enabled:!!d.tronAddress&&d.enabled.includes("tron")&&(!assetFilter||chainFilter==="tron"),queryFn:()=>{if(!d.tronAddress)throw new Error("Address unavailable");return getTronHistory(d.tronAddress);},staleTime:300_000});
   const sol=useQuery({queryKey:["solana-history",d.solanaAddress,d.activeProfileId],enabled:!!d.solanaAddress&&d.enabled.includes("solana")&&(!assetFilter||chainFilter==="solana"),queryFn:()=>{if(!d.solanaAddress)throw new Error("Address unavailable");return getSolanaHistory(d.solanaAddress);},staleTime:300_000});
-  const tsdTxids = assetFilter === "tsd" ? (utxo[entries.findIndex(e=>e.chain==="txc")]?.data ?? []).filter(tx=>decodeOmniSend(tx)?.propertyId===39).map(tx=>tx.txid).slice(0,50) : [];
+  const showTsd = assetFilter !== "txc";
+  const tsdTxids = showTsd ? (utxo[entries.findIndex(e=>e.chain==="txc")]?.data ?? []).filter(tx=>decodeOmniSend(tx)?.propertyId===39).map(tx=>tx.txid).slice(0,50) : [];
   const fetchValidity=useServerFn(getOmniTxValidity);
   const validity=useQuery({queryKey:["desktop-tsd-validity",d.activeProfileId,tsdTxids.join(",")],enabled:tsdTxids.length>0,queryFn:()=>fetchValidity({data:{txids:tsdTxids}}),staleTime:300_000});
   const rows:ActivityRow[]=[];
   entries.forEach(({chain,addresses},i)=>{const own=new Set(addresses);for(const tx of utxo[i]?.data??[]){
-    if(assetFilter==="tsd"){
-      const omni=decodeOmniSend(tx); if(!omni||omni.propertyId!==39)continue;
+    const omniTsd=chain==="txc"&&showTsd?decodeOmniSend(tx):null;
+    if(assetFilter==="tsd"&&omniTsd?.propertyId!==39)continue;
+    if(omniTsd&&omniTsd.propertyId===39){
+      const omni=omniTsd;
       const verdict=validity.data?.[tx.txid];
       if(verdict?.valid===false)continue;
       const incoming=!(omni.sender&&own.has(omni.sender));
