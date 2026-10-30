@@ -1,2 +1,3 @@
 # TXC
 - Desktop send-to-many (/desktop/bulk-send, src/lib/txc/bulk-send.ts): TXC is one multi-output tx; Omni tokens use type-7 batches of 7 from the single holder address, chained on change, stopping at the first failure. Why: TXC node relays one 80-byte OP_RETURN per tx and Omni sender must be unambiguous.
+- Every TXC signing via buildAndSignTx refuses fee rates at or above TXC_MAX_FEE_RATE; send-to-many shows "Tokens delivered" only after omni_gettransaction says valid, and saves progress per wallet fingerprint until settled. Why: a confirmed TXC tx can still carry a rejected token transfer, and reloads must not hide partial runs.
