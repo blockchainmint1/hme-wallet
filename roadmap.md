@@ -22,3 +22,5 @@
 - [ ] Publish pending desktop changes (chart, holdings sort, Vault QR size, TSD receive/signing, swap provider fixes) after audit sign-off
 - [ ] Physical device tests: Vault QR signing, TSD send, NFC card payment
 - [ ] Android backup protection, old APK rotation, extension rebuild
+
+- [ ] Desktop Send to many: tiny real TXC + TSD test, auditor review, publish
