@@ -70,5 +70,4 @@ Registry/Hub use ecosystem-credential.server (current per-site HME convention); 
 ## UTXO history
 - Per-address history fetches merge through fetchMergedAddressTxs (src/lib/address-txs.ts); when every address fetch fails it throws so React Query keeps the last-known list. Why: an indexer outage must never overwrite good cached history with an empty list.
 
-## TXC bulk send
-- Desktop send-to-many (/desktop/bulk-send, src/lib/txc/bulk-send.ts): TXC is one multi-output tx; Omni tokens use type-7 batches of 7 from the single holder address, chained on change, stopping at the first failure. Why: TXC node relays one 80-byte OP_RETURN per tx and Omni sender must be unambiguous.
+- Subdirectories (e.g. src/lib/txc) have their own AGENTS.md; read before editing there.
