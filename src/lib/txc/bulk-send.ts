@@ -148,3 +148,33 @@ export function buildSendToManyPayload(
 export function estimateVsize(inputs: number, outputs: number, opReturnBytes = 0, inputVbytes = 148): number {
   return 10 + inputs * inputVbytes + outputs * 34 + (opReturnBytes ? 11 + opReturnBytes : 0);
 }
+
+/** Saved send-to-many progress, kept on this device until every batch settles. */
+export type BulkStepStatus = "pending" | "ok" | "failed" | "waiting";
+export type BulkDelivery = "checking" | "delivered" | "rejected";
+export interface BulkSavedStep { label: string; status: BulkStepStatus; txid?: string; error?: string; delivery?: BulkDelivery; reason?: string }
+export interface BulkSavedRun { asset: string; steps: BulkSavedStep[]; error?: string; savedAt: number }
+
+export function bulkProgressKey(fingerprint: string): string {
+  return `hm.desktop.bulk-send.progress.${fingerprint}`;
+}
+
+/** True once nothing more can change: no batch is sending or awaiting a token verdict. */
+export function bulkRunSettled(run: BulkSavedRun): boolean {
+  return run.steps.every((s) => s.status !== "pending" && !(s.status === "ok" && s.delivery === "checking"));
+}
+
+export function parseSavedRun(raw: string | null): BulkSavedRun | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as BulkSavedRun;
+    if (!v || typeof v.asset !== "string" || !Array.isArray(v.steps)) return null;
+    const statuses = ["pending", "ok", "failed", "waiting"];
+    const steps = v.steps.filter((s) => s && typeof s.label === "string" && statuses.includes(s.status) && (s.txid === undefined || /^[0-9a-f]{64}$/i.test(s.txid)))
+      // A reload interrupts any in-flight batch; we can't know if it went out.
+      .map((s) => (s.status === "pending" ? { ...s, status: "failed" as const, error: "Interrupted by a page reload — check your activity before retrying." } : s));
+    return { asset: v.asset, steps, error: typeof v.error === "string" ? v.error : undefined, savedAt: Number(v.savedAt) || 0 };
+  } catch {
+    return null;
+  }
+}
