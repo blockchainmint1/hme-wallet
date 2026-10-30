@@ -190,6 +190,9 @@ export const DUST_SATS = 10_000;
 
 /** Build, sign and serialize a TEXITcoin transaction. Returns raw hex ready to broadcast. */
 
+/** TXC fee-rate ceiling (sat/vB), matching the Cold Storage TSD limit. */
+export const TXC_MAX_FEE_RATE = 5_000;
+
 export function buildAndSignTx(args: {
   root: BIP32Interface;
   kind: AddressKind;
@@ -285,6 +288,11 @@ export function buildAndSignTx(args: {
 
   psbt.finalizeAllInputs();
   const tx = psbt.extractTransaction();
+  // Safety ceiling for every TXC payment (send, send-to-many, consolidate,
+  // migrate, top-up, extension). Normal fees are ~10 sat/vB.
+  if (feeSats / tx.virtualSize() >= TXC_MAX_FEE_RATE) {
+    throw new Error(`The TXC network fee is unusually high (${TXC_MAX_FEE_RATE.toLocaleString()} sats per byte or more), so nothing was sent.`);
+  }
   return {
     hex: tx.toHex(),
     txid: tx.getId(),

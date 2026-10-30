@@ -39,3 +39,29 @@ describe("bulk send", () => {
     expect(() => buildSendToManyPayload(39, Array.from({ length: 8 }, (_, i) => ({ vout: i, units: 1n })))).toThrow();
   });
 });
+
+import { parseSavedRun, bulkRunSettled } from "./bulk-send";
+import { TXC_MAX_FEE_RATE } from "./wallet";
+
+describe("bulk send audit fixes", () => {
+  it("merges a repeated address into one payment with the combined amount", () => {
+    const r = parseBulkCsv(`${A},1\n${A},2.5\n`, { type: "txc" });
+    expect(r.rows).toHaveLength(1);
+    expect(r.rows[0].units).toBe(350_000_000n);
+    expect(r.total).toBe(350_000_000n);
+    expect(r.duplicates).toEqual([A]);
+  });
+  it("fee ceiling is 5,000 sat/vB", () => {
+    expect(TXC_MAX_FEE_RATE).toBe(5_000);
+  });
+  it("a reload marks an in-flight batch as failed, keeps sent ones", () => {
+    const tx = "a".repeat(64);
+    const run = parseSavedRun(JSON.stringify({ asset: "39", savedAt: 1, steps: [
+      { label: "T1", status: "ok", txid: tx, delivery: "checking" }, { label: "T2", status: "pending" }] }));
+    expect(run!.steps[0]).toMatchObject({ status: "ok", txid: tx });
+    expect(run!.steps[1].status).toBe("failed");
+    expect(bulkRunSettled(run!)).toBe(false); // T1 still awaiting token verdict
+    run!.steps[0].delivery = "delivered";
+    expect(bulkRunSettled(run!)).toBe(true);
+  });
+});
