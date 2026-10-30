@@ -40,7 +40,7 @@ function scriptHexFor(pubkey: Uint8Array, kind: DerivationKind): string | undefi
 export function BulkSend() {
   const { root, unlocked } = useWallet();
   const qc = useQueryClient();
-  const regular = !!root && !!unlocked && unlocked.mode !== "vault" && unlocked.mode !== "watch";
+  const regular = !!root && !!unlocked && unlocked.mode !== "vault" && !root.isNeutered();
   const localTokens = useEnabledTxcTokens();
   const { resolved: tokens } = useTxcTokenProps(localTokens);
   const [asset, setAsset] = useState<string>("txc");
