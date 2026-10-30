@@ -93,10 +93,16 @@ export function parseBulkCsv(
       errors.push(`Line ${line}: TXC amounts must be at least ${BULK_DUST_SATS / SATS_PER_TXC} TXC.`);
       return;
     }
-    if (seen.has(addr)) duplicates.push(addr);
-    seen.set(addr, line);
-    rows.push({ line, address: addr, units });
     total += units;
+    const at = seen.get(addr);
+    if (at !== undefined) {
+      // Same address listed again: merge into the first line (one output, one fee).
+      duplicates.push(addr);
+      rows[at] = { ...rows[at], units: rows[at].units + units };
+      return;
+    }
+    seen.set(addr, rows.length);
+    rows.push({ line, address: addr, units });
   });
   if (rows.length > BULK_MAX_RECIPIENTS) {
     errors.push(`Too many recipients: ${rows.length}. The limit is ${BULK_MAX_RECIPIENTS}.`);
