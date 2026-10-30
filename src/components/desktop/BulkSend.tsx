@@ -147,8 +147,6 @@ export function BulkSend() {
   async function run() {
     if (!ready || !root || !unlocked || !account.data) return;
     const label = confirmLabel;
-    void label;
-    const _unused = token ? `${formatTokenAmount(parsed.total, token.divisible)} ${token.symbol}` : `${formatTxc(Number(parsed.total))} TXC`;
     setConfirmOpen(false);
     if (!(await confirmWithBiometric(`Send to many: ${label}`))) return;
     setBusy(true); setError("");
