@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { payments } from "bitcoinjs-lib";
 import { ExternalLink, Upload } from "lucide-react";
+import { copyToClipboard } from "@/lib/clipboard";
 import { useWallet } from "@/lib/txc/wallet-context";
 import { scanAccount, type AccountUtxo } from "@/lib/txc/scan";
 import { buildAndSignTx, TXC_MAX_FEE_RATE, type UtxoInput } from "@/lib/txc/wallet";
