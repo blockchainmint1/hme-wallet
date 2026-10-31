@@ -21,14 +21,40 @@ function rpcAuth(): string {
   return "Basic " + Buffer.from(`${user}:${pass}`).toString("base64");
 }
 
-async function rpc<T = unknown>(method: string, params: unknown[]): Promise<T> {
-  const res = await fetch(rpcUrl(), {
+async function rawRpc<T>(url: string, method: string, params: unknown[]) {
+  const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "text/plain", authorization: rpcAuth() },
     body: JSON.stringify({ jsonrpc: "1.0", id: "hme", method, params }),
   });
-  if (!res.ok) throw new Error(`rpc ${method}: http ${res.status}`);
-  const json = (await res.json()) as { result: T; error: { message: string } | null };
+  // Bitcoin-style nodes return HTTP 500 with a JSON error body; read it either way.
+  const json = (await res.json().catch(() => null)) as
+    | { result: T; error: { code?: number; message: string } | null }
+    | null;
+  if (!json) throw new Error(`rpc ${method}: http ${res.status}`);
+  return json;
+}
+
+// When the node has several wallets loaded, wallet-scoped calls (e.g.
+// omni_gettransaction) must name one. These are read-only lookups, so prefer
+// the watch-only wallet and fall back to the first loaded wallet.
+let walletPath: string | null = null;
+async function resolveWalletPath(): Promise<string | null> {
+  if (walletPath) return walletPath;
+  const j = await rawRpc<string[]>(rpcUrl(), "listwallets", []);
+  const list = j.result ?? [];
+  const name = list.includes("watch") ? "watch" : list[0];
+  if (!name) return null;
+  walletPath = `/wallet/${encodeURIComponent(name)}`;
+  return walletPath;
+}
+
+async function rpc<T = unknown>(method: string, params: unknown[]): Promise<T> {
+  let json = await rawRpc<T>(rpcUrl(), method, params);
+  if (json.error?.code === -19) {
+    const path = await resolveWalletPath();
+    if (path) json = await rawRpc<T>(rpcUrl().replace(/\/+$/, "") + path, method, params);
+  }
   if (json.error) throw new Error(`rpc ${method}: ${json.error.message}`);
   return json.result;
 }
