@@ -52,6 +52,7 @@ export function BulkSend() {
   const [steps, setSteps] = useState<Step[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState<number | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const fingerprint = root ? rootFingerprintHex(root) : null;
   const progressKey = fingerprint ? bulkProgressKey(fingerprint) : null;
