@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { payments } from "bitcoinjs-lib";
-import { ExternalLink, Upload } from "lucide-react";
+import { Check, Copy, ExternalLink, Upload } from "lucide-react";
+import { copyToClipboard } from "@/lib/clipboard";
 import { useWallet } from "@/lib/txc/wallet-context";
 import { scanAccount, type AccountUtxo } from "@/lib/txc/scan";
 import { buildAndSignTx, TXC_MAX_FEE_RATE, type UtxoInput } from "@/lib/txc/wallet";
@@ -51,6 +52,7 @@ export function BulkSend() {
   const [steps, setSteps] = useState<Step[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState<number | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const fingerprint = root ? rootFingerprintHex(root) : null;
   const progressKey = fingerprint ? bulkProgressKey(fingerprint) : null;
@@ -248,7 +250,7 @@ export function BulkSend() {
         <Button className="mt-5 w-full" disabled={!ready} onClick={() => setConfirmOpen(true)}>{busy ? "Sending…" : `Send to ${parsed.rows.length || ""} recipients`}</Button>
         {error && <p role="alert" className="mt-3 break-words text-xs text-destructive">{error}</p>}
         {steps.length > 0 && bulkRunSettled({ asset, steps, savedAt: 0 }) && !busy && <Button variant="outline" size="sm" className="mt-4" onClick={() => { setSteps([]); setError(""); }}>Clear results</Button>}
-        {steps.length > 0 && <ol className="mt-5 space-y-2">{steps.map((s, i) => <li key={i} className="flex items-center justify-between gap-2 text-xs"><span>{s.label} · {s.status === "ok" ? (s.delivery === "delivered" ? "Tokens delivered" : s.delivery === "rejected" ? `Tokens NOT delivered${s.reason ? ` (${s.reason})` : ""}` : s.delivery === "checking" ? "Sent · waiting for confirmation" : "Sent") : s.status === "pending" ? "Sending…" : s.status === "failed" ? "Failed" : "Not sent"}</span>{s.txid && <a className="inline-flex items-center gap-1 underline" href={explorerTxUrl(s.txid)} target="_blank" rel="noreferrer">View<ExternalLink className="h-3 w-3" /></a>}{s.error && <span className="text-destructive">{s.error}</span>}</li>)}</ol>}
+        {steps.length > 0 && <ol className="mt-5 space-y-2">{steps.map((s, i) => <li key={i} className="flex items-center justify-between gap-2 text-xs"><span>{s.label} · {s.status === "ok" ? (s.delivery === "delivered" ? "Tokens delivered" : s.delivery === "rejected" ? `Tokens NOT delivered${s.reason ? ` (${s.reason})` : ""}` : s.delivery === "checking" ? "Sent · waiting for confirmation" : "Sent") : s.status === "pending" ? "Sending…" : s.status === "failed" ? "Failed" : "Not sent"}</span>{s.txid && <span className="inline-flex shrink-0 items-center gap-2"><button type="button" className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground" onClick={() => { void copyToClipboard(s.txid!); setCopied(i); setTimeout(() => setCopied((c) => (c === i ? null : c)), 1500); }}>{copied === i ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}{copied === i ? "Copied" : "Copy tx ID"}</button><a className="inline-flex items-center gap-1 underline" href={explorerTxUrl(s.txid)} target="_blank" rel="noreferrer">View<ExternalLink className="h-3 w-3" /></a></span>}{s.error && <span className="text-destructive">{s.error}</span>}</li>)}</ol>}
       </section>
     </div>
     {parsed.rows.length > 0 && <table className="mt-8 w-full text-sm"><thead><tr className="text-left text-xs text-muted-foreground"><th className="py-2">Line</th><th>Address</th><th className="text-right">Amount</th></tr></thead><tbody>{parsed.rows.map((r) => <tr key={r.line} className="border-t border-border"><td className="py-2">{r.line}</td><td className="font-mono text-xs">{r.address}</td><td className="text-right tabular-nums">{fmt(r.units)}</td></tr>)}</tbody></table>}
