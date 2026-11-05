@@ -1,14 +1,12 @@
 /**
  * Gather TSD that sits on Vault TXC receive addresses #1+ back to address #0.
  *
- * Two Vault-signed steps, never mixed:
- *  1. Funding: plain TXC from address #0 (only) to each TSD holder, change back to #0.
- *  2. Gather: per holder, an Omni property-39 simple send of the holder's whole
- *     TSD balance whose ONLY non-data output is address #0, spending ONLY that
- *     holder's coins. All of the holder's TXC (minus fee) rides along as the
- *     reference output, so nothing is stranded and no change output exists.
- * Why separate: Omni picks the sender from the inputs, so fee coins from #0 in the
- * same transaction could make #0 the sender. No keys or signing online.
+ * One Vault-signed transaction per holder: the holder's own coins come FIRST,
+ * then (only if needed) confirmed coins from address #0 pay the fee. Outputs are
+ * [0] Omni property-39 simple send of the holder's whole balance and [1] address
+ * #0 with all input TXC minus fee (sole non-data output = unambiguous recipient).
+ * Why this is safe: TEXITcoin Omni Class C (OP_RETURN) takes the sender from the
+ * FIRST input's address, not the largest contributor. No keys or signing online.
  */
 import { address as addr, payments, Psbt, script, Transaction } from "bitcoinjs-lib";
 import * as ecc from "@bitcoinerlab/secp256k1";
@@ -35,12 +33,6 @@ export function vaultTsdReceiveHolder(pairing: VaultPairing, index: number): Vau
   if (!Number.isSafeInteger(index) || index < 1 || index > TSD_GATHER_MAX_INDEX) throw new Error("Invalid TXC receive address number.");
   vaultTsdHolder(pairing); // requires the legacy TXC account
   return deriveVaultAddress(pairing, "txc", 44, 0, index);
-}
-
-/** TXC each holder needs so its gather transaction (up to 3 inputs) pays its own fee. */
-export function tsdGatherFundingSats(feeRate: number): number {
-  checkRate(feeRate);
-  return TSD_REFERENCE_SATS + (10 + 3 * IN_VB + 34 + 31) * feeRate;
 }
 
 function holderScript(a: VaultAddress) {
@@ -72,63 +64,49 @@ function addHolderInputs(psbt: Psbt, pairing: VaultPairing, holder: VaultAddress
   return total;
 }
 
-export interface TsdFundingIntent { kind: "fund"; from: string; targets: { index: number; address: string; sats: number }[]; feeSats: number; changeSats: number }
-export interface TsdGatherIntent { kind: "gather"; from: string; fromIndex: number; to: string; amount: string; txcSats: number; feeSats: number }
+export interface TsdGatherIntent { kind: "gather"; from: string; fromIndex: number; to: string; amount: string; txcSats: number; feeSats: number; holderInputs: number; feeInputs: number; feeInputSats: number }
 
-/** Largest-first selection of address #0 coins for a funding transaction. */
-export function selectTsdFundingInputs(pairing: VaultPairing, inputs: VaultUtxo[], targetCount: number, feeRate: number): VaultUtxo[] {
-  const per = tsdGatherFundingSats(feeRate);
+const gatherFee = (inputs: number, feeRate: number) => (10 + inputs * IN_VB + 34 + 31) * feeRate;
+
+/** Largest-first #0 fee coins, only as many as the holder's own TXC cannot cover. Select before downloading previous txs. */
+export function selectTsdGatherFeeInputs(pairing: VaultPairing, holderInputs: VaultUtxo[], addr0Inputs: VaultUtxo[], feeRate: number): VaultUtxo[] {
+  checkRate(feeRate);
+  let total = holderInputs.reduce((s, u) => s + u.value, 0);
   const picked: VaultUtxo[] = [];
-  let total = 0;
-  for (const u of [...inputs].sort((a, b) => b.value - a.value)) {
+  const enough = () => total - gatherFee(holderInputs.length + picked.length, feeRate) >= TSD_REFERENCE_SATS;
+  if (enough()) return picked;
+  for (const u of [...addr0Inputs].sort((a, b) => b.value - a.value)) {
     picked.push(u); total += u.value;
-    if (total >= per * targetCount + (10 + picked.length * IN_VB + 34 * (targetCount + 1)) * feeRate) return picked;
+    if (enough()) return picked;
   }
-  throw new Error(`Not enough TXC on address #0 (${vaultTsdHolder(pairing).address}) to fund ${targetCount} address${targetCount === 1 ? "" : "es"}.`);
+  throw new Error(`Not enough confirmed TXC on address #0 (${vaultTsdHolder(pairing).address}) to pay this network fee.`);
 }
 
-export function buildTsdFundingPsbt(req: { pairing: VaultPairing; targetIndexes: number[]; feeRate: number; inputs: VaultUtxo[]; prevTxHex: Record<string, string> }): { psbtBase64: string; intent: TsdFundingIntent } {
-  checkRate(req.feeRate);
-  const indexes = [...new Set(req.targetIndexes)];
-  if (!indexes.length || indexes.length !== req.targetIndexes.length || indexes.length > TSD_GATHER_MAX_INDEX) throw new Error("Choose the TSD addresses to fund.");
-  const source = vaultTsdHolder(req.pairing);
-  const per = tsdGatherFundingSats(req.feeRate);
-  const psbt = new Psbt({ network: TXC_NETWORK });
-  const total = addHolderInputs(psbt, req.pairing, source, req.inputs, req.prevTxHex, "Funding");
-  const targets = indexes.map(index => { const a = vaultTsdReceiveHolder(req.pairing, index); return { index, address: a.address, sats: per, script: holderScript(a) }; });
-  let feeSats = (10 + req.inputs.length * IN_VB + 34 * (targets.length + 1)) * req.feeRate;
-  let changeSats = total - per * targets.length - feeSats;
-  if (changeSats < 0) throw new Error("Not enough TXC on address #0 for this funding plus the network fee.");
-  if (changeSats < TSD_REFERENCE_SATS) { feeSats += changeSats; changeSats = 0; }
-  const minVsize = 10 + req.inputs.length * 147 + 34 * (targets.length + (changeSats ? 1 : 0));
-  if (feeSats >= minVsize * MAX_FEE_RATE) throw new Error("The resulting TXC fee exceeds Vault's safety limit.");
-  for (const t of targets) psbt.addOutput({ script: t.script, value: BigInt(t.sats) });
-  if (changeSats) psbt.addOutput({ script: holderScript(source), value: BigInt(changeSats), bip32Derivation: [{ masterFingerprint: bytes(req.pairing.fp), path: source.path, pubkey: source.pubkey }] });
-  const psbtBase64 = vaultBytesToBase64(psbt.toBuffer());
-  if (psbtBase64.length > 250_000) throw new Error("This request exceeds Vault's QR signing limit.");
-  return { psbtBase64, intent: { kind: "fund", from: source.address, targets: targets.map(({ index, address, sats }) => ({ index, address, sats })), feeSats, changeSats } };
-}
-
-export function buildTsdGatherPsbt(req: { pairing: VaultPairing; index: number; balance: string; feeRate: number; inputs: VaultUtxo[]; prevTxHex: Record<string, string> }): { psbtBase64: string; intent: TsdGatherIntent } {
+export function buildTsdGatherPsbt(req: { pairing: VaultPairing; index: number; balance: string; feeRate: number; holderInputs: VaultUtxo[]; feeInputs: VaultUtxo[]; prevTxHex: Record<string, string> }): { psbtBase64: string; intent: TsdGatherIntent } {
   checkRate(req.feeRate);
   const holder = vaultTsdReceiveHolder(req.pairing, req.index);
   const dest = vaultTsdHolder(req.pairing);
   const units = tsdBalanceUnits(req.balance);
   if (units <= 0n) throw new Error(`Address #${req.index} holds no TSD.`);
-  if (!req.inputs.length) throw new Error(`Address #${req.index} has no confirmed TXC. Fund it first and wait for a confirmation.`);
+  if (!req.holderInputs.length) throw new Error(`Address #${req.index} has no confirmed TXC coin to act as the TSD sender.`);
+  const keys = new Set(req.holderInputs.map(u => `${u.txid}:${u.vout}`));
+  if (req.feeInputs.some(u => keys.has(`${u.txid}:${u.vout}`))) throw new Error("Duplicate TXC input.");
   const psbt = new Psbt({ network: TXC_NETWORK });
-  const total = addHolderInputs(psbt, req.pairing, holder, req.inputs, req.prevTxHex, "Gather");
-  const feeSats = (10 + req.inputs.length * IN_VB + 34 + 31) * req.feeRate;
-  const txcSats = total - feeSats;
-  if (txcSats < TSD_REFERENCE_SATS) throw new Error(`Address #${req.index} needs more TXC for the network fee. Fund it first.`);
+  // Holder coins first: Omni Class C uses the first input's address as sender.
+  const holderTotal = addHolderInputs(psbt, req.pairing, holder, req.holderInputs, req.prevTxHex, "Gather");
+  const feeInputSats = req.feeInputs.length ? addHolderInputs(psbt, req.pairing, dest, req.feeInputs, req.prevTxHex, "Fee") : 0;
+  const n = req.holderInputs.length + req.feeInputs.length;
+  const feeSats = gatherFee(n, req.feeRate);
+  const txcSats = holderTotal + feeInputSats - feeSats;
+  if (!Number.isSafeInteger(txcSats) || txcSats < TSD_REFERENCE_SATS) throw new Error(`Not enough TXC to pay the network fee for address #${req.index}.`);
+  if (feeSats >= (10 + n * 147 + 34 + 31) * MAX_FEE_RATE) throw new Error("The resulting TXC fee exceeds Vault's safety limit.");
   const data = payments.embed({ data: [buildSimpleSendPayload(39, units)] }).output;
   if (!data) throw new Error("Could not encode TSD payment.");
   psbt.addOutput({ script: data, value: 0n });
-  // Sole non-data output: the reference recipient is unambiguously address #0.
   psbt.addOutput({ script: holderScript(dest), value: BigInt(txcSats), bip32Derivation: [{ masterFingerprint: bytes(req.pairing.fp), path: dest.path, pubkey: dest.pubkey }] });
   const psbtBase64 = vaultBytesToBase64(psbt.toBuffer());
   if (psbtBase64.length > 250_000) throw new Error("This request exceeds Vault's QR signing limit.");
-  return { psbtBase64, intent: { kind: "gather", from: holder.address, fromIndex: req.index, to: dest.address, amount: req.balance.trim(), txcSats, feeSats } };
+  return { psbtBase64, intent: { kind: "gather", from: holder.address, fromIndex: req.index, to: dest.address, amount: req.balance.trim(), txcSats, feeSats, holderInputs: req.holderInputs.length, feeInputs: req.feeInputs.length, feeInputSats } };
 }
 
 /** Bind every byte to the reviewed PSBT and require genuine SIGHASH_ALL legacy signatures. */

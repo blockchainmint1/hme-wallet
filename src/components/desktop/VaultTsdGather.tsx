@@ -1,6 +1,6 @@
 /**
  * Desktop Cold Storage: move TSD from Vault TXC receive addresses #1+ to #0.
- * Step 1 funds holders with TXC from #0; step 2 gathers each holder's TSD to #0.
+ * One Vault signature per address: holder coin first, #0 pays the fee.
  * Prepares unsigned requests only; HME Vault signs by QR.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -20,14 +20,14 @@ import { getAddressUtxos, getFeeEstimates, getOutspend } from "@/lib/txc/mempool
 import { getTxcTokenBalance, getTxcTokenProperties } from "@/lib/txc/tokens.functions";
 import { tsdBalanceUnits, vaultTsdHolder } from "@/lib/vault-link/tsd-send";
 import {
-  buildTsdFundingPsbt, buildTsdGatherPsbt, selectTsdFundingInputs, tsdGatherFundingSats, verifyTsdGatherSigned,
-  vaultTsdReceiveHolder, TSD_GATHER_MAX_INDEX, type TsdFundingIntent, type TsdGatherIntent,
+  buildTsdGatherPsbt, selectTsdGatherFeeInputs, verifyTsdGatherSigned,
+  vaultTsdReceiveHolder, TSD_GATHER_MAX_INDEX, type TsdGatherIntent,
 } from "@/lib/vault-link/tsd-gather";
 
 const SATS = 100_000_000;
 const fmt = (sats: number) => (sats / SATS).toLocaleString(undefined, { maximumFractionDigits: 8 });
 interface Row { index: number; address: string; tsd: string; confirmedSats: number; pendingSats: number }
-type Signing = { payload: string; intent: TsdFundingIntent | TsdGatherIntent } | { txid: string; intent: TsdFundingIntent | TsdGatherIntent };
+type Signing = { payload: string; intent: TsdGatherIntent } | { txid: string; intent: TsdGatherIntent };
 
 export function VaultTsdGather({ pairing }: { pairing: VaultPairing }) {
   const fetchBalance = useServerFn(getTxcTokenBalance);
@@ -87,23 +87,12 @@ export function VaultTsdGather({ pairing }: { pairing: VaultPairing }) {
     for (const u of inputs) out[`${u.txid}:${u.vout}`] = await chainIo("txc").txHex(u.txid);
     return out;
   }
-  function start(payload: string, intent: TsdFundingIntent | TsdGatherIntent) {
+  function start(payload: string, intent: TsdGatherIntent) {
     collector.current = new PartCollector(); processing.current = false;
     setScanProgress(null); setScanComplete(false); setScanError(null);
     setSigning({ payload, intent });
   }
 
-  async function prepareFunding(targets: number[]) {
-    setBusy(true); setError(null);
-    try {
-      await assertSession();
-      const rate = await liveFeeRate();
-      const inputs = selectTsdFundingInputs(pairing, await confirmedInputs(0), targets.length, rate);
-      const built = buildTsdFundingPsbt({ pairing, targetIndexes: targets, feeRate: rate, inputs, prevTxHex: await prevHex(inputs) });
-      await assertSession();
-      start(built.psbtBase64, built.intent);
-    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
-  }
   async function prepareGather(row: Row) {
     setBusy(true); setError(null);
     try {
@@ -113,8 +102,10 @@ export function VaultTsdGather({ pairing }: { pairing: VaultPairing }) {
       const rate = await liveFeeRate();
       const a = vaultTsdReceiveHolder(pairing, row.index);
       const bal = await fetchBalance({ data: { address: a.address, propertyId: 39 } });
-      const inputs = await confirmedInputs(row.index);
-      const built = buildTsdGatherPsbt({ pairing, index: row.index, balance: bal.balance, feeRate: rate, inputs, prevTxHex: await prevHex(inputs) });
+      const holderInputs = await confirmedInputs(row.index);
+      if (!holderInputs.length) throw new Error(`Address #${row.index} has no confirmed TXC coin yet. Wait for a confirmation.`);
+      const feeInputs = selectTsdGatherFeeInputs(pairing, holderInputs, await confirmedInputs(0), rate);
+      const built = buildTsdGatherPsbt({ pairing, index: row.index, balance: bal.balance, feeRate: rate, holderInputs, feeInputs, prevTxHex: await prevHex([...holderInputs, ...feeInputs]) });
       await assertSession();
       start(built.psbtBase64, built.intent);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
@@ -135,7 +126,7 @@ export function VaultTsdGather({ pairing }: { pairing: VaultPairing }) {
         const psbt = Psbt.fromBase64(signing.payload);
         const spent = await Promise.all(psbt.txInputs.map(i => getOutspend(Array.from(i.hash).reverse().map(b => b.toString(16).padStart(2, "0")).join(""), i.index)));
         if (spent.some(s => s.spent)) throw new Error("Those TXC coins were already spent. Prepare this step again.");
-        if (signing.intent.kind === "gather") {
+        {
           const bal = await fetchBalance({ data: { address: signing.intent.from, propertyId: 39 } });
           if (tsdBalanceUnits(bal.balance) !== tsdBalanceUnits(signing.intent.amount)) throw new Error("The TSD balance on that address changed. Prepare this step again.");
         }
@@ -149,28 +140,19 @@ export function VaultTsdGather({ pairing }: { pairing: VaultPairing }) {
     }
   }
 
-  const need = feeRate ? tsdGatherFundingSats(feeRate) : null;
-  const unfunded = rows && need ? rows.filter(r => r.confirmedSats + r.pendingSats < need) : [];
 
   if (signing) {
     const i = signing.intent;
     return (
       <section className="mt-10 rounded-lg border border-border p-5">
-        <h3 className="text-lg font-semibold">{i.kind === "fund" ? "Step 1 · Fund TSD addresses with TXC" : `Step 2 · Gather TSD from address #${i.fromIndex}`}</h3>
+        <h3 className="text-lg font-semibold">{`Gather TSD from address #${i.fromIndex}`}</h3>
         <dl className="mt-4 space-y-2 text-sm">
-          {i.kind === "fund" ? <>
-            <div><dt className="text-muted-foreground">From · TXC address #0</dt><dd className="break-all font-mono text-xs">{i.from}</dd></div>
-            {i.targets.map(t => <div key={t.index}><dt className="text-muted-foreground">To address #{t.index} · {fmt(t.sats)} TXC</dt><dd className="break-all font-mono text-xs">{t.address}</dd></div>)}
-            <div><dt className="text-muted-foreground">Network fee</dt><dd>{fmt(i.feeSats)} TXC</dd></div>
-            <div><dt className="text-muted-foreground">Change back to #0</dt><dd>{fmt(i.changeSats)} TXC</dd></div>
-            <p className="text-xs text-muted-foreground">Plain TXC only. No TSD moves in this step.</p>
-          </> : <>
             <div><dt className="text-muted-foreground">TSD · TXC Omni #39</dt><dd className="font-semibold">{i.amount} TSD (whole balance)</dd></div>
             <div><dt className="text-muted-foreground">From · address #{i.fromIndex}</dt><dd className="break-all font-mono text-xs">{i.from}</dd></div>
             <div><dt className="text-muted-foreground">To · your TXC address #0</dt><dd className="break-all font-mono text-xs">{i.to}</dd></div>
             <div><dt className="text-muted-foreground">TXC moved to #0 with it</dt><dd>{fmt(i.txcSats)} TXC</dd></div>
-            <div><dt className="text-muted-foreground">Network fee</dt><dd>{fmt(i.feeSats)} TXC</dd></div>
-          </>}
+            <div><dt className="text-muted-foreground">Network fee</dt><dd>{fmt(i.feeSats)} TXC{i.feeInputs > 0 && ` · paid with ${fmt(i.feeInputSats)} TXC from address #0 (rest returns to #0)`}</dd></div>
+            <p className="text-xs text-muted-foreground">On the Vault, the TSD sender must be address #{i.fromIndex} (first input).</p>
         </dl>
         {"payload" in signing ? <div className="mt-5 space-y-3">
           <ol className="list-inside list-decimal space-y-1 text-xs text-muted-foreground">
@@ -187,7 +169,7 @@ export function VaultTsdGather({ pairing }: { pairing: VaultPairing }) {
           {error && <p className="text-xs text-destructive">{error}</p>}
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setSigning(null); setError(null); }}>Back</Button>
         </div> : <div className="mt-5 space-y-3">
-          <p className="text-sm">Sent. {i.kind === "fund" ? "Wait for 1 confirmation, then gather each address." : "The TSD will show on address #0 after it confirms."}</p>
+          <p className="text-sm">Sent. The TSD will show on address #0 after it confirms.</p>
           <TxidCard txid={signing.txid} />
           <Button onClick={() => { setSigning(null); void scan(); }}>Done</Button>
         </div>}
@@ -200,31 +182,27 @@ export function VaultTsdGather({ pairing }: { pairing: VaultPairing }) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-lg font-semibold">Gather TSD to address #0</h3>
-          <p className="mt-1 text-sm text-muted-foreground">TSD can only be sent from your TXC address #0. This finds TSD on your other receive addresses (#1–#{TSD_GATHER_MAX_INDEX}) and moves it there in two Vault-signed steps.</p>
+          <p className="mt-1 text-sm text-muted-foreground">TSD can only be sent from your TXC address #0. This finds TSD on your other receive addresses (#1–#{TSD_GATHER_MAX_INDEX}) and moves it there with one Vault signature per address. Address #0 pays the fee.</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void scan()} disabled={loading || busy}><RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} /></Button>
       </div>
       {loading && !rows && <p className="mt-4 text-sm text-muted-foreground">Checking addresses…</p>}
       {rows && rows.length === 0 && <p className="mt-4 text-sm text-muted-foreground">No TSD found on other addresses. Everything is already on #0.</p>}
-      {rows && rows.length > 0 && need && <>
+      {rows && rows.length > 0 && <>
         <table className="mt-4 w-full text-sm">
-          <thead className="text-left text-xs text-muted-foreground"><tr><th className="py-2">Address</th><th>TSD</th><th>TXC for fee</th><th /></tr></thead>
+          <thead className="text-left text-xs text-muted-foreground"><tr><th className="py-2">Address</th><th>TSD</th><th>TXC on address</th><th /></tr></thead>
           <tbody>{rows.map(r => {
-            const ready = r.confirmedSats >= need;
+            const ready = r.confirmedSats > 0;
             return <tr key={r.index} className="border-t border-border">
               <td className="py-2"><span className="font-medium">#{r.index}</span> <span className="font-mono text-xs text-muted-foreground">{r.address.slice(0, 8)}…{r.address.slice(-6)}</span></td>
               <td>{r.tsd}</td>
               <td>{fmt(r.confirmedSats)}{r.pendingSats > 0 && <span className="text-xs text-muted-foreground"> (+{fmt(r.pendingSats)} confirming)</span>}</td>
               <td className="text-right">{ready
                 ? <Button size="sm" disabled={busy} onClick={() => void prepareGather(r)}>Gather to #0</Button>
-                : <span className="text-xs text-muted-foreground">{r.pendingSats > 0 ? "Waiting for confirmation" : "Needs funding"}</span>}</td>
+                : <span className="text-xs text-muted-foreground">Waiting for confirmation</span>}</td>
             </tr>;
           })}</tbody>
         </table>
-        {unfunded.length > 0 && <div className="mt-4 flex items-center gap-3">
-          <Button disabled={busy} onClick={() => void prepareFunding(unfunded.map(r => r.index))}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : `Step 1 · Fund ${unfunded.length} address${unfunded.length === 1 ? "" : "es"}`}</Button>
-          <span className="text-xs text-muted-foreground">{fmt(need)} TXC each from address #0, plus one network fee.</span>
-        </div>}
       </>}
       {error && <p className="mt-3 text-xs text-destructive">{error}</p>}
     </section>
