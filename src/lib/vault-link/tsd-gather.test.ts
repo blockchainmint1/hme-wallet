@@ -4,7 +4,7 @@ import { rootFromSeed } from "@/lib/txc/wallet";
 import { TXC_NETWORK } from "@/lib/txc/network";
 import { deriveVaultAddress } from "./derive";
 import type { VaultPairing } from "./pairing";
-import { buildTsdFundingPsbt, buildTsdGatherPsbt, tsdGatherFundingSats, verifyTsdGatherSigned } from "./tsd-gather";
+import { buildTsdGatherPsbt, selectTsdGatherFeeInputs, verifyTsdGatherSigned } from "./tsd-gather";
 
 const root = rootFromSeed(new Uint8Array(32).fill(7));
 const pairing: VaultPairing = { v: 1, fp: Buffer.from(root.fingerprint).toString("hex"), pairedAt: 0, chains: { txc: { "44": root.derivePath("m/44'/696969'/0'").neutered().toBase58() } } };
@@ -18,40 +18,37 @@ function coin(index: number, value: number, seed = 4) {
 const addr0 = deriveVaultAddress(pairing, "txc", 44, 0, 0).address;
 
 describe("Vault TSD gather", () => {
-  it("funds each holder from address #0 only, change back to #0", () => {
-    const c = coin(0, 1_000_000);
-    const b = buildTsdFundingPsbt({ pairing, targetIndexes: [2, 5], feeRate: 1, inputs: [c.u], prevTxHex: c.hex });
-    const outs = Psbt.fromBase64(b.psbtBase64, { network: TXC_NETWORK }).txOutputs;
-    const per = tsdGatherFundingSats(1);
-    expect(per).toBe(10_522);
-    expect(outs.map(o => o.address)).toEqual([deriveVaultAddress(pairing, "txc", 44, 0, 2).address, deriveVaultAddress(pairing, "txc", 44, 0, 5).address, addr0]);
-    expect(outs[0].value).toBe(BigInt(per));
-    expect(outs.some(o => o.script[0] === 0x6a)).toBe(false);
-  });
-  it("refuses funding coins that are not on address #0", () => {
-    const c = coin(3, 1_000_000);
-    expect(() => buildTsdFundingPsbt({ pairing, targetIndexes: [2], feeRate: 1, inputs: [c.u], prevTxHex: c.hex })).toThrow(/must all belong/);
-  });
-  it("gathers the whole TSD balance with #0 as the only non-data output", () => {
-    const dust = coin(4, 10_000, 5); const fund = coin(4, 10_522, 6);
-    const b = buildTsdGatherPsbt({ pairing, index: 4, balance: "1250.5", feeRate: 1, inputs: [dust.u, fund.u], prevTxHex: { ...dust.hex, ...fund.hex } });
-    const outs = Psbt.fromBase64(b.psbtBase64, { network: TXC_NETWORK }).txOutputs;
+  it("puts the holder's coin first, #0 fee coins after, one output to #0", () => {
+    const marker = coin(4, 10_000, 5); const big = coin(0, 1_000_000, 6); const small = coin(0, 20_000, 7);
+    const feeInputs = selectTsdGatherFeeInputs(pairing, [marker.u], [small.u, big.u], 1);
+    expect(feeInputs.map(u => u.value)).toEqual([1_000_000]);
+    const b = buildTsdGatherPsbt({ pairing, index: 4, balance: "1250.5", feeRate: 1, holderInputs: [marker.u], feeInputs, prevTxHex: { ...marker.hex, ...big.hex } });
+    const psbt = Psbt.fromBase64(b.psbtBase64, { network: TXC_NETWORK });
+    expect(psbt.data.inputs[0].bip32Derivation?.[0].path).toBe(marker.a.path);
+    expect(psbt.data.inputs[1].bip32Derivation?.[0].path).toBe(big.a.path);
+    const outs = psbt.txOutputs;
     expect(outs).toHaveLength(2);
     expect(Buffer.from(outs[0].script).toString("hex").startsWith("6a146f6d6e690000000000000027")).toBe(true);
     expect(Buffer.from(outs[0].script).toString("hex").endsWith((125_050_000_000n).toString(16).padStart(16, "0"))).toBe(true);
     expect(outs[1].address).toBe(addr0);
-    expect(outs[1].value).toBe(BigInt(10_000 + 10_522 - (10 + 2 * 149 + 34 + 31)));
+    expect(outs[1].value).toBe(BigInt(10_000 + 1_000_000 - (10 + 2 * 149 + 34 + 31)));
   });
-  it("refuses gathering from address #0, foreign coins, or without fee money", () => {
-    const own = coin(4, 10_000);
-    expect(() => buildTsdGatherPsbt({ pairing, index: 0, balance: "1", feeRate: 1, inputs: [own.u], prevTxHex: own.hex })).toThrow();
-    const other = coin(0, 1_000_000);
-    expect(() => buildTsdGatherPsbt({ pairing, index: 4, balance: "1", feeRate: 1, inputs: [other.u], prevTxHex: other.hex })).toThrow(/must all belong/);
-    expect(() => buildTsdGatherPsbt({ pairing, index: 4, balance: "1", feeRate: 1, inputs: [own.u], prevTxHex: own.hex })).toThrow(/more TXC/);
+  it("skips #0 coins when the holder can pay its own fee", () => {
+    const own = coin(4, 50_000);
+    expect(selectTsdGatherFeeInputs(pairing, [own.u], [coin(0, 1_000_000).u], 1)).toEqual([]);
+  });
+  it("refuses index 0, wrong-address coins, fee-only transactions and missing fee money", () => {
+    const own = coin(4, 10_000); const zero = coin(0, 1_000_000, 9);
+    expect(() => buildTsdGatherPsbt({ pairing, index: 0, balance: "1", feeRate: 1, holderInputs: [own.u], feeInputs: [], prevTxHex: own.hex })).toThrow();
+    expect(() => buildTsdGatherPsbt({ pairing, index: 4, balance: "1", feeRate: 1, holderInputs: [zero.u], feeInputs: [], prevTxHex: zero.hex })).toThrow(/must all belong/);
+    expect(() => buildTsdGatherPsbt({ pairing, index: 4, balance: "1", feeRate: 1, holderInputs: [own.u], feeInputs: [coin(3, 50_000, 8).u], prevTxHex: { ...own.hex } })).toThrow(/must all belong/);
+    expect(() => buildTsdGatherPsbt({ pairing, index: 4, balance: "1", feeRate: 1, holderInputs: [], feeInputs: [zero.u], prevTxHex: zero.hex })).toThrow(/sender/);
+    expect(() => buildTsdGatherPsbt({ pairing, index: 4, balance: "1", feeRate: 1, holderInputs: [own.u], feeInputs: [], prevTxHex: own.hex })).toThrow(/network fee/);
+    expect(() => selectTsdGatherFeeInputs(pairing, [own.u], [], 1)).toThrow(/address #0/);
   });
   it("accepts a genuine signature and rejects a tampered output", () => {
     const fund = coin(4, 30_000);
-    const b = buildTsdGatherPsbt({ pairing, index: 4, balance: "1", feeRate: 1, inputs: [fund.u], prevTxHex: fund.hex });
+    const b = buildTsdGatherPsbt({ pairing, index: 4, balance: "1", feeRate: 1, holderInputs: [fund.u], feeInputs: [], prevTxHex: fund.hex });
     const psbt = Psbt.fromBase64(b.psbtBase64, { network: TXC_NETWORK });
     psbt.signAllInputs(root.derivePath(fund.a.path)); psbt.finalizeAllInputs();
     const tx = psbt.extractTransaction();
