@@ -37,7 +37,7 @@ describe("Vault TSD gather", () => {
     const b = buildTsdGatherPsbt({ pairing, index: 4, balance: "1250.5", feeRate: 1, inputs: [dust.u, fund.u], prevTxHex: { ...dust.hex, ...fund.hex } });
     const outs = Psbt.fromBase64(b.psbtBase64, { network: TXC_NETWORK }).txOutputs;
     expect(outs).toHaveLength(2);
-    expect(Buffer.from(outs[0].script).toString("hex").startsWith("6a146f6d6e69000000000000000027")).toBe(true);
+    expect(Buffer.from(outs[0].script).toString("hex").startsWith("6a146f6d6e690000000000000027")).toBe(true);
     expect(Buffer.from(outs[0].script).toString("hex").endsWith((125_050_000_000n).toString(16).padStart(16, "0"))).toBe(true);
     expect(outs[1].address).toBe(addr0);
     expect(outs[1].value).toBe(BigInt(10_000 + 10_522 - (10 + 2 * 149 + 34 + 31)));
