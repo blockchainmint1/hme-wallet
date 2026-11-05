@@ -26,7 +26,7 @@ describe("Vault TSD gather", () => {
     expect(per).toBe(10_522);
     expect(outs.map(o => o.address)).toEqual([deriveVaultAddress(pairing, "txc", 44, 0, 2).address, deriveVaultAddress(pairing, "txc", 44, 0, 5).address, addr0]);
     expect(outs[0].value).toBe(BigInt(per));
-    expect(outs.some(o => payments.embed({ output: o.script }, { validate: false }).data)).toBe(false);
+    expect(outs.some(o => o.script[0] === 0x6a)).toBe(false);
   });
   it("refuses funding coins that are not on address #0", () => {
     const c = coin(3, 1_000_000);
@@ -37,7 +37,7 @@ describe("Vault TSD gather", () => {
     const b = buildTsdGatherPsbt({ pairing, index: 4, balance: "1250.5", feeRate: 1, inputs: [dust.u, fund.u], prevTxHex: { ...dust.hex, ...fund.hex } });
     const outs = Psbt.fromBase64(b.psbtBase64, { network: TXC_NETWORK }).txOutputs;
     expect(outs).toHaveLength(2);
-    expect(Buffer.from(outs[0].script).toString("hex")).toBe("6a146f6d6e69000000000000002700001c6e5a7a4500".slice(0, 4) + Buffer.from(outs[0].script).toString("hex").slice(4));
+    expect(Buffer.from(outs[0].script).toString("hex").startsWith("6a146f6d6e69000000000000000027")).toBe(true);
     expect(Buffer.from(outs[0].script).toString("hex").endsWith((125_050_000_000n).toString(16).padStart(16, "0"))).toBe(true);
     expect(outs[1].address).toBe(addr0);
     expect(outs[1].value).toBe(BigInt(10_000 + 10_522 - (10 + 2 * 149 + 34 + 31)));
