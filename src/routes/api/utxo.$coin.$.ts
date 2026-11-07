@@ -94,13 +94,19 @@ async function forward(request: Request, coin: string, path: string, search: str
     catch { return new Response("Payload too large", { status: 413 }); }
   }
 
+  // The route splat drops a trailing slash, but Blockbook only reads a POSTed
+  // raw transaction at `/sendtx/` — without the slash it answers
+  // "Missing tx blob". Large transactions must use POST (an over-long GET URL
+  // gets a bare 520 from the gateways), so restore the slash here.
+  const upstreamPath = method === "POST" && path === "sendtx" ? "sendtx/" : path;
+
   let lastStatus = 502;
   let lastBody = "upstream unavailable";
   const nowNodesKey = process.env["NOWNODES_API_KEY"];
   for (const { base, key } of bases) {
     if (key && !nowNodesKey) continue;
     try {
-      const upstream = await fetch(`${base}/${path}${search}`, {
+      const upstream = await fetch(`${base}/${upstreamPath}${search}`, {
         method,
         headers: {
           accept: "application/json, text/plain, */*",

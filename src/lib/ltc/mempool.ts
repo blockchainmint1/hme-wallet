@@ -6,7 +6,7 @@
  * Backend: NowNodes (keyed, no rate limits) with Trezor's public Blockbook as
  * failover — both proxied through /api/utxo/ltc.
  */
-import { cleanUpstreamBody } from "@/lib/broadcast-error";
+import { blockbookBroadcast } from "@/lib/blockbook-broadcast";
 import { LTC_MEMPOOL_API, LTC_MEMPOOL_BASE } from "./network";
 
 export interface MempoolAddressStats {
@@ -179,27 +179,9 @@ export async function getFeeEstimates(): Promise<FeeEstimates> {
 }
 
 export async function broadcastTx(hex: string): Promise<string> {
-  // GET /sendtx/{hex} — the body form doesn't survive every proxy / native
-  // bridge hop, which shows up upstream as "Missing tx blob".
-  const res = await fetch(`${LTC_MEMPOOL_API}/sendtx/${hex}`, {
-    headers: { accept: "application/json" },
-  });
-  const body = await res.text();
-  if (!res.ok) throw new Error(`ltc broadcast failed: ${res.status} ${cleanUpstreamBody(body)}`);
-
-  type SendTxBody = { result?: string; error?: string | { message?: string } };
-  let parsed: SendTxBody | null = null;
-  try {
-    parsed = JSON.parse(body) as SendTxBody;
-  } catch {
-    parsed = null;
-  }
-  if (parsed) {
-    const errMsg = typeof parsed.error === "string" ? parsed.error : parsed.error?.message;
-    if (errMsg) throw new Error(`ltc broadcast rejected: ${errMsg}`);
-    if (parsed.result) return parsed.result;
-  }
-  return cleanUpstreamBody(body, 120);
+  // Small transactions use GET /sendtx/{hex}; large ones are POSTed because
+  // the upstream gateways answer an over-long URL with a bare 520.
+  return blockbookBroadcast(LTC_MEMPOOL_API, hex, "ltc");
 }
 
 export function explorerTxUrl(txid: string): string {
