@@ -37,7 +37,6 @@ export const DOGE_URI_SCHEMES = ["dogecoin"] as const;
 // fails over across several public Blockbook instances. Trezor's public
 // node now 403s a lot of traffic and the alternatives send no CORS headers,
 // so a direct browser fetch is not viable.
-export const DOGE_BLOCKBOOK_BASE = "https://dogecoin.atomicwallet.io";
 export const DOGE_BLOCKBOOK_API = "/api/utxo/doge";
 
 // User-facing explorer for tx / address links.
