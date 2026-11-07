@@ -14,6 +14,7 @@
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { isSafeProxyPath } from "@/lib/security/proxy-policy";
+import { longGetSendTxAsPost } from "@/lib/blockbook-broadcast";
 
 // Ordered upstream lists — first responder wins, the rest are failover.
 // NowNodes is a keyed, rate-limit-free Blockbook; it goes first where we
@@ -87,7 +88,7 @@ async function forward(request: Request, coin: string, path: string, search: str
   if (!bases) return new Response("Unknown chain", { status: 404 });
   if (!allowedPath(path)) return new Response("Forbidden path", { status: 403 });
 
-  const method = request.method === "POST" ? "POST" : "GET";
+  let method: "GET" | "POST" = request.method === "POST" ? "POST" : "GET";
   let body: string | undefined;
   if (method === "POST") {
     const { readBoundedText } = await import("@/lib/security/json-proxy.server");
@@ -99,7 +100,18 @@ async function forward(request: Request, coin: string, path: string, search: str
   // raw transaction at `/sendtx/` — without the slash it answers
   // "Missing tx blob". Large transactions must use POST (an over-long GET URL
   // gets a bare 520 from the gateways), so restore the slash here.
-  const upstreamPath = method === "POST" && path === "sendtx" ? "sendtx/" : path;
+  let upstreamPath = method === "POST" && path === "sendtx" ? "sendtx/" : path;
+  let contentType = request.headers.get("content-type") ?? "text/plain";
+
+  // Older builds (phone app, extension, stale tabs) still send big payments
+  // in the URL; forward those same signed bytes as a POST body instead.
+  const rescued = longGetSendTxAsPost(method, path);
+  if (rescued) {
+    method = "POST";
+    upstreamPath = rescued.path;
+    body = rescued.body;
+    contentType = "text/plain";
+  }
 
   let lastStatus = 502;
   let lastBody = "upstream unavailable";
@@ -112,7 +124,7 @@ async function forward(request: Request, coin: string, path: string, search: str
         headers: {
           accept: "application/json, text/plain, */*",
           ...(key && nowNodesKey ? { "api-key": nowNodesKey } : {}),
-          ...(body === undefined ? {} : { "content-type": request.headers.get("content-type") ?? "text/plain" }),
+          ...(body === undefined ? {} : { "content-type": contentType }),
         },
         ...(body === undefined ? {} : { body }),
         redirect: "manual",
