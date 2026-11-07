@@ -49,6 +49,13 @@ export function blockbookSendTxRequest(apiBase: string, hex: string): { url: str
   };
 }
 
+/** Wait before re-checking after a transport failure (overridable in tests). */
+export let LOOKUP_RETRY_MS = 4000;
+export function setLookupRetryMsForTests(ms: number): void {
+  LOOKUP_RETRY_MS = ms;
+}
+const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 export type TxLookup = "present" | "absent" | "unknown";
 
 /** Read-path lookup: is this txid in the backend's mempool or chain? */
@@ -112,10 +119,21 @@ export async function blockbookBroadcast(apiBase: string, hex: string, coin: str
   // The node (or a failover backend) already has exactly these bytes.
   if (isAlreadyKnownBroadcastError(sent.message)) return txid;
 
-  const seen = await lookupTxid(apiBase, txid);
+  // A transport failure (520, timeout) can follow an accepted transaction that
+  // is still propagating to the backend we read from, so give it a moment and
+  // look twice before calling it absent.
+  let seen = await lookupTxid(apiBase, txid);
+  if (seen !== "present" && !sent.rejected) {
+    await delay(LOOKUP_RETRY_MS);
+    seen = await lookupTxid(apiBase, txid);
+  }
   if (seen === "present") return txid;
   if (seen === "absent") {
-    throw new Error(`${sent.message} — transaction ${txid} is not on the network, your coins did not move`);
+    throw new Error(
+      sent.rejected
+        ? `${sent.message} — transaction ${txid} is not on the network, your coins did not move`
+        : `${sent.message} — transaction ${txid} was not found on the network. Check Activity before trying again.`,
+    );
   }
   throw new Error(
     `${sent.message} — could not confirm whether transaction ${txid} reached the network. Check Activity or the explorer before trying again.`,

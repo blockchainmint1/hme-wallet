@@ -31,7 +31,8 @@ const UPSTREAMS: Record<string, Upstream[]> = {
   ],
   doge: [
     { base: "https://dogebook.nownodes.io/api/v2", key: true },
-    { base: "https://dogecoin.atomicwallet.io/api/v2" },
+    // dogecoin.atomicwallet.io removed 2026-11-07: answers 404 on every path,
+    // so failover only burned a timeout on it. (The LTC instance still works.)
     { base: "https://blockbook.doge.zelcore.io/api/v2" },
   ],
 };
