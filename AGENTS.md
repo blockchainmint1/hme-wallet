@@ -64,6 +64,6 @@ Registry/Hub use ecosystem-credential.server (current per-site HME convention); 
 - Activity filtering is independent, device-wide and recoverable; counterfeit contracts override claimed direction; pending tracking uses raw history. Why: logs cannot prove signatures.
 
 ## UTXO history
-- BTC/LTC/DOGE broadcasts go through blockbookBroadcast: GET for short hex, POST body to `sendtx/` (proxy restores the slash) for long. Why: gateways 520 on long URLs; slashless POST reads "Missing tx blob".
+- BTC/LTC/DOGE broadcasts use blockbookBroadcast: GET short/POST long hex, local txid, "already known" = success, failures txid-checked. Why: long URLs 520; failures don't prove absence.
 - Per-address history fetches merge through fetchMergedAddressTxs (src/lib/address-txs.ts); when every address fetch fails it throws so React Query keeps the last-known list. Why: an indexer outage must never overwrite good cached history with an empty list.
 
