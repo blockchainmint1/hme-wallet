@@ -4,6 +4,7 @@ import {
   blockbookBroadcast,
   blockbookSendTxRequest,
   isAlreadyKnownBroadcastError,
+  longGetSendTxAsPost,
   setLookupRetryMsForTests,
   signedTxid,
 } from "./blockbook-broadcast";
@@ -98,5 +99,19 @@ describe("blockbookBroadcast outcome handling", () => {
   it("refuses a success answer naming a different txid", async () => {
     mockFetch({ send: [{ status: 200, body: JSON.stringify({ result: "ff".repeat(32) }) }], lookup: [] });
     await expect(blockbookBroadcast(API, REAL_HEX, "doge")).rejects.toThrow(/unexpected transaction id/);
+  });
+});
+
+describe("longGetSendTxAsPost (proxy rescue for older app builds)", () => {
+  it("re-sends a long GET sendtx as a POST body with the same bytes", () => {
+    const hex = "ab".repeat(13784); // 27,568 hex chars — the size of the real 93-input DOGE send that hit 520
+    expect(longGetSendTxAsPost("GET", `sendtx/${hex}`)).toEqual({ path: "sendtx/", body: hex });
+  });
+  it("leaves small GET sends, POSTs, reads and malformed hex alone", () => {
+    expect(longGetSendTxAsPost("GET", `sendtx/${"ab".repeat(3000)}`)).toBeNull();
+    expect(longGetSendTxAsPost("POST", `sendtx/${"ab".repeat(5000)}`)).toBeNull();
+    expect(longGetSendTxAsPost("GET", `tx/${"ab".repeat(5000)}`)).toBeNull();
+    expect(longGetSendTxAsPost("GET", `sendtx/${"zz".repeat(5000)}`)).toBeNull();
+    expect(longGetSendTxAsPost("GET", `sendtx/${"a".repeat(7001)}`)).toBeNull();
   });
 });
