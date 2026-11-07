@@ -49,6 +49,22 @@ export function blockbookSendTxRequest(apiBase: string, hex: string): { url: str
   };
 }
 
+/**
+ * Server-side rescue for older app builds (phone app, extension, or a browser
+ * tab still running a pre-fix version) that still put a large signed
+ * transaction in the URL. Our worker receives the full URL fine; it is the
+ * upstream gateways that answer a long one with a bare 520. So the proxy
+ * re-sends exactly the same bytes as a POST body instead. Returns null for
+ * anything that is not a long, well-formed `GET sendtx/<hex>`.
+ */
+export function longGetSendTxAsPost(method: string, path: string): { path: string; body: string } | null {
+  if (method !== "GET" || !path.startsWith("sendtx/")) return null;
+  const hex = path.slice("sendtx/".length);
+  if (hex.length <= BLOCKBOOK_GET_MAX_HEX) return null;
+  if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length % 2 !== 0) return null;
+  return { path: "sendtx/", body: hex };
+}
+
 /** Wait before re-checking after a transport failure (overridable in tests). */
 export let LOOKUP_RETRY_MS = 4000;
 export function setLookupRetryMsForTests(ms: number): void {
