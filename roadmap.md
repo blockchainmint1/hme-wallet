@@ -24,3 +24,10 @@
 - [ ] Android backup protection, old APK rotation, extension rebuild
 
 - [ ] Desktop Send to many: tiny real TXC + TSD test, auditor review, publish
+
+## Stale code incidents (Nov 8)
+- [x] Publish proxy rescue for old clients' long GET broadcasts; live probes reach node at 16k/27.5k/40k hex
+- [x] Stale-tab "new version available" bar (web only), 5 tests, browser checked
+- [x] Rebuild extension zip 0.5.0 from current source
+- [ ] Auditor OK, then publish banner + extension zip
+- [ ] Retry 31,000 DOGE send from a fresh desktop tab (consider splitting into 2–3 sends)

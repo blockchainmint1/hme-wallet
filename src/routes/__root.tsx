@@ -16,6 +16,7 @@ import { CONTENT_SECURITY_POLICY_META } from "../lib/security/headers";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { WalletProvider } from "../lib/txc/wallet-context";
 import { SiteFooter } from "../components/SiteFooter";
+import { StaleBuildBanner } from "../components/StaleBuildBanner";
 import { Toaster } from "../components/ui/sonner";
 import { ThemeProvider } from "../lib/theme";
 import { installNativeServerFnBridge } from "../lib/native/server-fn-bridge";
@@ -411,6 +412,7 @@ function RootComponent() {
             // Desktop workspace has its own full-width shell; the phone frame
             // below stays untouched for every other page.
             <div className="flex h-[100dvh] w-full flex-col bg-background">
+              <StaleBuildBanner />
               {offline && (
                 <div className="bg-amber-500/15 text-amber-300 text-xs text-center py-1.5 px-3 border-b border-amber-500/30">
                   You&apos;re offline — balances and prices may be out of date.
@@ -427,6 +429,7 @@ function RootComponent() {
               className="mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col bg-background sm:h-[calc(100dvh-3rem)] sm:max-w-[520px] md:max-w-[600px] lg:max-w-[680px] sm:rounded-[2.25rem] sm:shadow-2xl sm:ring-1 sm:ring-border overflow-hidden"
             >
               <div className="pt-[env(safe-area-inset-top)]" />
+              <StaleBuildBanner />
               {offline && (
                 <div className="bg-amber-500/15 text-amber-300 text-xs text-center py-1.5 px-3 border-b border-amber-500/30">
                   You&apos;re offline — balances and prices may be out of date.
