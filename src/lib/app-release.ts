@@ -206,12 +206,38 @@ export async function checkForWebUpdate(): Promise<"current" | "update" | "unkno
   const { isNative, isExtension } = await import("@/lib/native/platform");
   if (isNative() || isExtension()) return "current";
   const serverBuild = await fetchServerBuildId();
-  if (!serverBuild) return "unknown";
-  if (LOCAL_BUILD_ID === "dev") return "current";
-  if (serverBuild === LOCAL_BUILD_ID) return "current";
-  // Already tried reloading for exactly this server build → the stamps simply
-  // don't line up; there is no newer code to fetch.
-  if (reloadedFor() === serverBuild) return "current";
+  return webBuildVerdict({ local: LOCAL_BUILD_ID, server: serverBuild, reloadedFor: reloadedFor() });
+}
+
+/** Last server build we checked against, so callers can tell builds apart. */
+export async function checkForWebUpdateDetailed(): Promise<{
+  verdict: "current" | "update" | "unknown";
+  serverBuild: string | null;
+}> {
+  const { isNative, isExtension } = await import("@/lib/native/platform");
+  if (isNative() || isExtension()) return { verdict: "current", serverBuild: null };
+  const serverBuild = await fetchServerBuildId();
+  return {
+    verdict: webBuildVerdict({ local: LOCAL_BUILD_ID, server: serverBuild, reloadedFor: reloadedFor() }),
+    serverBuild,
+  };
+}
+
+/**
+ * Pure stale-tab rule: this tab is out of date when the server ships a
+ * different build stamp than the one baked into this bundle — unless we
+ * already reloaded once for exactly that server stamp (then the two simply
+ * never line up and there is nothing newer to fetch).
+ */
+export function webBuildVerdict(input: {
+  local: string;
+  server: string | null;
+  reloadedFor: string | null;
+}): "current" | "update" | "unknown" {
+  if (!input.server) return "unknown";
+  if (input.local === "dev") return "current";
+  if (input.server === input.local) return "current";
+  if (input.reloadedFor === input.server) return "current";
   return "update";
 }
 
