@@ -187,6 +187,23 @@ jobs:
           print(f"Stamped versionName={vn} versionCode={vc}")
           PY
 
+      - name: Fetch Gradle (patient, with retries)
+        # services.gradle.org is sometimes slow; the wrapper's default 10 s
+        # read timeout then fails the whole build before anything compiles.
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          sed -i 's/^networkTimeout=.*/networkTimeout=120000/' gradle/wrapper/gradle-wrapper.properties
+          grep -q '^networkTimeout=' gradle/wrapper/gradle-wrapper.properties \
+            || echo 'networkTimeout=120000' >> gradle/wrapper/gradle-wrapper.properties
+          for i in 1 2 3 4; do
+            if ./gradlew --version --no-daemon; then exit 0; fi
+            echo "Gradle download attempt $i failed; retrying in $((i * 20))s"
+            sleep $((i * 20))
+          done
+          echo "::error::Could not download Gradle after 4 attempts"
+          exit 1
+
       - name: Build APK
         working-directory: android
         env:
