@@ -76,9 +76,13 @@ export const Route = createFileRoute("/api/solana")({
             last = { status: 502, body: "Solana network unavailable" };
           }
         }
-        return new Response(last?.body.startsWith("{") ? last.body : "Solana network unavailable", {
+        const jsonFailure = last?.body.trimStart().startsWith("{") ?? false;
+        return new Response(jsonFailure && last ? last.body : "Solana network unavailable", {
           status: 502,
-          headers: { "content-type": "application/json", "cache-control": "no-store" },
+          headers: {
+            "content-type": jsonFailure ? "application/json" : "text/plain",
+            "cache-control": "no-store",
+          },
         });
       },
     },
