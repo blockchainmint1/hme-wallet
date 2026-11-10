@@ -67,3 +67,6 @@ Registry/Hub use ecosystem-credential.server (current per-site HME convention); 
 - BTC/LTC/DOGE broadcasts use blockbookBroadcast: GET short/POST long hex, local txid, "already known" = success, failures txid-checked; the proxy re-sends long GET sendtx as POST for older builds. Why: long URLs 520; failures don't prove absence.
 - Per-address history fetches merge through fetchMergedAddressTxs (src/lib/address-txs.ts); when every address fetch fails it throws so React Query keeps the last-known list. Why: an indexer outage must never overwrite good cached history with an empty list.
 
+
+## Solana relay
+- /api/solana tries ordered upstreams (keyed Alchemy, PublicNode, then Solana's public endpoint) and fails over only on refusals, rate limits, outages or non-JSON replies (src/lib/solana/rpc-upstreams.ts). Why: Solana's public endpoint blocks our hosting provider, and identical signed sends are de-duplicated by signature.
