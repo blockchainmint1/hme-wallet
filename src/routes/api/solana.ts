@@ -1,7 +1,9 @@
 /** Same-origin JSON-RPC proxy for Solana mainnet. */
 import { createFileRoute } from "@tanstack/react-router";
+import { shouldTryNextUpstream, solanaUpstreams } from "@/lib/solana/rpc-upstreams";
 
-const UPSTREAM = "https://api.mainnet-beta.solana.com";
+/** Largest single reply we relay (a batch of parsed transactions stays far below this). */
+const MAX_REPLY_BYTES = 4_000_000;
 const ALLOWED = new Set([
   "getBalance",
   "getBlockHeight",
@@ -49,19 +51,35 @@ export const Route = createFileRoute("/api/solana")({
             return new Response(`Method not allowed: ${String(method ?? "?")}`, { status: 403 });
           }
         }
-        try {
-          const upstream = await fetch(UPSTREAM, {
-            method: "POST",
-            headers: { "content-type": "application/json", accept: "application/json" },
-            body: rawBody,
-          });
-          return new Response(await upstream.text(), {
-            status: upstream.status,
-            headers: { "content-type": "application/json", "cache-control": "no-store" },
-          });
-        } catch {
-          return new Response("Solana network unavailable", { status: 502 });
+        let last: { status: number; body: string } | null = null;
+        for (const upstream of solanaUpstreams(process.env.ALCHEMY_KEY)) {
+          try {
+            const reply = await fetch(upstream.url, {
+              method: "POST",
+              headers: { "content-type": "application/json", accept: "application/json" },
+              body: rawBody,
+              redirect: "error",
+              signal: AbortSignal.timeout(12_000),
+            });
+            const text = await reply.text();
+            if (text.length > MAX_REPLY_BYTES) { last = { status: 502, body: "Solana reply too large" }; continue; }
+            if (shouldTryNextUpstream(reply.status, text)) { last = { status: reply.status, body: text }; continue; }
+            return new Response(text, {
+              status: reply.status,
+              headers: {
+                "content-type": "application/json",
+                "cache-control": "no-store",
+                "x-hm-upstream": upstream.name,
+              },
+            });
+          } catch {
+            last = { status: 502, body: "Solana network unavailable" };
+          }
         }
+        return new Response(last?.body.startsWith("{") ? last.body : "Solana network unavailable", {
+          status: 502,
+          headers: { "content-type": "application/json", "cache-control": "no-store" },
+        });
       },
     },
   },
