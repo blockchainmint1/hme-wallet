@@ -31,3 +31,8 @@
 - [x] Rebuild extension zip 0.5.0 from current source
 - [ ] Auditor OK, then publish banner + extension zip
 - [ ] Retry 31,000 DOGE send from a fresh desktop tab (consider splitting into 2–3 sends)
+
+## Per-wallet TSD cash-out key (Nov 11)
+- [x] Confirm cause: cash-out key stored per install; all other ecosystem links per wallet
+- [x] Auditor plan: /mnt/documents/Honest-Money-Per-Wallet-TSD-Cashout-Key-Plan-2026-11-11.md
+- [ ] Auditor answers (owner rule, unlink clears key, legacy key removal), then implement + tests, publish, rebuild APK/extension
