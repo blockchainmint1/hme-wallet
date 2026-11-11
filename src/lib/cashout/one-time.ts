@@ -17,8 +17,34 @@ import { sha256 } from "@noble/hashes/sha2.js";
 /** TEXITcoin legacy pay-to-pubkey-hash version byte ('T…'). */
 const TXC_P2PKH_VERSION = 0x42;
 
-/** Orders closer than this to expiry are treated as expired. */
-export const ONE_TIME_EXPIRY_MARGIN_MS = 2 * 60_000;
+/**
+ * Orders closer than this to expiry are treated as expired. TSD Swap asked for
+ * at least an hour (orders live 24h; larger cash-outs wait for up to six
+ * TEXITcoin confirmations, ~2.5 min apart, before the order is paid), which
+ * also covers the auditor's 30-minute minimum.
+ */
+export const ONE_TIME_EXPIRY_MARGIN_MS = 60 * 60_000;
+
+/** TSD (Omni property 39) is divisible: 8 decimal places. */
+const TSD_DECIMALS = 8;
+
+/**
+ * Exact TSD amount in base units from a plain decimal string or a JSON number,
+ * or null when it isn't a plain non-negative decimal with at most 8 places.
+ * Numbers go through `String(n)` (shortest round-trip form), so no float
+ * arithmetic is involved; exponent forms are refused rather than guessed.
+ */
+export function tsdUnits(v: unknown): bigint | null {
+  let s: string;
+  if (typeof v === "string") s = v.trim();
+  else if (typeof v === "number" && Number.isFinite(v)) s = String(v);
+  else return null;
+  const m = /^(\d+)(?:\.(\d+))?$/.exec(s);
+  if (!m) return null;
+  const frac = m[2] ?? "";
+  if (frac.length > TSD_DECIMALS) return null;
+  return BigInt(m[1]) * 10n ** BigInt(TSD_DECIMALS) + BigInt(frac.padEnd(TSD_DECIMALS, "0") || "0");
+}
 
 export type CashoutPath = "account-inbox" | "one-time-order";
 
@@ -50,7 +76,8 @@ export function isLegacyTxcP2pkh(address: string): boolean {
 }
 
 export interface OneTimeOrderRequest {
-  amount: number;
+  /** TSD amount; compared to the reply as an exact decimal, never as a float. */
+  amount: number | string;
   payoutAddress: string;
   refundAddress: string;
 }
@@ -78,7 +105,16 @@ export interface VerifiedOneTimeOrder {
   payoutAddress: string;
   payoutAmount: number | null;
   amount: number;
+  refundAddress: string;
   expiresAt: string;
+}
+
+export interface VerifyContext {
+  /** The account's permanent inbox, as read from the account endpoint. */
+  permanentInbox: string | null | undefined;
+  /** Every TXC address this wallet derives; a deposit address may never be one. */
+  ownAddresses?: readonly string[];
+  now?: number;
 }
 
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
@@ -92,9 +128,9 @@ const num = (v: unknown) => (v === null || v === undefined || v === "" ? NaN : N
 export function verifyOneTimeOrder(
   req: OneTimeOrderRequest,
   res: OneTimeOrderResponse,
-  permanentInbox: string | null | undefined,
-  now: number = Date.now(),
+  ctx: VerifyContext,
 ): VerifiedOneTimeOrder {
+  const now = ctx.now ?? Date.now();
   const fail = (why: string): never => {
     throw new Error(`TSD Swap's one-time order didn't match (${why}). Nothing was sent.`);
   };
@@ -106,8 +142,16 @@ export function verifyOneTimeOrder(
   if (!isLegacyTxcP2pkh(deposit)) fail("deposit address is not a legacy T… address");
   const sendTo = str(res.sendTo);
   if (sendTo && sendTo !== deposit) fail("deposit addresses disagree");
-  const inboxes = [str(permanentInbox), str(res.accountTxcDepositAddress)].filter(Boolean);
+  const permanent = str(ctx.permanentInbox);
+  const echoedPermanent = str(res.accountTxcDepositAddress);
+  if (permanent && echoedPermanent && permanent !== echoedPermanent) {
+    fail("TSD Swap named a different account deposit address");
+  }
+  const inboxes = [permanent, echoedPermanent].filter(Boolean);
   if (inboxes.includes(deposit)) fail("deposit address is the permanent inbox");
+  if ((ctx.ownAddresses ?? []).some((a) => a.trim() === deposit)) {
+    fail("deposit address belongs to this wallet");
+  }
 
   if (str(res.payoutAddress).toLowerCase() !== req.payoutAddress.trim().toLowerCase()) {
     fail("payout address changed");
@@ -115,8 +159,9 @@ export function verifyOneTimeOrder(
   const refund = str(res.refundAddress);
   if (refund && refund !== req.refundAddress) fail("refund address changed");
 
-  const amount = num(res.amountExpected);
-  if (!Number.isFinite(amount) || Math.abs(amount - req.amount) > 1e-8) fail("amount changed");
+  const wanted = tsdUnits(req.amount);
+  const echoed = tsdUnits(res.amountExpected);
+  if (wanted === null || echoed === null || wanted !== echoed) fail("amount changed");
 
   const chain = str(res.chain).toLowerCase();
   if (chain && chain !== "ethereum") fail("payout network is not Ethereum");
@@ -136,7 +181,8 @@ export function verifyOneTimeOrder(
     feeBps,
     payoutAddress: req.payoutAddress.trim(),
     payoutAmount: Number.isFinite(payout) ? payout : null,
-    amount: req.amount,
+    amount: Number(req.amount),
+    refundAddress: req.refundAddress,
     expiresAt,
   };
 }
@@ -145,4 +191,58 @@ export function verifyOneTimeOrder(
 export function oneTimeOrderStillOpen(expiresAt: string, now: number = Date.now()): boolean {
   const exp = Date.parse(expiresAt);
   return Number.isFinite(exp) && exp - now > ONE_TIME_EXPIRY_MARGIN_MS;
+}
+
+/** The parts of a cash-out the wallet locked in at review time. */
+export interface LockedCashout {
+  orderId?: string;
+  depositAddress: string;
+  payoutAddress: string;
+  amount: number | string;
+  refundAddress?: string;
+}
+
+/**
+ * Right before signing a one-time cash-out, the freshly polled order must
+ * still be waiting for exactly this deposit (auditor, 2026-11-11). Throws a
+ * user-readable message otherwise.
+ */
+export function recheckOneTimeOrder(
+  locked: LockedCashout,
+  order: OneTimeOrderResponse,
+  now: number = Date.now(),
+): void {
+  const fail = (why: string): never => {
+    throw new Error(`TSD Swap's order changed (${why}). Nothing was sent — start the cash-out again.`);
+  };
+  if (!locked.orderId || str(order.id) !== locked.orderId) fail("different order");
+  if (str(order.status) !== "awaiting_deposit") fail("it is no longer waiting for a deposit");
+  if (str(order.depositAddress) !== locked.depositAddress) fail("deposit address changed");
+  if (str(order.payoutAddress).toLowerCase() !== locked.payoutAddress.trim().toLowerCase()) {
+    fail("payout address changed");
+  }
+  const refund = str(order.refundAddress);
+  if (locked.refundAddress && refund && refund !== locked.refundAddress) fail("refund address changed");
+  const a = tsdUnits(locked.amount);
+  const b = tsdUnits(order.amountExpected);
+  if (a === null || b === null || a !== b) fail("amount changed");
+  if (!oneTimeOrderStillOpen(str(order.expiresAt), now)) fail("less than an hour left");
+}
+
+/**
+ * Right before signing a saved-address cash-out, the account must still have
+ * the same permanent inbox and still pay the saved address the user reviewed.
+ * The permanent inbox pays whatever is saved when the TSD arrives, so this is
+ * the closest check the wallet can make on that path.
+ */
+export function recheckSavedInbox(
+  locked: LockedCashout,
+  account: { depositAddress: string; payoutAddress: string | null },
+): void {
+  if (account.depositAddress.trim() !== locked.depositAddress) {
+    throw new Error("Your TSD Swap deposit address changed. Nothing was sent — start the cash-out again.");
+  }
+  if ((account.payoutAddress ?? "").trim().toLowerCase() !== locked.payoutAddress.trim().toLowerCase()) {
+    throw new Error("Your saved cash-out address changed. Nothing was sent — start the cash-out again.");
+  }
 }

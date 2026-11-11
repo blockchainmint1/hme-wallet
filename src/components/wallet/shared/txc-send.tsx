@@ -65,8 +65,19 @@ import {
   useCashoutApiKey,
   type CashoutKeyBinding,
 } from "@/lib/cashout/api-key";
-import { notifyCashoutDeposit } from "@/lib/cashout/tsd.functions";
-import { isLegacyTxcP2pkh, oneTimeOrderStillOpen } from "@/lib/cashout/one-time";
+import {
+  getCashoutAccount,
+  getCashoutOrder,
+  notifyCashoutDeposit,
+} from "@/lib/cashout/tsd.functions";
+import {
+  isLegacyTxcP2pkh,
+  oneTimeOrderStillOpen,
+  recheckOneTimeOrder,
+  recheckSavedInbox,
+  tsdUnits,
+} from "@/lib/cashout/one-time";
+import { pickOmniSender } from "@/lib/txc/omni-sender";
 import { CashoutOrderTracker } from "@/components/wallet/CashoutOrderTracker";
 import { TSD_PROPERTY_ID, formatUsd, payoutFor } from "@/lib/cashout/tsd";
 
@@ -255,14 +266,66 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
       refuseChangedCashout("The cash-out recipient changed — start the cash-out again.");
       return false;
     }
-    if (
-      cashout.kind === "one-time-order" &&
-      (!cashout.expiresAt || !oneTimeOrderStillOpen(cashout.expiresAt))
-    ) {
-      refuseChangedCashout("This one-time cash-out has expired — start the cash-out again.");
+    if (ownAddresses.includes(cashout.depositAddress)) {
+      refuseChangedCashout("The cash-out deposit address belongs to this wallet. Nothing was sent.");
       return false;
     }
+    const typed = tsdUnits(amount);
+    if (typed === null || typed !== tsdUnits(String(cashout.amount))) {
+      refuseChangedCashout("The cash-out amount changed — start the cash-out again.");
+      return false;
+    }
+    if (cashout.kind === "one-time-order") {
+      if (!cashout.expiresAt || !oneTimeOrderStillOpen(cashout.expiresAt)) {
+        refuseChangedCashout(
+          "This one-time cash-out has less than an hour left — start the cash-out again for a fresh order.",
+        );
+        return false;
+      }
+      // Refunds go to the address the order names, so the TSD must leave
+      // from exactly that address (Omni's sender is the first input).
+      if (stage.kind === "review" && stage.senderAddress !== cashout.refundAddress) {
+        refuseChangedCashout(
+          "The TSD would leave from a different address than this order refunds to — start the cash-out again.",
+        );
+        return false;
+      }
+    }
     return true;
+  }
+
+  const fetchCashoutOrder = useServerFn(getCashoutOrder);
+  const fetchCashoutAccount = useServerFn(getCashoutAccount);
+
+  /**
+   * Last check with TSD Swap right before signing: a one-time order must
+   * still be waiting for exactly this deposit; the saved-address path must
+   * still pay the address the user reviewed. Any doubt stops the send.
+   */
+  async function cashoutConfirmedByTsdSwap(): Promise<boolean> {
+    if (!cashout) return true;
+    try {
+      if (cashout.kind === "one-time-order") {
+        const order = await fetchCashoutOrder({
+          data: { apiKey: cashout.apiKey, id: cashout.orderId ?? "" },
+        });
+        recheckOneTimeOrder(cashout, order);
+      } else {
+        const account = await fetchCashoutAccount({ data: { apiKey: cashout.apiKey } });
+        recheckSavedInbox(cashout, account);
+      }
+      return true;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      if (/Nothing was sent/.test(msg)) {
+        refuseChangedCashout(msg);
+      } else {
+        setError(
+          `Couldn't confirm the cash-out with TSD Swap${msg ? ` (${msg})` : ""}. Nothing was sent — try again in a moment.`,
+        );
+      }
+      return false;
+    }
   }
 
   function applyUri(raw: string) {
@@ -346,19 +409,16 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
   });
 
   /**
-   * Refund address for a one-time TSD cash-out: this wallet's own legacy T…
-   * address holding the most TSD (the one the transfer will come from).
+   * Refund address for a one-time TSD cash-out: the address the TSD will
+   * actually leave from (the Omni sender), chosen by the same rule as the
+   * send itself. It must be a legacy T… address TSD Swap can refund to.
    */
   const tsdRefundAddress = useMemo(() => {
-    const perAddr = perAddrTokenBalances.data;
-    if (!perAddr) return null;
-    const ranked = ownAddresses
-      .filter(isLegacyTxcP2pkh)
-      .map((a) => ({ a, bal: BigInt(perAddr[a]?.[TSD_PROPERTY_ID] ?? "0") }))
-      .filter((h) => h.bal > 0n)
-      .sort((x, y) => (y.bal > x.bal ? 1 : y.bal < x.bal ? -1 : 0));
-    return ranked[0]?.a ?? null;
-  }, [perAddrTokenBalances.data, ownAddresses]);
+    const units = tsdUnits(amount);
+    if (units === null) return null;
+    const sender = pickOmniSender(ownAddresses, perAddrTokenBalances.data, TSD_PROPERTY_ID, units);
+    return sender && isLegacyTxcP2pkh(sender) ? sender : null;
+  }, [perAddrTokenBalances.data, ownAddresses, amount]);
 
   const activeTokenBalanceUnits: bigint | null = activeToken
     ? BigInt(tokenBalances.data?.[activeToken.id] ?? "0")
@@ -417,17 +477,19 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
         setError("Still loading token balances — try again in a moment.");
         return;
       }
-      const holders = ownAddresses
-        .map((a) => ({ addr: a, bal: BigInt(perAddr[a]?.[activeToken.id] ?? "0") }))
-        .filter((h) => h.bal >= amountUnits)
-        .sort((a, b) => (b.bal > a.bal ? 1 : b.bal < a.bal ? -1 : 0));
-      if (holders.length === 0) {
+      const senderAddress = pickOmniSender(ownAddresses, perAddr, activeToken.id, amountUnits);
+      if (!senderAddress) {
         setError(
           `No single address holds ${amount} ${activeToken.symbol}. Omni sends the whole amount from one address — try a smaller amount, or consolidate first.`,
         );
         return;
       }
-      const senderAddress = holders[0].addr;
+      if (cashout?.kind === "one-time-order" && senderAddress !== cashout.refundAddress) {
+        refuseChangedCashout(
+          "The TSD would leave from a different address than this order refunds to — start the cash-out again.",
+        );
+        return;
+      }
       const senderUtxos = sorted.filter((u) => u.address === senderAddress);
       const otherUtxos = sorted.filter((u) => u.address !== senderAddress);
       if (senderUtxos.length === 0) {
@@ -556,6 +618,15 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
     if (!cashoutStillPayable()) return;
     setBusy(true);
     setError(null);
+    if (cashout) {
+      setProgress("Checking the cash-out with TSD Swap…");
+      const confirmed = await cashoutConfirmedByTsdSwap();
+      if (!confirmed) {
+        setProgress(null);
+        setBusy(false);
+        return;
+      }
+    }
     /** Coins this attempt touched — reserved if the node rejects a conflict. */
     let attemptedInputs: { txid: string; vout: number }[] = [];
     try {
@@ -694,9 +765,11 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
       void qc.invalidateQueries({ queryKey: ["account"] });
       void qc.invalidateQueries({ queryKey: ["txs"] });
       setStage({ kind: "sent", txid });
-      if (cashout) {
+      if (cashout?.kind === "account-inbox") {
         // Heads-up so TSD Swap watches for this deposit; never blocks the send.
-        // Uses the key the order was created with, not a live re-read.
+        // Uses the key the order was created with, not a live re-read. TSD
+        // Swap only accepts it for the permanent inbox, so one-time orders
+        // (watched by their own deposit address) skip it.
         void notifyCashoutDeposit({
           data: {
             apiKey: cashout.apiKey,
@@ -915,6 +988,7 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
                   amount={amount}
                   apiKey={cashoutApiKey}
                   refundAddress={tsdRefundAddress}
+                  ownAddresses={ownAddresses}
                   onReady={(plan) => {
                     const binding = bindCashoutKey(cashoutApiKey);
                     if (!binding || !cashoutApiKey) {
@@ -944,8 +1018,14 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
                       <p className="mt-1 text-xs text-muted-foreground">
                         {cashout.kind === "one-time-order"
                           ? `The recipient above is a one-time TSD Swap deposit address for this cash-out only. Send before ${new Date(cashout.expiresAt ?? "").toLocaleString()}.`
-                          : "The recipient above is your TSD Swap deposit address. It pays your saved cash-out address."}{" "}
-                        Refunds return to your wallet automatically.
+                          : "The recipient above is your TSD Swap deposit address. It pays your saved cash-out address."}
+                        {cashout.kind === "one-time-order" && cashout.refundAddress && (
+                          <>
+                            {" "}If TSD Swap ever has to return this TSD, it goes back to{" "}
+                            <span className="font-mono break-all">{cashout.refundAddress}</span>, the
+                            address it's sent from.
+                          </>
+                        )}
                       </p>
                     </div>
                   </div>

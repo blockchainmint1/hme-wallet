@@ -99,7 +99,7 @@ export const createOneTimeCashout = createServerFn({ method: "POST" })
     verifyOneTimeOrder(
       { amount: data.amount, payoutAddress: data.payoutAddress, refundAddress: data.refundAddress },
       res,
-      data.permanentInbox,
+      { permanentInbox: data.permanentInbox },
     );
     return res;
   });

@@ -54,6 +54,8 @@ export interface CashoutPlan {
   /** One-time orders only. */
   orderId?: string;
   expiresAt?: string;
+  /** One-time orders only: where TSD Swap would return the TSD — the address it leaves from. */
+  refundAddress?: string;
 }
 
 interface Props {
@@ -61,12 +63,17 @@ interface Props {
   amount: string;
   /** The user's TSD Swap API key — the feature is unavailable without it. */
   apiKey: string;
-  /** This wallet's own legacy T… address; TSD Swap refunds a one-time order here. */
+  /**
+   * The legacy T… address this TSD will leave from (Omni sender). TSD Swap
+   * refunds a one-time order here.
+   */
   refundAddress: string | null;
+  /** Every TXC address this wallet derives; TSD Swap's deposit address may not be one. */
+  ownAddresses: readonly string[];
   onReady: (plan: CashoutPlan) => void;
 }
 
-export function TsdCashoutPanel({ amount, apiKey, refundAddress, onReady }: Props) {
+export function TsdCashoutPanel({ amount, apiKey, refundAddress, ownAddresses, onReady }: Props) {
   const [open, setOpen] = useState(false);
   const { root } = useWallet();
   const ownEvmAddress = useMemo(() => (root ? deriveEvmAccount(root).address : null), [root]);
@@ -186,12 +193,17 @@ export function TsdCashoutPanel({ amount, apiKey, refundAddress, onReady }: Prop
       // Any other address: a one-time order with its own deposit address.
       // Never change the saved address to redirect a single cash-out.
       if (!refundAddress) {
-        setError("Couldn't find this wallet's T… address for refunds. Try again in a moment.");
+        setError(
+          "Couldn't find the T… address this TSD will be sent from (it's used for refunds). One address has to hold the whole amount — check the amount, or try again in a moment.",
+        );
         return;
       }
       const req = { amount: numeric, payoutAddress: to, refundAddress };
       const res = await createOrder({ data: { apiKey, ...req, permanentInbox: a.depositAddress } });
-      const order = verifyOneTimeOrder(req, res, a.depositAddress);
+      const order = verifyOneTimeOrder({ ...req, amount: amount.trim() }, res, {
+        permanentInbox: a.depositAddress,
+        ownAddresses,
+      });
       onReady({
         kind: "one-time-order",
         depositAddress: order.depositAddress,
@@ -201,6 +213,7 @@ export function TsdCashoutPanel({ amount, apiKey, refundAddress, onReady }: Prop
         payoutAmount: order.payoutAmount ?? payoutFor(order.amount, order.feeBps),
         orderId: order.id,
         expiresAt: order.expiresAt,
+        refundAddress: order.refundAddress,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't set up the cash-out.");

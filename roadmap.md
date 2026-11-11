@@ -45,5 +45,7 @@
 - [x] Separate "change my saved address" action; show "Check your email to confirm…" on pending_confirmation
 - [x] Confirm screen shows bridge's payoutAddress + payoutAmount and says "this cash-out only" vs saved; source "HME Wallet"
 - [x] Check bridge developer page (tsd.honest.money/api); tests; auditor note + note for the bridge team
-- [ ] Auditor review (waits on auditor); a real small one-time cash-out test (waits on Bobby)
+- [x] Auditor + bridge answers (Nov 11): refund = address the TSD leaves from; 1-hour margin (bridge ≥1h, auditor ≥30m); re-poll order before signing; refuse wallet-owned deposit, exact decimal amounts, mismatched account inbox; skip deposit notice for one-time orders; saved-address re-check before signing
+- [x] Bridge: one-time orders for every cash-out not needed — saved-address path stays
+- [ ] Auditor reads v2 note + source export, runs tests (waits on auditor); a real small one-time cash-out to a non-saved address (waits on Bobby, after publish)
 - [ ] Publish + APK/extension rebuild after audit; tell bridge team when live
