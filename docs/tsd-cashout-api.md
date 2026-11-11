@@ -1,5 +1,15 @@
 # TSD cash-out API (wallet → TSD Swap)
 
+> **One-time vs saved address (TSD Bridge, 2026-11-11).** The permanent
+> deposit address always pays the account's *saved* payout address. To pay any
+> other address, create a one-time `POST /cashout/orders` order (with
+> `chain: "ethereum"`, `source: "HME Wallet"`, and the wallet's own legacy
+> `refundAddress`) and send exactly `amount` TSD to that order's own
+> `depositAddress` before `expiresAt`. `POST /cashout/payout-address` changes
+> the saved address (may return `status: "pending_confirmation"` and email the
+> member) and is never used to redirect a single cash-out. `payoutAddress` on
+> `/cashout/notify` is only a note.
+
 The HME wallet offers "Cash out to USDC on Ethereum" on the TSD send screen.
 The feature is **off until the user pastes their own TSD Swap API key** into
 wallet Settings, so only people with a TSD Swap account can redeem from the

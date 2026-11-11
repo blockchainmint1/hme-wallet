@@ -14,6 +14,9 @@ import type { CashoutOrder, CashoutSettings } from "./tsd";
 
 const DEFAULT_BASE = "https://tsd.honest.money";
 
+/** Label the bridge team asked for so every order traces back to this wallet. */
+export const CASHOUT_SOURCE = "HME Wallet";
+
 function baseUrl(): string {
   return (process.env["TSD_SWAP_URL"] || DEFAULT_BASE).replace(/\/+$/, "");
 }
@@ -69,14 +72,20 @@ export interface CreateArgs {
   refundAddress: string;
 }
 
-export function createCashout(args: CreateArgs): Promise<CashoutOrder> {
-  return call<CashoutOrder>("/api/public/v1/cashout/orders", args.apiKey, {
+/**
+ * One-time cash-out: TSD Swap issues a fresh deposit address that pays
+ * `payoutAddress` for this order only. The account's saved address is not
+ * touched and no confirmation email is sent.
+ */
+export function createCashout(args: CreateArgs): Promise<unknown> {
+  return call<unknown>("/api/public/v1/cashout/orders", args.apiKey, {
     method: "POST",
     body: JSON.stringify({
       amount: args.amount,
       payoutAddress: args.payoutAddress,
       refundAddress: args.refundAddress,
-      source: "hme-wallet",
+      chain: "ethereum",
+      source: CASHOUT_SOURCE,
     }),
   });
 }
@@ -93,7 +102,12 @@ export function fetchDepositAddress(apiKey: string): Promise<unknown> {
   return call<unknown>("/api/public/v1/cashout/deposit-address", apiKey);
 }
 
-/** Save (once) where USDC payouts should go for this account. */
+/**
+ * Change the account's SAVED payout address. Replacing an existing one needs
+ * the member's emailed confirmation (`status: "pending_confirmation"`), and
+ * until then the permanent inbox keeps paying the old address — so this must
+ * never be used to redirect a single cash-out.
+ */
 export function saveDepositPayoutAddress(apiKey: string, payoutAddress: string): Promise<unknown> {
   return call<unknown>("/api/public/v1/cashout/payout-address", apiKey, {
     method: "POST",
@@ -126,7 +140,7 @@ export async function notifyDeposit(n: DepositNotice): Promise<void> {
     amount: n.amount,
     depositAddress: n.depositAddress,
     payoutAddress: n.payoutAddress,
-    source: "hme-wallet",
+    source: CASHOUT_SOURCE,
   });
   const ts = Math.floor(Date.now() / 1000).toString();
   const headers: Record<string, string> = {

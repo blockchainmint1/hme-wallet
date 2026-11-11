@@ -53,12 +53,12 @@ export interface CashoutOrder {
   status: CashoutOrderStatus | string;
   /** Legacy T… TEXITcoin address the TSD must be sent to. */
   depositAddress: string;
-  amountExpected: number;
+  amountExpected: number | null;
   /** Fee actually applied to this order, in basis points. */
   feeBps: number;
   /** USDC the user should receive once settled. */
-  payoutAmount: number;
-  payoutAddress: string;
+  payoutAmount: number | null;
+  payoutAddress: string | null;
   refundAddress: string | null;
   expiresAt: string | null;
   /** Ethereum tx hash of the USDC payout, once sent. */

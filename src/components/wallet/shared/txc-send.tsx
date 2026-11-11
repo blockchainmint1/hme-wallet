@@ -66,6 +66,8 @@ import {
   type CashoutKeyBinding,
 } from "@/lib/cashout/api-key";
 import { notifyCashoutDeposit } from "@/lib/cashout/tsd.functions";
+import { isLegacyTxcP2pkh, oneTimeOrderStillOpen } from "@/lib/cashout/one-time";
+import { CashoutOrderTracker } from "@/components/wallet/CashoutOrderTracker";
 import { TSD_PROPERTY_ID, formatUsd, payoutFor } from "@/lib/cashout/tsd";
 
 
@@ -230,12 +232,37 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
    * with. If either changed (wallet switched, key replaced or removed), drop
    * the order and make the user start again rather than paying it from here.
    */
-  function refuseChangedCashout() {
+  function refuseChangedCashout(message = "Wallet changed — start the cash-out again.") {
     setCashout(null);
     setTo("");
     setAmount("");
     setStage({ kind: "form" });
-    setError("Wallet changed — start the cash-out again.");
+    setError(message);
+  }
+
+  /**
+   * A cash-out may only be paid while it still belongs to this wallet+key,
+   * the recipient is still the order's deposit address, and a one-time order
+   * hasn't expired. Returns false (and resets the form) otherwise.
+   */
+  function cashoutStillPayable(): boolean {
+    if (!cashout) return true;
+    if (!cashoutBindingHolds(cashout.binding)) {
+      refuseChangedCashout();
+      return false;
+    }
+    if (to.trim() !== cashout.depositAddress) {
+      refuseChangedCashout("The cash-out recipient changed — start the cash-out again.");
+      return false;
+    }
+    if (
+      cashout.kind === "one-time-order" &&
+      (!cashout.expiresAt || !oneTimeOrderStillOpen(cashout.expiresAt))
+    ) {
+      refuseChangedCashout("This one-time cash-out has expired — start the cash-out again.");
+      return false;
+    }
+    return true;
   }
 
   function applyUri(raw: string) {
@@ -317,6 +344,21 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
       }),
     staleTime: 30_000,
   });
+
+  /**
+   * Refund address for a one-time TSD cash-out: this wallet's own legacy T…
+   * address holding the most TSD (the one the transfer will come from).
+   */
+  const tsdRefundAddress = useMemo(() => {
+    const perAddr = perAddrTokenBalances.data;
+    if (!perAddr) return null;
+    const ranked = ownAddresses
+      .filter(isLegacyTxcP2pkh)
+      .map((a) => ({ a, bal: BigInt(perAddr[a]?.[TSD_PROPERTY_ID] ?? "0") }))
+      .filter((h) => h.bal > 0n)
+      .sort((x, y) => (y.bal > x.bal ? 1 : y.bal < x.bal ? -1 : 0));
+    return ranked[0]?.a ?? null;
+  }, [perAddrTokenBalances.data, ownAddresses]);
 
   const activeTokenBalanceUnits: bigint | null = activeToken
     ? BigInt(tokenBalances.data?.[activeToken.id] ?? "0")
@@ -511,10 +553,7 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
       isTokenSend && activeToken ? `Confirm sending ${activeToken.symbol}` : "Confirm sending TXC",
     );
     if (!ok) return;
-    if (cashout && !cashoutBindingHolds(cashout.binding)) {
-      refuseChangedCashout();
-      return;
-    }
+    if (!cashoutStillPayable()) return;
     setBusy(true);
     setError(null);
     /** Coins this attempt touched — reserved if the node rejects a conflict. */
@@ -617,10 +656,7 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
 
       // Re-check the cash-out binding immediately before signing the TSD
       // transfer (a funding step above only moves TXC between own addresses).
-      if (cashout && !cashoutBindingHolds(cashout.binding)) {
-        refuseChangedCashout();
-        return;
-      }
+      if (!cashoutStillPayable()) return;
 
       let built;
       if (isTokenSend && activeToken) {
@@ -717,13 +753,16 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
               <ArrowDownUp className="h-4 w-4 text-primary" /> Cashing out to USDC
             </div>
             <p className="mt-1.5 text-xs text-muted-foreground">
-              {cashout.amount} TSD → {formatUsd(payoutFor(cashout.amount, cashout.feeBps))} USDC to{" "}
+              {cashout.amount} TSD → {formatUsd(cashout.payoutAmount)} USDC to{" "}
               <span className="font-mono break-all">{cashout.payoutAddress}</span>
             </p>
             <p className="mt-2 text-xs text-muted-foreground">
               TSD Swap pays out once the TSD transfer confirms — usually a few minutes. You can
               close the app; it keeps running on their side.
             </p>
+            {cashout.kind === "one-time-order" && cashout.orderId && (
+              <CashoutOrderTracker apiKey={cashout.apiKey} orderId={cashout.orderId} />
+            )}
           </div>
         )}
 
@@ -875,6 +914,7 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
                 <TsdCashoutPanel
                   amount={amount}
                   apiKey={cashoutApiKey}
+                  refundAddress={tsdRefundAddress}
                   onReady={(plan) => {
                     const binding = bindCashoutKey(cashoutApiKey);
                     if (!binding || !cashoutApiKey) {
@@ -898,12 +938,14 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
                       <p className="font-medium">Cashing out to USDC on Ethereum</p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {cashout.amount} TSD →{" "}
-                        {formatUsd(payoutFor(cashout.amount, cashout.feeBps))} USDC to{" "}
+                        {formatUsd(cashout.payoutAmount)} USDC to{" "}
                         <span className="font-mono break-all">{cashout.payoutAddress}</span>
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        The recipient above is your TSD Swap deposit address. Refunds return to your
-                        wallet automatically.
+                        {cashout.kind === "one-time-order"
+                          ? `The recipient above is a one-time TSD Swap deposit address for this cash-out only. Send before ${new Date(cashout.expiresAt ?? "").toLocaleString()}.`
+                          : "The recipient above is your TSD Swap deposit address. It pays your saved cash-out address."}{" "}
+                        Refunds return to your wallet automatically.
                       </p>
                     </div>
                   </div>
@@ -917,7 +959,9 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
                       setTo("");
                     }}
                   >
-                    Cancel cash-out
+                    {cashout.kind === "one-time-order"
+                      ? "Cancel cash-out (the unused order expires on its own)"
+                      : "Cancel cash-out"}
                   </Button>
                 </div>
               )}
@@ -1013,6 +1057,28 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
                 {formatTxc(stage.fund.sats)} (+ {formatTxc(stage.fund.feeSats)} fee) from your other
                 coins to <span className="font-mono break-all">{stage.senderAddress}</span>, then
                 the token transfer itself. Both are automatic.
+              </div>
+            )}
+
+            {cashout && (
+              <div className="space-y-1.5 rounded-md border border-primary/40 bg-primary/5 p-3 text-xs">
+                <p className="font-medium">
+                  {cashout.kind === "one-time-order"
+                    ? "Cash-out to USDC — this cash-out only"
+                    : "Cash-out to USDC — your saved address"}
+                </p>
+                <Row label="USDC paid to">
+                  <code className="font-mono break-all">{cashout.payoutAddress}</code>
+                </Row>
+                <Row label="You receive">{formatUsd(cashout.payoutAmount)} USDC</Row>
+                {cashout.kind === "one-time-order" && cashout.expiresAt && (
+                  <Row label="Send before">{new Date(cashout.expiresAt).toLocaleString()}</Row>
+                )}
+                <p className="text-muted-foreground">
+                  {cashout.kind === "one-time-order"
+                    ? "Your saved cash-out address isn't changed."
+                    : "Your account's deposit address always pays your saved cash-out address."}
+                </p>
               </div>
             )}
 

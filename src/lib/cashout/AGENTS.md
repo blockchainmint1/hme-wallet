@@ -1,3 +1,4 @@
 # Cash-out
 
 - TSD cash-out key is profile-scoped (src/lib/cashout/api-key.ts): link claims write to the wallet captured before any await, records keep only an 8-hex fingerprint, the legacy device-wide key migrates once (marker; a reappearing unprefixed key is the default wallet's), and cash-out orders re-check wallet+key fingerprint before signing. Why: an account token must never cross wallets.
+- Cash-out path is chosen by `chooseCashoutPath` (src/lib/cashout/one-time.ts): only a payout equal to the account's saved address uses the permanent inbox; any other address is a one-time `/cashout/orders` order whose response is verified (fresh legacy T… deposit ≠ permanent inbox, echoed payout/amount, Ethereum, unexpired) and re-checked before signing. `/cashout/payout-address` is a separate explicit action and never precedes a deposit. Why: the permanent inbox always pays the saved address, and changing it needs an emailed confirmation.

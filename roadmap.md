@@ -39,3 +39,11 @@
 - [x] Inventory of first-wallet leftovers + implementation note for auditor
 - [ ] Auditor sign-off on 3 confirm points, then publish; rebuild APK/extension; Bobby rotates key at TSD Swap
 - [ ] Decide: clear other first-wallet leftovers, swap-history order tokens, keep pocket counters across wallet removal
+
+## TSD one-time cash-out address (Nov 11, TSD Bridge handoff v1+v2)
+- [x] Different payout address → one-time order (`/cashout/orders`), send to its own deposit address; never change saved address to redirect one cash-out
+- [x] Separate "change my saved address" action; show "Check your email to confirm…" on pending_confirmation
+- [x] Confirm screen shows bridge's payoutAddress + payoutAmount and says "this cash-out only" vs saved; source "HME Wallet"
+- [x] Check bridge developer page (tsd.honest.money/api); tests; auditor note + note for the bridge team
+- [ ] Auditor review (waits on auditor); a real small one-time cash-out test (waits on Bobby)
+- [ ] Publish + APK/extension rebuild after audit; tell bridge team when live

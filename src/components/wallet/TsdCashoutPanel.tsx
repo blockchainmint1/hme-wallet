@@ -1,13 +1,15 @@
 /**
  * "Cash out to USDC" panel shown under the recipient card on the TSD send
  * screen. Collapsed by default so the normal send flow is untouched, and only
- * rendered at all when the user has saved a TSD Swap API key in Settings.
+ * rendered when this wallet has a TSD Swap cash-out key.
  *
- * The panel does not create per-order inboxes any more: TSD Swap gives each
- * account a *permanent* deposit address plus its fee tier, and remembers where
- * the USDC should go. So the panel just reads the account, saves the payout
- * address when it changes, and pre-fills the ordinary TSD send with the
- * deposit address — the broadcast path stays the same battle-tested code.
+ * Two paths (TSD Bridge handoff 2026-11-11):
+ *  - Payout to the account's SAVED address -> the account's permanent inbox.
+ *  - Any other payout address -> a ONE-TIME order with its own fresh deposit
+ *    address. The saved address is never changed to redirect one cash-out:
+ *    that needs an emailed confirmation, and the permanent inbox would still
+ *    pay the old address.
+ * Changing the saved address is a separate, explicit action.
  *
  * Available on all supported platforms when a cash-out key is configured.
  */
@@ -22,7 +24,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { QrScanButton, parseWalletUri } from "@/components/wallet/QrScanButton";
 import { AddressBookButton } from "@/components/wallet/AddressBookButton";
-import { getCashoutAccount, setCashoutPayoutAddress } from "@/lib/cashout/tsd.functions";
+import {
+  createOneTimeCashout,
+  getCashoutAccount,
+  setCashoutPayoutAddress,
+} from "@/lib/cashout/tsd.functions";
+import { chooseCashoutPath, verifyOneTimeOrder, type CashoutPath } from "@/lib/cashout/one-time";
 import { useWallet } from "@/lib/txc/wallet-context";
 import { deriveEvmAccount } from "@/lib/chains/evm";
 import {
@@ -35,10 +42,18 @@ import {
 } from "@/lib/cashout/tsd";
 
 export interface CashoutPlan {
+  /** Which TSD Swap path pays this cash-out. */
+  kind: CashoutPath;
+  /** Where the TSD must be sent: the permanent inbox or the order's own address. */
   depositAddress: string;
   feeBps: number;
   payoutAddress: string;
   amount: number;
+  /** USDC the bridge says it will pay (one-time orders), else our estimate. */
+  payoutAmount: number;
+  /** One-time orders only. */
+  orderId?: string;
+  expiresAt?: string;
 }
 
 interface Props {
@@ -46,10 +61,12 @@ interface Props {
   amount: string;
   /** The user's TSD Swap API key — the feature is unavailable without it. */
   apiKey: string;
+  /** This wallet's own legacy T… address; TSD Swap refunds a one-time order here. */
+  refundAddress: string | null;
   onReady: (plan: CashoutPlan) => void;
 }
 
-export function TsdCashoutPanel({ amount, apiKey, onReady }: Props) {
+export function TsdCashoutPanel({ amount, apiKey, refundAddress, onReady }: Props) {
   const [open, setOpen] = useState(false);
   const { root } = useWallet();
   const ownEvmAddress = useMemo(() => (root ? deriveEvmAccount(root).address : null), [root]);
@@ -57,9 +74,12 @@ export function TsdCashoutPanel({ amount, apiKey, onReady }: Props) {
   const [payout, setPayout] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savingDefault, setSavingDefault] = useState(false);
+  const [defaultNote, setDefaultNote] = useState<string | null>(null);
 
   const fetchAccount = useServerFn(getCashoutAccount);
   const savePayout = useServerFn(setCashoutPayoutAddress);
+  const createOrder = useServerFn(createOneTimeCashout);
 
   const account = useQuery<CashoutAccount>({
     queryKey: ["tsd-cashout-account", apiKey],
@@ -89,10 +109,36 @@ export function TsdCashoutPanel({ amount, apiKey, onReady }: Props) {
 
   const numeric = useMemo(() => Number(amount), [amount]);
   const receive = payoutFor(numeric, feeBps);
+  const savedPayout = account.data?.payoutAddress ?? null;
+  const path = chooseCashoutPath(savedPayout, effectivePayout);
+  const payoutValid = ETH_ADDRESS_RE.test(effectivePayout.trim());
 
   useEffect(() => {
     setError(null);
+    setDefaultNote(null);
   }, [amount, payout, useOwnWallet]);
+
+  /** Separate, explicit action: change the account's SAVED address. */
+  async function saveAsDefault() {
+    const to = effectivePayout.trim();
+    if (!ETH_ADDRESS_RE.test(to)) return;
+    setSavingDefault(true);
+    setError(null);
+    setDefaultNote(null);
+    try {
+      const res = await savePayout({ data: { apiKey, payoutAddress: to } });
+      setDefaultNote(
+        res.status === "pending_confirmation"
+          ? "Check your email to confirm. Until then, cash-outs still go to your current saved address."
+          : "Saved as your cash-out address.",
+      );
+      void account.refetch();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't change your saved address.");
+    } finally {
+      setSavingDefault(false);
+    }
+  }
 
   async function confirm() {
     setError(null);
@@ -125,14 +171,37 @@ export function TsdCashoutPanel({ amount, apiKey, onReady }: Props) {
 
     setSaving(true);
     try {
-      let deposit = a.depositAddress;
-      let bps = a.feeBps;
-      if ((a.payoutAddress ?? "").toLowerCase() !== to.toLowerCase()) {
-        const updated = await savePayout({ data: { apiKey, payoutAddress: to } });
-        if (updated.depositAddress) deposit = updated.depositAddress;
-        bps = updated.feeBps;
+      if (chooseCashoutPath(a.payoutAddress, to) === "account-inbox") {
+        // The permanent inbox pays the saved address — exactly what was chosen.
+        onReady({
+          kind: "account-inbox",
+          depositAddress: a.depositAddress,
+          feeBps: a.feeBps,
+          payoutAddress: to,
+          amount: numeric,
+          payoutAmount: payoutFor(numeric, a.feeBps),
+        });
+        return;
       }
-      onReady({ depositAddress: deposit, feeBps: bps, payoutAddress: to, amount: numeric });
+      // Any other address: a one-time order with its own deposit address.
+      // Never change the saved address to redirect a single cash-out.
+      if (!refundAddress) {
+        setError("Couldn't find this wallet's T… address for refunds. Try again in a moment.");
+        return;
+      }
+      const req = { amount: numeric, payoutAddress: to, refundAddress };
+      const res = await createOrder({ data: { apiKey, ...req, permanentInbox: a.depositAddress } });
+      const order = verifyOneTimeOrder(req, res, a.depositAddress);
+      onReady({
+        kind: "one-time-order",
+        depositAddress: order.depositAddress,
+        feeBps: order.feeBps,
+        payoutAddress: order.payoutAddress,
+        amount: order.amount,
+        payoutAmount: order.payoutAmount ?? payoutFor(order.amount, order.feeBps),
+        orderId: order.id,
+        expiresAt: order.expiresAt,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't set up the cash-out.");
     } finally {
@@ -228,18 +297,40 @@ export function TsdCashoutPanel({ amount, apiKey, onReady }: Props) {
             </span>
           </Row>
           <Row label="Deposit address">
-            {account.data?.depositAddress ? (
+            {account.isLoading ? (
+              <span className="text-muted-foreground">Checking…</span>
+            ) : path === "account-inbox" && account.data?.depositAddress ? (
               <span className="break-all font-mono text-xs">{account.data.depositAddress}</span>
             ) : (
-              <span className="text-muted-foreground">{account.isLoading ? "Checking…" : "—"}</span>
+              <span className="text-muted-foreground">New one-time address</span>
             )}
           </Row>
         </div>
 
         <p className="text-xs text-muted-foreground">
-          This is your account's permanent TSD deposit address. If anything goes wrong the TSD is
-          returned to the wallet it came from.
+          {path === "account-inbox"
+            ? "This is your account's permanent TSD deposit address. It pays your saved cash-out address."
+            : savedPayout
+              ? "This address isn't your saved cash-out address, so TSD Swap makes a one-time deposit address that pays it for this cash-out only. Your saved address isn't changed."
+              : "TSD Swap makes a one-time deposit address that pays this address for this cash-out only."}{" "}
+          If anything goes wrong the TSD is returned to your wallet.
         </p>
+
+        {path === "one-time-order" && payoutValid && account.data && (
+          <div className="space-y-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-auto px-0 py-0 text-xs underline-offset-2 hover:underline"
+              onClick={saveAsDefault}
+              disabled={savingDefault || saving}
+            >
+              {savingDefault ? "Saving…" : "Make this my saved cash-out address instead"}
+            </Button>
+            {defaultNote && <p className="text-xs text-muted-foreground">{defaultNote}</p>}
+          </div>
+        )}
 
         {error && (
           <p className="flex items-start gap-2 text-sm text-destructive">
@@ -258,7 +349,7 @@ export function TsdCashoutPanel({ amount, apiKey, onReady }: Props) {
               <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Setting up…
             </>
           ) : (
-            "Use cash-out address"
+            path === "account-inbox" ? "Use my saved cash-out address" : "Create one-time cash-out"
           )}
         </Button>
       </CollapsibleContent>

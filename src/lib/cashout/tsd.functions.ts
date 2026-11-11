@@ -7,6 +7,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { CashoutAccount, CashoutOrder, CashoutSettings } from "./tsd";
+import { isLegacyTxcP2pkh, verifyOneTimeOrder } from "./one-time";
 import {
   createCashout,
   fetchCashoutOrder,
@@ -29,14 +30,32 @@ const settingsSchema = z.object({
   redeemFeeBps: z.coerce.number(),
 });
 
+/** Only the fields the wallet relies on; everything else is dropped. */
+const oneTimeResponseSchema = z.object({
+  id: z.string(),
+  status: z.string(),
+  depositAddress: z.string(),
+  sendTo: z.string().nullable().optional(),
+  amountExpected: z.coerce.number().nullable(),
+  payoutAddress: z.string().nullable(),
+  refundAddress: z.string().nullable().optional(),
+  payoutAmount: z.coerce.number().nullable().optional(),
+  feeBps: z.coerce.number(),
+  chain: z.string().nullable().optional(),
+  expiresAt: z.string().nullable(),
+  accountTxcDepositAddress: z.string().nullable().optional(),
+});
+
+export type OneTimeCashoutResponse = z.infer<typeof oneTimeResponseSchema>;
+
 const orderSchema = z.object({
   id: z.string(),
   status: z.string(),
   depositAddress: z.string(),
-  amountExpected: z.coerce.number(),
+  amountExpected: z.coerce.number().nullable(),
   feeBps: z.coerce.number(),
-  payoutAmount: z.coerce.number(),
-  payoutAddress: z.string(),
+  payoutAmount: z.coerce.number().nullable(),
+  payoutAddress: z.string().nullable(),
   refundAddress: z.string().nullable(),
   expiresAt: z.string().nullable(),
   releaseTxHash: z.string().nullable(),
@@ -51,25 +70,38 @@ export const getCashoutSettings = createServerFn({ method: "POST" })
     return settingsSchema.parse(raw);
   });
 
-export const createCashoutOrder = createServerFn({ method: "POST" })
+/**
+ * Create a ONE-TIME cash-out order (TSD Bridge handoff 2026-11-11). Use this
+ * whenever the payout address is not exactly the account's saved one; send
+ * the TSD to the returned `depositAddress`, never the permanent inbox.
+ * The order is checked here and again on the device before signing.
+ */
+export const createOneTimeCashout = createServerFn({ method: "POST" })
   .inputValidator((raw: unknown) =>
     z
       .object({
         apiKey,
         amount: z.number().positive().max(1_000_000),
         payoutAddress: z.string().regex(/^0x[0-9a-fA-F]{40}$/, "Enter a valid 0x… address"),
-        refundAddress: z.string().min(26).max(64),
+        refundAddress: z.string().refine(isLegacyTxcP2pkh, "Refund address must be a legacy T… address"),
+        permanentInbox: z.string().max(64).nullable(),
       })
       .parse(raw),
   )
-  .handler(async ({ data }): Promise<CashoutOrder> => {
-    const raw = await createCashout({
+  .handler(async ({ data }): Promise<OneTimeCashoutResponse> => {
+    const raw = (await createCashout({
       apiKey: data.apiKey,
       amount: data.amount,
       payoutAddress: data.payoutAddress,
       refundAddress: data.refundAddress,
-    });
-    return orderSchema.parse(raw);
+    })) as Record<string, unknown>;
+    const res = oneTimeResponseSchema.parse(raw);
+    verifyOneTimeOrder(
+      { amount: data.amount, payoutAddress: data.payoutAddress, refundAddress: data.refundAddress },
+      res,
+      data.permanentInbox,
+    );
+    return res;
   });
 
 export const getCashoutOrder = createServerFn({ method: "POST" })
@@ -112,6 +144,12 @@ export const getCashoutAccount = createServerFn({ method: "POST" })
     return accountSchema.parse(await fetchDepositAddress(data.apiKey));
   });
 
+/**
+ * Change the account's SAVED cash-out address. This is a separate action from
+ * cashing out: replacing an existing address needs the member's emailed
+ * confirmation, and the permanent inbox keeps paying the old address until
+ * then. Never chain a deposit onto this call.
+ */
 export const setCashoutPayoutAddress = createServerFn({ method: "POST" })
   .inputValidator((raw: unknown) =>
     z
@@ -121,12 +159,14 @@ export const setCashoutPayoutAddress = createServerFn({ method: "POST" })
       })
       .parse(raw),
   )
-  .handler(async ({ data }): Promise<CashoutAccount> => {
-    const raw = await saveDepositPayoutAddress(data.apiKey, data.payoutAddress);
-    const parsed = accountSchema.safeParse(raw);
-    if (parsed.success && parsed.data.depositAddress) return parsed.data;
-    // Some responses only acknowledge the save; read the account back.
-    return accountSchema.parse(await fetchDepositAddress(data.apiKey));
+  .handler(async ({ data }): Promise<{ status: "saved" | "pending_confirmation" }> => {
+    const raw = (await saveDepositPayoutAddress(data.apiKey, data.payoutAddress)) as {
+      status?: unknown;
+      payoutStatus?: unknown;
+    } | null;
+    const pending =
+      raw?.status === "pending_confirmation" || raw?.payoutStatus === "pending_confirmation";
+    return { status: pending ? "pending_confirmation" : "saved" };
   });
 
 /** Fire-and-forget heads-up to TSD Swap after the deposit is broadcast. */
