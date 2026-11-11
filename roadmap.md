@@ -35,4 +35,7 @@
 ## Per-wallet TSD cash-out key (Nov 11)
 - [x] Confirm cause: cash-out key stored per install; all other ecosystem links per wallet
 - [x] Auditor plan: /mnt/documents/Honest-Money-Per-Wallet-TSD-Cashout-Key-Plan-2026-11-11.md
-- [ ] Auditor answers (owner rule, unlink clears key, legacy key removal), then implement + tests, publish, rebuild APK/extension
+- [x] Auditor answers received; implemented per-wallet key, fingerprints, one-time migration, unlink dialog, submission binding, first-wallet removal; 20 tests, preview checked
+- [x] Inventory of first-wallet leftovers + implementation note for auditor
+- [ ] Auditor sign-off on 3 confirm points, then publish; rebuild APK/extension; Bobby rotates key at TSD Swap
+- [ ] Decide: clear other first-wallet leftovers, swap-history order tokens, keep pocket counters across wallet removal

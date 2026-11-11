@@ -7,12 +7,19 @@
  * xpubs (TXC + EVM + the rest), signed by the TXC identity key. No seed, no
  * private keys, no spending authority.
  *
- * The claim response may issue a TSD Swap API key, which we store locally so
- * cash-out lights up automatically.
+ * The claim response may issue a TSD Swap API key, which we store on the
+ * wallet that started the link (captured before any network call) so cash-out
+ * lights up for that wallet only.
  */
 import { canonicalJson, deriveWalletKeys } from "@/lib/nectar/link";
-import { setCashoutApiKey } from "@/lib/cashout/api-key";
-import { scopedKey } from "@/lib/profiles";
+import {
+  cashoutKeyFingerprint,
+  getCashoutApiKey,
+  linkRemovalClearsKey,
+  setCashoutApiKey,
+} from "@/lib/cashout/api-key";
+import { activeProfileId } from "@/lib/profiles";
+import { listTsdLinks, writeTsdLinks } from "@/lib/rewards/tsd-link-records";
 import { signMessageWithSeed } from "@/lib/txc/message-sign";
 
 const PROXY = "/api/tsd/link";
@@ -143,14 +150,18 @@ export interface TsdLinkResult {
   account_id?: string;
   account_name?: string;
   api_key?: string;
+  /** Fingerprint of the issued key as stored on `profileId`; null if none was stored. */
+  api_key_fp: string | null;
 }
 
 export async function submitTsdLink(args: {
   manifest: TsdLinkManifest;
   mnemonic: string;
   passphrase?: string;
+  /** Wallet that started the link. Captured by the caller before any await. */
+  profileId: string;
 }): Promise<TsdLinkResult> {
-  const { manifest, mnemonic, passphrase = "" } = args;
+  const { manifest, mnemonic, passphrase = "", profileId } = args;
   const keys = await deriveWalletKeys(mnemonic, passphrase);
 
   const payload = {
@@ -189,9 +200,13 @@ export async function submitTsdLink(args: {
         `Link failed (${res.status})`,
     );
   }
-  const apiKey = (body?.["api_key"] as string | undefined) ?? undefined;
-  if (apiKey) setCashoutApiKey(apiKey);
+  const issued = body?.["api_key"];
+  const apiKey = typeof issued === "string" && issued ? issued : undefined;
+  // Written to the wallet that started the link, even if the user switched
+  // wallets while this request was in flight.
+  const stored = apiKey ? setCashoutApiKey(apiKey, profileId) : false;
   return {
+    api_key_fp: apiKey && stored ? cashoutKeyFingerprint(apiKey) : null,
     ok: true,
     account_id: (body?.["account_id"] as string | undefined) ?? undefined,
     account_name: (body?.["account_name"] as string | undefined) ?? undefined,
@@ -203,40 +218,34 @@ export async function submitTsdLink(args: {
 /* Local record (per vault)                                            */
 /* ------------------------------------------------------------------ */
 
-export interface TsdLinkRecord {
-  accountId: string;
-  accountName: string;
-  identity: string;
-  linkedAt: string;
+export {
+  listTsdLinks,
+  saveTsdLink,
+  type TsdLinkRecord,
+} from "@/lib/rewards/tsd-link-records";
+
+/** Would removing this link also remove the wallet's cash-out key? (for the dialog) */
+export function tsdLinkRemovalClearsKey(
+  accountId: string,
+  profileId: string = activeProfileId(),
+): boolean {
+  return linkRemovalClearsKey(listTsdLinks(profileId), accountId, getCashoutApiKey(profileId));
 }
 
-const STORE_BASE = "hme:tsd-account-link";
-
-export function listTsdLinks(): TsdLinkRecord[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(scopedKey(STORE_BASE));
-    const parsed = raw ? (JSON.parse(raw) as TsdLinkRecord[]) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-export function saveTsdLink(record: TsdLinkRecord) {
-  try {
-    const next = [...listTsdLinks().filter((l) => l.accountId !== record.accountId), record];
-    window.localStorage.setItem(scopedKey(STORE_BASE), JSON.stringify(next));
-  } catch {
-    /* noop */
-  }
-}
-
-export function removeTsdLink(accountId: string) {
-  try {
-    const next = listTsdLinks().filter((l) => l.accountId !== accountId);
-    window.localStorage.setItem(scopedKey(STORE_BASE), JSON.stringify(next));
-  } catch {
-    /* noop */
-  }
+/**
+ * Forget a link on this device. Also removes the cash-out key when that link
+ * issued it (see `linkRemovalClearsKey`). Never revokes anything at TSD Swap.
+ */
+export function removeTsdLink(
+  accountId: string,
+  profileId: string = activeProfileId(),
+): { keyCleared: boolean } {
+  const records = listTsdLinks(profileId);
+  const clear = linkRemovalClearsKey(records, accountId, getCashoutApiKey(profileId));
+  writeTsdLinks(
+    records.filter((l) => l.accountId !== accountId),
+    profileId,
+  );
+  if (clear) setCashoutApiKey(null, profileId);
+  return { keyCleared: clear };
 }

@@ -59,7 +59,12 @@ import {
 import { useTxcTokenProps } from "@/lib/txc/token-props";
 import { useExchangeFeaturesAllowed } from "@/lib/native/capabilities";
 import { TsdCashoutPanel, type CashoutPlan } from "@/components/wallet/TsdCashoutPanel";
-import { useCashoutApiKey } from "@/lib/cashout/api-key";
+import {
+  bindCashoutKey,
+  cashoutBindingHolds,
+  useCashoutApiKey,
+  type CashoutKeyBinding,
+} from "@/lib/cashout/api-key";
 import { notifyCashoutDeposit } from "@/lib/cashout/tsd.functions";
 import { TSD_PROPERTY_ID, formatUsd, payoutFor } from "@/lib/cashout/tsd";
 
@@ -207,7 +212,9 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
    * and amount are then locked to the order's inbox so the payment can't drift
    * away from what the bridge is waiting for.
    */
-  const [cashout, setCashout] = useState<CashoutPlan | null>(null);
+  const [cashout, setCashout] = useState<
+    (CashoutPlan & { binding: CashoutKeyBinding; apiKey: string }) | null
+  >(null);
   const exchangeAllowed = useExchangeFeaturesAllowed();
 
   const activeToken: TxcTokenMeta | null =
@@ -217,6 +224,19 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
   // The off-ramp only exists once the user has linked their TSD Swap account.
   const canCashOut =
     exchangeAllowed && !!cashoutApiKey && activeToken?.id === TSD_PROPERTY_ID;
+
+  /**
+   * A cash-out order belongs to the wallet and TSD Swap key it was created
+   * with. If either changed (wallet switched, key replaced or removed), drop
+   * the order and make the user start again rather than paying it from here.
+   */
+  function refuseChangedCashout() {
+    setCashout(null);
+    setTo("");
+    setAmount("");
+    setStage({ kind: "form" });
+    setError("Wallet changed — start the cash-out again.");
+  }
 
   function applyUri(raw: string) {
     const { address, amount: amt, tokenId } = parseWalletUri(raw);
@@ -491,6 +511,10 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
       isTokenSend && activeToken ? `Confirm sending ${activeToken.symbol}` : "Confirm sending TXC",
     );
     if (!ok) return;
+    if (cashout && !cashoutBindingHolds(cashout.binding)) {
+      refuseChangedCashout();
+      return;
+    }
     setBusy(true);
     setError(null);
     /** Coins this attempt touched — reserved if the node rejects a conflict. */
@@ -591,6 +615,13 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
 
       const picked = chainedInput ? [chainedInput] : ordered.slice(0, stage.selected);
 
+      // Re-check the cash-out binding immediately before signing the TSD
+      // transfer (a funding step above only moves TXC between own addresses).
+      if (cashout && !cashoutBindingHolds(cashout.binding)) {
+        refuseChangedCashout();
+        return;
+      }
+
       let built;
       if (isTokenSend && activeToken) {
         const amountUnits = parseTokenAmount(amount, activeToken.divisible);
@@ -627,11 +658,12 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
       void qc.invalidateQueries({ queryKey: ["account"] });
       void qc.invalidateQueries({ queryKey: ["txs"] });
       setStage({ kind: "sent", txid });
-      if (cashout && cashoutApiKey) {
+      if (cashout) {
         // Heads-up so TSD Swap watches for this deposit; never blocks the send.
+        // Uses the key the order was created with, not a live re-read.
         void notifyCashoutDeposit({
           data: {
-            apiKey: cashoutApiKey,
+            apiKey: cashout.apiKey,
             txid,
             amount: cashout.amount,
             depositAddress: cashout.depositAddress,
@@ -844,7 +876,12 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
                   amount={amount}
                   apiKey={cashoutApiKey}
                   onReady={(plan) => {
-                    setCashout(plan);
+                    const binding = bindCashoutKey(cashoutApiKey);
+                    if (!binding || !cashoutApiKey) {
+                      refuseChangedCashout();
+                      return;
+                    }
+                    setCashout({ ...plan, binding, apiKey: cashoutApiKey });
                     setTo(plan.depositAddress);
                     setAmount(String(plan.amount));
                     setSendAll(false);

@@ -60,6 +60,7 @@ Registry/Hub use ecosystem-credential.server (current per-site HME convention); 
 ## Settings scope (app-wide vs per-wallet)
 - Chains, EVM token catalog and token-spam visibility are device-wide; migrate copy-only, never touching profiles/envelopes. Why: choices follow wallets safely.
 - Key-tied features, address prefs, watch-only, WIF, delegate/Seeds, card, Vault and labels remain profile-scoped. Why: key-bound settings cannot leak across wallets.
+- TSD cash-out key is profile-scoped (src/lib/cashout/api-key.ts): link claims write to the wallet captured before any await, records keep only an 8-hex fingerprint, the legacy device-wide key migrates once (marker; a reappearing unprefixed key is the default wallet's), and cash-out orders re-check wallet+key fingerprint before signing. Why: an account token must never cross wallets.
 - Settings page is grouped "This device" (app-wide) vs "This wallet — <label>" (per-wallet). Why: users must see which scope they're editing.
 - Activity filtering is independent, device-wide and recoverable; counterfeit contracts override claimed direction; pending tracking uses raw history. Why: logs cannot prove signatures.
 

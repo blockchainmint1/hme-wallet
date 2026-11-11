@@ -13,6 +13,7 @@ import {
   unregisterProfile,
 } from "@/lib/profiles";
 import { clearBalanceHistory } from "@/lib/desktop/history";
+import { migrateLegacyCashoutKey, setCashoutApiKey } from "@/lib/cashout/api-key";
 /**
  * Encrypted wallet storage for the TEXITcoin web wallet.
  *
@@ -348,8 +349,14 @@ export async function verifyWalletPassword(password: string, profileId: string):
 export function deleteWallet(): void {
   if (typeof window === "undefined") return;
   const id = activeProfileId();
+  // Assign any legacy device-wide cash-out key to its owner before purging, so
+  // removing the owner takes its key with it.
+  migrateLegacyCashoutKey();
   localStorage.removeItem(walletKey(id));
   clearBalanceHistory(id);
+  // The default wallet's side stores are unprefixed and never purged; clear
+  // its TSD cash-out key (a re-obtainable account token) explicitly.
+  if (id === DEFAULT_PROFILE_ID) setCashoutApiKey(null, DEFAULT_PROFILE_ID);
   if (id !== DEFAULT_PROFILE_ID) {
     purgeProfileStorage(id);
     unregisterProfile(id);
@@ -364,8 +371,10 @@ export function deleteWallet(): void {
  */
 export function deleteProfileWallet(profileId: string): void {
   if (typeof window === "undefined") return;
+  migrateLegacyCashoutKey();
   localStorage.removeItem(walletKey(profileId));
   clearBalanceHistory(profileId);
+  if (profileId === DEFAULT_PROFILE_ID) setCashoutApiKey(null, DEFAULT_PROFILE_ID);
   if (profileId !== DEFAULT_PROFILE_ID) {
     purgeProfileStorage(profileId);
     unregisterProfile(profileId);

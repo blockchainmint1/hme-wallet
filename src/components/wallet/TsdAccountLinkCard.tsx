@@ -11,7 +11,18 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { QrScanButton } from "@/components/wallet/QrScanButton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useWallet } from "@/lib/txc/wallet-context";
+import { activeProfileId } from "@/lib/profiles";
 import {
   fetchTsdManifest,
   listTsdLinks,
@@ -19,6 +30,7 @@ import {
   removeTsdLink,
   saveTsdLink,
   submitTsdLink,
+  tsdLinkRemovalClearsKey,
   type TsdLinkManifest,
   type TsdLinkRecord,
 } from "@/lib/rewards/tsd-link";
@@ -33,6 +45,12 @@ export function TsdAccountLinkCard({ compact, initialPayload, hideInput }: { com
   const [notice, setNotice] = useState<string | null>(null);
   const [manifest, setManifest] = useState<TsdLinkManifest | null>(null);
   const [links, setLinks] = useState<TsdLinkRecord[]>([]);
+  /** Link waiting for the "forget" confirmation, and whether its key goes too. */
+  const [pendingRemoval, setPendingRemoval] = useState<{
+    record: TsdLinkRecord;
+    profileId: string;
+    clearsKey: boolean;
+  } | null>(null);
 
   useEffect(() => {
     setLinks(listTsdLinks());
@@ -69,6 +87,9 @@ export function TsdAccountLinkCard({ compact, initialPayload, hideInput }: { com
 
   async function onApprove() {
     if (!manifest || !unlocked?.mnemonic) return;
+    // Bind everything this link produces to the wallet open right now, before
+    // any network call, so switching wallets mid-link can't misfile it.
+    const profileId = activeProfileId();
     setBusy(true);
     setError(null);
     try {
@@ -76,14 +97,16 @@ export function TsdAccountLinkCard({ compact, initialPayload, hideInput }: { com
         manifest,
         mnemonic: unlocked.mnemonic,
         passphrase: unlocked.passphrase ?? "",
+        profileId,
       });
       const record: TsdLinkRecord = {
         accountId: res.account_id ?? manifest.account_id ?? manifest.challenge_id,
         accountName: res.account_name ?? manifest.account_name ?? "TSD Swap account",
         identity: manifest.from,
         linkedAt: new Date().toISOString(),
+        keyFp: res.api_key_fp,
       };
-      saveTsdLink(record);
+      saveTsdLink(record, profileId);
       setLinks(listTsdLinks());
       setManifest(null);
       setInput("");
@@ -184,8 +207,12 @@ export function TsdAccountLinkCard({ compact, initialPayload, hideInput }: { com
                     className="h-7 w-7"
                     aria-label={`Forget ${l.accountName}`}
                     onClick={() => {
-                      removeTsdLink(l.accountId);
-                      setLinks(listTsdLinks());
+                      const profileId = activeProfileId();
+                      setPendingRemoval({
+                        record: l,
+                        profileId,
+                        clearsKey: tsdLinkRemovalClearsKey(l.accountId, profileId),
+                      });
                     }}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -196,6 +223,46 @@ export function TsdAccountLinkCard({ compact, initialPayload, hideInput }: { com
           )}
         </>
       )}
+
+      <AlertDialog
+        open={!!pendingRemoval}
+        onOpenChange={(open) => {
+          if (!open) setPendingRemoval(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Forget {pendingRemoval?.record.accountName ?? "this link"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>This removes the link from this wallet on this device.</p>
+                {pendingRemoval?.clearsKey && (
+                  <p>This also removes the cash-out key this link issued.</p>
+                )}
+                <p>
+                  It does not revoke anything at TSD Swap. To revoke the link or its key, use your
+                  TSD Swap account page.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!pendingRemoval) return;
+                removeTsdLink(pendingRemoval.record.accountId, pendingRemoval.profileId);
+                setPendingRemoval(null);
+                setLinks(listTsdLinks());
+              }}
+            >
+              Forget
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 

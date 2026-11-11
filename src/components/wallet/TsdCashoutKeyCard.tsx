@@ -52,6 +52,7 @@ export function TsdCashoutKeyCard({ compact }: { compact?: boolean }) {
       )}
       <CardContent className={compact ? "p-0" : undefined}>
         {key ? (
+          <>
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1.5 text-sm text-primary">
               <Check className="h-4 w-4" /> Connected
@@ -63,6 +64,10 @@ export function TsdCashoutKeyCard({ compact }: { compact?: boolean }) {
               <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Remove
             </Button>
           </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Saved for this wallet only. Removing it here doesn't revoke it at TSD Swap.
+          </p>
+          </>
         ) : (
           <>
             <div className="flex gap-2">
@@ -80,7 +85,7 @@ export function TsdCashoutKeyCard({ compact }: { compact?: boolean }) {
             </div>
             {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
             <p className="mt-2 text-xs text-muted-foreground">
-              Stored only on this device. It can create redemption orders that pay out to an address
+              Saved for this wallet only, on this device. It can create redemption orders that pay out to an address
               you type here — it can't move funds on its own.
             </p>
           </>
