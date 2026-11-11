@@ -60,7 +60,7 @@ Registry/Hub use ecosystem-credential.server (current per-site HME convention); 
 ## Settings scope (app-wide vs per-wallet)
 - Chains, EVM token catalog and token-spam visibility are device-wide; migrate copy-only, never touching profiles/envelopes. Why: choices follow wallets safely.
 - Key-tied features, address prefs, watch-only, WIF, delegate/Seeds, card, Vault and labels remain profile-scoped. Why: key-bound settings cannot leak across wallets.
-- TSD cash-out key is profile-scoped (src/lib/cashout/api-key.ts): link claims write to the wallet captured before any await, records keep only an 8-hex fingerprint, the legacy device-wide key migrates once (marker; a reappearing unprefixed key is the default wallet's), and cash-out orders re-check wallet+key fingerprint before signing. Why: an account token must never cross wallets.
+- TSD cash-out key rules: src/lib/cashout/AGENTS.md.
 - Settings page is grouped "This device" (app-wide) vs "This wallet — <label>" (per-wallet). Why: users must see which scope they're editing.
 - Activity filtering is independent, device-wide and recoverable; counterfeit contracts override claimed direction; pending tracking uses raw history. Why: logs cannot prove signatures.
 
@@ -69,5 +69,3 @@ Registry/Hub use ecosystem-credential.server (current per-site HME convention); 
 - Per-address history fetches merge through fetchMergedAddressTxs (src/lib/address-txs.ts); when every address fetch fails it throws so React Query keeps the last-known list. Why: an indexer outage must never overwrite good cached history with an empty list.
 
 
-## Solana relay
-- /api/solana tries ordered upstreams (keyed Alchemy, PublicNode, then Solana's public endpoint) and fails over only on refusals, rate limits, outages or non-JSON replies (src/lib/solana/rpc-upstreams.ts). Why: Solana's public endpoint blocks our hosting provider, and identical signed sends are de-duplicated by signature.
