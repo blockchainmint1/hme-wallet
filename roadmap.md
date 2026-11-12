@@ -29,7 +29,7 @@
 - [x] Publish proxy rescue for old clients' long GET broadcasts; live probes reach node at 16k/27.5k/40k hex
 - [x] Stale-tab "new version available" bar (web only), 5 tests, browser checked
 - [x] Rebuild extension zip 0.5.0 from current source
-- [ ] Auditor OK, then publish banner + extension zip
+- [x] Auditor OK, then publish banner + extension zip (published Nov 12; extension rebuilt as 0.5.1)
 - [ ] Retry 31,000 DOGE send from a fresh desktop tab (consider splitting into 2–3 sends)
 
 ## Per-wallet TSD cash-out key (Nov 11)
@@ -48,4 +48,4 @@
 - [x] Auditor + bridge answers (Nov 11): refund = address the TSD leaves from; 1-hour margin (bridge ≥1h, auditor ≥30m); re-poll order before signing; refuse wallet-owned deposit, exact decimal amounts, mismatched account inbox; skip deposit notice for one-time orders; saved-address re-check before signing
 - [x] Bridge: one-time orders for every cash-out not needed — saved-address path stays
 - [ ] Auditor reads v2 note + source export, runs tests (waits on auditor); a real small one-time cash-out to a non-saved address (waits on Bobby, after publish)
-- [ ] Publish + APK/extension rebuild after audit; tell bridge team when live
+- [x] Publish + APK/extension rebuild after audit; tell bridge team when live (published Nov 12; APK rebuild runs in GitHub Actions)
