@@ -23,7 +23,7 @@
 - [x] Fresh security scan: no critical findings, one info (app_releases readable — intentional key-free release feed)
 - [x] Publish requested and confirmed live at https://mobile.honest.money (site 200; extension zip now 0.5.1 with cash-out code)
 - [x] Chrome extension rebuilt 0.5.1 from current source, verified served from the live site
-- [ ] Bobby runs the APK release in GitHub Actions (Actions → Android APK → Run workflow → release); version stamps itself
+- [x] APK release 0.1.202611122035 built, verified (same signing key, no new permissions) and released to everyone as a required update (Nov 12)
 - [ ] Auditor sign-off on cash-out v2 note (saved-address pre-send re-check), the 3 confirm points, and the two leftover decisions
 - [ ] After publish: rotate the TSD Swap cash-out key and put it on the one wallet that should have it
 - [ ] Tell TSD Bridge the wallet fix is live so they watch the first small cash-out to a non-saved address
