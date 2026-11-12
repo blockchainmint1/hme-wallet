@@ -11,6 +11,7 @@
  * Contract lives in docs/tsd-cashout-api.md.
  */
 import type { CashoutOrder, CashoutSettings } from "./tsd";
+import type { MempoolTx } from "@/lib/txc/mempool";
 
 const DEFAULT_BASE = "https://tsd.honest.money";
 
@@ -123,17 +124,47 @@ export interface DepositNotice {
   payoutAddress: string;
 }
 
+/** Read a TEXITcoin transaction from the public explorer, waiting briefly for a fresh broadcast. */
+async function fetchTxcTx(txid: string): Promise<unknown> {
+  const { MEMPOOL_API } = await import("@/lib/txc/network");
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const res = await fetch(`${MEMPOOL_API}/tx/${txid}`, {
+        headers: { accept: "application/json" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.status === 404) continue;
+      if (!res.ok) throw new Error(`explorer ${res.status}`);
+      return await res.json();
+    } catch (e) {
+      if (attempt === 2) throw e;
+    }
+  }
+  throw new Error("Transaction not found on TEXITcoin yet");
+}
+
 /**
  * Heads-up to TSD Swap that a cash-out deposit was just broadcast, so it can
- * watch for it instead of waiting to discover it. Signed with the shared
- * HME_ECOSYSTEM secret (HMAC-SHA256 over `${timestamp}.${body}`) so TSD Swap
+ * watch for it instead of waiting to discover it. Signed with the dedicated
+ * TSD_NOTIFY_SIGNING_KEY (HMAC-SHA256 over `${timestamp}.${body}`) so TSD Swap
  * knows it came from our server, plus the user's x-api-key for the account.
+ *
+ * Our signature must only vouch for facts this server verified: the deposit
+ * address and payout must be the key's own account inbox and saved address,
+ * and the txid must be a real TSD Simple Send of exactly that amount into the
+ * inbox (src/lib/cashout/deposit-notice.ts). Anything else is not sent.
  */
 export async function notifyDeposit(n: DepositNotice): Promise<void> {
   const secret = process.env["TSD_NOTIFY_SIGNING_KEY"];
   // Cash-out still works without this optional hint; do not expose a shared
   // cross-partner signing oracle while a dedicated key is being coordinated.
   if (!secret) return;
+  const { checkNoticeAccount, checkNoticeTx, noticeAccountFrom } = await import("./deposit-notice");
+  checkNoticeAccount(n, noticeAccountFrom(await fetchDepositAddress(n.apiKey)));
+  checkNoticeTx((await fetchTxcTx(n.txid)) as MempoolTx, n);
+
   const { createHmac } = await import("crypto");
   const body = JSON.stringify({
     txid: n.txid,
@@ -148,10 +179,8 @@ export async function notifyDeposit(n: DepositNotice): Promise<void> {
     "content-type": "application/json",
     "x-api-key": n.apiKey,
     "x-hme-timestamp": ts,
+    "x-hme-signature": createHmac("sha256", secret).update(`${ts}.${body}`).digest("hex"),
   };
-  if (secret) {
-    headers["x-hme-signature"] = createHmac("sha256", secret).update(`${ts}.${body}`).digest("hex");
-  }
   const res = await fetch(`${baseUrl()}/api/public/v1/cashout/notify`, { method: "POST", headers, body });
   if (!res.ok) console.warn("TSD deposit notice not accepted", res.status);
 }
