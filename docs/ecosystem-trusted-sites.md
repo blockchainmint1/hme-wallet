@@ -6,16 +6,21 @@ A site on the list shows its friendly name and a "Verified honest.money
 ecosystem site" note; anything else still works but shows a warning.
 
 The strict sign-in message template and hardened-branch-only xpub rule apply
-to every site. Spending delegation additionally requires exact membership in
-a freshly server-verified registry; offline labels and name patterns never authorize it.
+to every site. Spending delegation additionally requires the site to be marked
+`delegate: true` in a freshly server-verified registry; being on the list alone
+is not enough, and offline labels and name patterns never authorize it.
 
 ## Feed the ecosystem must publish
 
 `GET https://honest.money/api/public/v1/trusted-sites`
 
 ```json
-{ "v": 1, "sites": [ { "host": "filefingerprint.com", "label": "File Fingerprint", "active": true } ] }
+{ "v": 1, "sites": [ { "host": "filefingerprint.com", "label": "File Fingerprint", "active": true, "delegate": false } ] }
 ```
+
+`delegate: true` marks a site as allowed to request trading/spending access
+(`hm-link-delegate`). A missing field or any value other than literal `true`
+means sign-in labeling only — the wallet refuses spending links from it.
 
 Request headers (current Honest Money API):
 - `Authorization: Bearer <dedicated site API key>`

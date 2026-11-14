@@ -7,6 +7,6 @@ export const getEcosystemSites = createServerFn({ method: "GET" }).handler(async
     return { sites: await loadEcosystemSites() };
   } catch (e) {
     console.warn("ecosystem registry unavailable", e);
-    return { sites: [] as { host: string; label: string }[] };
+    return { sites: [] as { host: string; label: string; delegate: boolean }[] };
   }
 });

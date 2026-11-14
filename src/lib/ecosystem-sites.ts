@@ -14,7 +14,7 @@ export function useEcosystemSites(): void {
     try {
       const saved = localStorage.getItem(KEY);
       if (saved) {
-        const record = JSON.parse(saved) as { at?: number; sites?: { host: string; label: string }[] };
+        const record = JSON.parse(saved) as { at?: number; sites?: { host: string; label: string; delegate?: boolean }[] };
         if (typeof record.at === "number" && Date.now() - record.at < 5 * 60 * 1000 && Array.isArray(record.sites)) setEcosystemSites(record.sites);
       }
     } catch {

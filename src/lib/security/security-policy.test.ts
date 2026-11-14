@@ -14,16 +14,31 @@ describe("spending registry", () => {
     setEcosystemSites([{ host: "seeds.honest.money", label: "Seeds" }]);
     expect(isSpendingSite("seeds.honest.money")).toBe(false);
   });
-  it("only exact fresh entries authorize spending and an empty list revokes them", () => {
-    setEcosystemSites([{ host: "seeds.honest.money", label: "Seeds" }], true);
+  it("only exact fresh delegate:true entries authorize spending and an empty list revokes them", () => {
+    setEcosystemSites([{ host: "seeds.honest.money", label: "Seeds", delegate: true }], true);
     expect(isSpendingSite("seeds.honest.money")).toBe(true);
     expect(isSpendingSite("other.seeds.honest.money")).toBe(false);
     setEcosystemSites([], true);
     expect(isSpendingSite("seeds.honest.money")).toBe(false);
   });
+  it("a verified site without delegate: true is refused for spending but still labeled", () => {
+    setEcosystemSites(
+      [
+        { host: "seeds.honest.money", label: "Seeds", delegate: true },
+        { host: "filefingerprint.com", label: "File Fingerprint" },
+        { host: "bonfire.honest.money", label: "Bonfire", delegate: false },
+      ],
+      true,
+    );
+    expect(isSpendingSite("seeds.honest.money")).toBe(true);
+    expect(isSpendingSite("filefingerprint.com")).toBe(false); // missing field
+    expect(isSpendingSite("bonfire.honest.money")).toBe(false); // explicit false
+    expect(classifyLoginHost("filefingerprint.com").name).toBe("File Fingerprint");
+    expect(classifyLoginHost("bonfire.honest.money").name).toBe("Bonfire");
+  });
   it("spending trust expires after five minutes", () => {
     vi.spyOn(Date, "now").mockReturnValue(1_000_000);
-    setEcosystemSites([{ host: "seeds.honest.money", label: "Seeds" }], true);
+    setEcosystemSites([{ host: "seeds.honest.money", label: "Seeds", delegate: true }], true);
     vi.spyOn(Date, "now").mockReturnValue(1_300_000);
     expect(isSpendingSite("seeds.honest.money")).toBe(false);
   });

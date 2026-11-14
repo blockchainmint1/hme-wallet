@@ -83,7 +83,7 @@ let ecosystemNames: Record<string, string> = {};
 let spendingHosts = new Set<string>();
 let verifiedUntil = 0;
 
-export function setEcosystemSites(sites: { host: string; label: string }[], verified = false): void {
+export function setEcosystemSites(sites: { host: string; label: string; delegate?: boolean }[], verified = false): void {
   const next: Record<string, string> = Object.create(null);
   for (const s of sites) {
     const host = s.host.trim().toLowerCase();
@@ -92,7 +92,14 @@ export function setEcosystemSites(sites: { host: string; label: string }[], veri
   }
   ecosystemNames = next;
   if (verified) {
-    spendingHosts = new Set(Object.keys(next));
+    // Spending authority comes from HME: only sites the verified registry
+    // marks delegate: true. Every listed site still gets names/sign-in labels.
+    spendingHosts = new Set(
+      sites
+        .filter((s) => s.delegate === true)
+        .map((s) => s.host.trim().toLowerCase())
+        .filter((h) => Object.hasOwn(next, h)),
+    );
     verifiedUntil = Date.now() + 5 * 60 * 1000;
   }
 }
@@ -102,7 +109,7 @@ export function isEcosystemSite(hostname: string): boolean {
   return Object.hasOwn(ecosystemNames, host) || Object.hasOwn(PARTNER_NAMES, host) || isFirstParty(host);
 }
 
-/** Spending is authorized ONLY by a fresh server-verified registry, never offline labels. */
+/** Spending is authorized ONLY by a fresh server-verified registry entry marked delegate: true, never offline labels. */
 export function isSpendingSite(hostname: string): boolean {
   return Date.now() < verifiedUntil && spendingHosts.has(hostname.trim().toLowerCase());
 }
