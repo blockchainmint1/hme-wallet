@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { assertFreeformMessage, validateSiwe } from "./signing-policy";
-import { classifyLoginHost, isSpendingSite, setEcosystemSites } from "../web-login-hosts";
+import { classifyLoginHost, isSpendingSite, setEcosystemSites, spendingGrant } from "../web-login-hosts";
 import { forwardJson, readBoundedText } from "./json-proxy.server";
 
+const SEEDS = { host: "seeds.honest.money", label: "Seeds", delegate: true, delegate_modes: ["approve", "access"], delegate_branches: [1106] };
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); setEcosystemSites([], true); });
 describe("spending registry", () => {
   it("never trusts an attacker-named Lovable app or an unlisted honest.money subdomain for spending", () => {
@@ -15,7 +16,7 @@ describe("spending registry", () => {
     expect(isSpendingSite("seeds.honest.money")).toBe(false);
   });
   it("only exact fresh delegate:true entries authorize spending and an empty list revokes them", () => {
-    setEcosystemSites([{ host: "seeds.honest.money", label: "Seeds", delegate: true }], true);
+    setEcosystemSites([SEEDS], true);
     expect(isSpendingSite("seeds.honest.money")).toBe(true);
     expect(isSpendingSite("other.seeds.honest.money")).toBe(false);
     setEcosystemSites([], true);
@@ -24,7 +25,7 @@ describe("spending registry", () => {
   it("a verified site without delegate: true is refused for spending but still labeled", () => {
     setEcosystemSites(
       [
-        { host: "seeds.honest.money", label: "Seeds", delegate: true },
+        SEEDS,
         { host: "filefingerprint.com", label: "File Fingerprint" },
         { host: "bonfire.honest.money", label: "Bonfire", delegate: false },
       ],
@@ -36,9 +37,42 @@ describe("spending registry", () => {
     expect(classifyLoginHost("filefingerprint.com").name).toBe("File Fingerprint");
     expect(classifyLoginHost("bonfire.honest.money").name).toBe("Bonfire");
   });
+  it("delegate: true without reserved branches or modes is refused", () => {
+    setEcosystemSites(
+      [
+        { host: "a.honest.money", label: "A", delegate: true },
+        { host: "b.honest.money", label: "B", delegate: true, delegate_modes: ["access"], delegate_branches: [] },
+        { host: "c.honest.money", label: "C", delegate: true, delegate_modes: [], delegate_branches: [1108] },
+      ],
+      true,
+    );
+    expect(isSpendingSite("a.honest.money")).toBe(false);
+    expect(isSpendingSite("b.honest.money")).toBe(false);
+    expect(isSpendingSite("c.honest.money")).toBe(false);
+  });
+  it("keeps each site's own branches and modes from honest.money", () => {
+    setEcosystemSites([SEEDS, { host: "chat.honest.money", label: "HME Chat", delegate: true, delegate_modes: ["approve"], delegate_branches: [1108] }], true);
+    expect(spendingGrant("seeds.honest.money")).toEqual({ modes: ["approve", "access"], branches: [1106] });
+    expect(spendingGrant("chat.honest.money")).toEqual({ modes: ["approve"], branches: [1108] });
+  });
+  it("never accepts the card branch 1107, account 0, or anything outside 1106-2105", () => {
+    setEcosystemSites([{ host: "x.honest.money", label: "X", delegate: true, delegate_modes: ["access"], delegate_branches: [0, 1107, 1105, 2106, 1.5, "1108"] }], true);
+    expect(isSpendingSite("x.honest.money")).toBe(false);
+  });
+  it("a branch honest.money lists for two sites is refused for both", () => {
+    setEcosystemSites(
+      [
+        { host: "a.honest.money", label: "A", delegate: true, delegate_modes: ["access"], delegate_branches: [1108] },
+        { host: "b.honest.money", label: "B", delegate: true, delegate_modes: ["access"], delegate_branches: [1108, 1109] },
+      ],
+      true,
+    );
+    expect(isSpendingSite("a.honest.money")).toBe(false);
+    expect(spendingGrant("b.honest.money")?.branches).toEqual([1109]);
+  });
   it("spending trust expires after five minutes", () => {
     vi.spyOn(Date, "now").mockReturnValue(1_000_000);
-    setEcosystemSites([{ host: "seeds.honest.money", label: "Seeds", delegate: true }], true);
+    setEcosystemSites([SEEDS], true);
     vi.spyOn(Date, "now").mockReturnValue(1_300_000);
     expect(isSpendingSite("seeds.honest.money")).toBe(false);
   });

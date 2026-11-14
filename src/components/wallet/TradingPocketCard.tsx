@@ -24,12 +24,12 @@ import {
 import {
   evmPocketBalances,
   pocketReceiveAddress,
-  retirePocketAccount,
   sweepPocket,
   utxoPocketBalance,
   type PocketChain,
   type SweepResult,
 } from "@/lib/seeds/pocket";
+import { retireBranch } from "@/lib/xpub-link/branches";
 import { SeedsTradesList } from "@/components/wallet/SeedsTradesList";
 
 const SEND_ROUTE: Record<string, string> = {
@@ -169,7 +169,7 @@ export function TradingSitePanel({ link }: { link: DelegateLinkRecord }) {
       sweepNote = describe(await moveBack().catch(() => []));
       // An old spending key must never control new deposits.
       if (!listDelegateLinks().some((l) => l.linkId !== link.linkId && l.mode === "access" && l.account === link.account))
-        retirePocketAccount();
+        retireBranch(link.account, link.host);
     }
     removeDelegateLink(link.linkId);
     setResult(`Revoked ${link.appName}. ${sweepNote}${serverNote} Tokens (TSD, USDC) stay put — send them from the shared wallet address manually if needed.`.trim());

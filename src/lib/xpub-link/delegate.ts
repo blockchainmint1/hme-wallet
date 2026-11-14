@@ -8,9 +8,12 @@
  *   as an unsigned transaction and the user approves it in the wallet.
  *
  * Hard rules (never configurable by the site):
- * - Site must be on the honest.money trusted list (no "continue anyway").
- * - Requested paths must be exactly account 1106' on the known coin types.
- *   The wallet substitutes its own active pocket account (1106, 1107, …).
+ * - Site must be marked delegate: true on a fresh, signed honest.money list
+ *   (no "continue anyway"), and only the modes HME allows it are offered.
+ * - Requested paths must all be one branch honest.money reserved for that
+ *   site, on the known coin types. If this wallet already retired that branch
+ *   (or another site owns it here), the next reserved branch is used; the
+ *   real `account`/`paths` go back in the submission. See ./branches.ts.
  * - submit_url / revoke_url share the manifest origin.
  * - The signed identity message is rebuilt locally from a fixed shape.
  */
@@ -22,16 +25,10 @@ import { base64url, base64urlnopad } from "@scure/base";
 import { seedFromMnemonic } from "@/lib/txc/wallet";
 import { signMessageWithSeed } from "@/lib/txc/message-sign";
 import { scopedKey } from "@/lib/profiles";
-import { isSpendingSite, loginSiteName, setEcosystemSites } from "@/lib/web-login-hosts";
+import { isEcosystemSite, loginSiteName, setEcosystemSites, spendingGrant } from "@/lib/web-login-hosts";
 import { getEcosystemSites } from "@/lib/ecosystem-sites.functions";
-import {
-  accountPath,
-  activePocketAccount,
-  chainRoot,
-  POCKET_BASE_ACCOUNT,
-  POCKET_CHAINS,
-  type PocketChain,
-} from "@/lib/seeds/pocket";
+import { accountPath, chainRoot, legacyPocketAccount, POCKET_CHAINS, type PocketChain } from "@/lib/seeds/pocket";
+import { chooseDelegateBranch, claimBranch, loadBranchBook, type BranchBook } from "./branches";
 
 const PROXY = "/api/nectar/link";
 
@@ -44,6 +41,12 @@ export interface DelegateManifest {
   token: string;
   challenge: string;
   chains: PocketChain[];
+  /** Branch the site asked for (one of its honest.money reservations). */
+  requestedAccount: number;
+  /** Branch this wallet will actually use for the site. */
+  account: number;
+  /** Link modes honest.money allows this site. */
+  modes: DelegateMode[];
   recipientPub: Uint8Array;
   submitUrl: string;
   revokeUrl: string;
@@ -54,15 +57,33 @@ export function isDelegateDialect(raw: Record<string, unknown>): boolean {
   return raw["type"] === "hm-link-delegate";
 }
 
-export function validateDelegate(raw: Record<string, unknown>, manifestUrl: string): DelegateManifest {
+/** Parse `m/<purpose>'/<coin>'/<account>'` for `chain`; null unless it is exactly that chain's account path. */
+function requestedAccountOf(chain: PocketChain, path: unknown): number | null {
+  const m = /^m\/\d+'\/\d+'\/(\d{1,10})'$/.exec(String(path));
+  if (!m) return null;
+  const n = Number(m[1]);
+  return accountPath(chain, n) === path ? n : null;
+}
+
+export function validateDelegate(
+  raw: Record<string, unknown>,
+  manifestUrl: string,
+  book: BranchBook = currentBranchBook(),
+): DelegateManifest {
   const fail = (m: string): never => {
     throw new Error(m);
   };
   if (!isDelegateDialect(raw)) fail("That code isn't a trading link.");
   const u = new URL(manifestUrl);
   const host = u.hostname;
-  if (!isSpendingSite(host))
-    fail(`${host} isn't on the honest.money trusted list, so it can't be given trading access.`);
+  const siteName = loginSiteName(host) === host ? host : `${loginSiteName(host)} (${host})`;
+  const grant = spendingGrant(host);
+  if (!grant)
+    fail(
+      isEcosystemSite(host)
+        ? `honest.money hasn't approved ${siteName} for trading access, so no trading branch is reserved for it.`
+        : `${host} isn't on the honest.money trusted list, so it can't be given trading access.`,
+    );
   const sameOrigin = (s: unknown) => {
     try {
       return typeof s === "string" && new URL(s).origin === u.origin;
@@ -88,14 +109,20 @@ export function validateDelegate(raw: Record<string, unknown>, manifestUrl: stri
   const req = Array.isArray(raw["request"]) ? (raw["request"] as Record<string, unknown>[]) : [];
   if (req.length === 0) fail("Link doesn't ask for any chain.");
   const chains: PocketChain[] = [];
+  let requested: number | null = null;
   for (const r of req) {
     const chain = String(r["chain"] ?? "").toUpperCase() as PocketChain;
     if (!POCKET_CHAINS.includes(chain)) fail(`Unsupported chain: ${chain}`);
-    // Only the reserved trading account, on that chain's own coin type.
-    if (String(r["path"]) !== accountPath(chain, POCKET_BASE_ACCOUNT))
-      fail(`Refused key request: ${chain} ${String(r["path"])} (only the 1106 trading branch is allowed).`);
+    // One whole hardened account, on that chain's own coin type.
+    const n = requestedAccountOf(chain, r["path"]);
+    if (n === null) fail(`Refused key request: ${chain} ${String(r["path"])} isn't a trading branch path.`);
+    if (requested !== null && n !== requested) fail("Link asks for different branches on different chains.");
+    requested = n;
     if (!chains.includes(chain)) chains.push(chain);
   }
+  const choice = chooseDelegateBranch({ host, siteName, requested: requested!, reserved: grant!.branches, book });
+  if (!choice.ok) fail(`Refused key request: ${choice.reason}`);
+  const account = (choice as { account: number }).account;
   const app = (raw["app"] ?? {}) as Record<string, unknown>;
   return {
     host,
@@ -104,6 +131,9 @@ export function validateDelegate(raw: Record<string, unknown>, manifestUrl: stri
     token: token as string,
     challenge: challenge as string,
     chains,
+    requestedAccount: requested!,
+    account,
+    modes: grant!.modes,
     recipientPub,
     submitUrl: raw["submit_url"] as string,
     revokeUrl: raw["revoke_url"] as string,
@@ -188,8 +218,23 @@ export async function submitDelegate(args: {
   const { manifest, mode, mnemonic, passphrase = "" } = args;
   const registry = await getEcosystemSites();
   setEcosystemSites(registry.sites, true);
-  if (!isSpendingSite(manifest.host)) throw new Error("This site is no longer on the verified spending list.");
-  const account = activePocketAccount();
+  const grant = spendingGrant(manifest.host);
+  if (!grant) throw new Error("This site is no longer on the verified spending list.");
+  if (!grant.modes.includes(mode)) throw new Error("honest.money no longer allows this kind of link for this site.");
+  // Re-check the branch against the fresh list and this wallet's own record.
+  const book = currentBranchBook();
+  const choice = chooseDelegateBranch({
+    host: manifest.host,
+    siteName: manifest.appName,
+    requested: manifest.requestedAccount,
+    reserved: grant.branches,
+    book,
+  });
+  if (!choice.ok) throw new Error(choice.reason);
+  if (choice.account !== manifest.account) throw new Error("The trading branch for this site changed. Open the link again.");
+  const account = choice.account;
+  // Record ownership before anything about this branch leaves the device.
+  claimBranch(book, manifest.host, account);
   const seed = await seedFromMnemonic(mnemonic, passphrase);
   const xpubs: Record<string, string> = {};
   const xprvs: Record<string, string> = {};
@@ -284,6 +329,11 @@ export async function revokeDelegate(args: {
 }
 
 /* ------------------------------ local records ---------------------------- */
+
+/** This wallet's branch book, folding in the legacy counter and existing links. */
+export function currentBranchBook(): BranchBook {
+  return loadBranchBook(legacyPocketAccount(), listDelegateLinks());
+}
 
 const STORE = "hme:delegate-links";
 export const DELEGATE_LINKS_EVENT = "hme:delegate-links-changed";

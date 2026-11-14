@@ -14,7 +14,6 @@ import {
   type DelegateManifest,
   type DelegateMode,
 } from "@/lib/xpub-link/delegate";
-import { activePocketAccount } from "@/lib/seeds/pocket";
 import { useExchangeFeaturesAllowed } from "@/lib/native/capabilities";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,7 +59,9 @@ export function DelegateLinkCard({ manifestUrl, onDone }: { manifestUrl: string;
       </p>
     );
 
-  const account = activePocketAccount();
+  const account = manifest.account;
+  const canAccess = manifest.modes.includes("access");
+  const canApprove = manifest.modes.includes("approve");
 
   async function approve() {
     if (!manifest || !mode || !unlocked?.mnemonic) return;
@@ -91,8 +92,14 @@ export function DelegateLinkCard({ manifestUrl, onDone }: { manifestUrl: string;
           <p className="text-sm font-semibold">How should {manifest.appName} trade for you?</p>
           <p className="text-xs text-muted-foreground">
             Verified honest.money ecosystem site ({manifest.host}). Trades use a separate Trading pocket
-            (branch {account}). Your main wallet is never shared.
+            (branch {account}, reserved for this site by honest.money). Your main wallet is never shared.
           </p>
+          {account !== manifest.requestedAccount && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Branch {manifest.requestedAccount} was already used on this wallet, so the next branch honest.money
+              reserved for {manifest.appName} is used instead.
+            </p>
+          )}
           {manifest.purpose && <p className="mt-1 text-xs text-muted-foreground">“{manifest.purpose}”</p>}
           <p className="mt-1 text-xs text-muted-foreground">
             Chains: {manifest.chains.map((c) => CHAIN_LABEL[c] ?? c).join(" · ")}
@@ -101,6 +108,7 @@ export function DelegateLinkCard({ manifestUrl, onDone }: { manifestUrl: string;
       </div>
 
       <div className="grid gap-2">
+        {canAccess && (
         <button
           type="button"
           onClick={() => {
@@ -115,6 +123,8 @@ export function DelegateLinkCard({ manifestUrl, onDone }: { manifestUrl: string;
             <ShieldAlert className="h-3 w-3" /> {manifest.appName} can spend anything you put in your Trading pocket until you revoke.
           </p>
         </button>
+        )}
+        {canApprove && (
         <button
           type="button"
           onClick={() => {
@@ -129,6 +139,7 @@ export function DelegateLinkCard({ manifestUrl, onDone }: { manifestUrl: string;
             nothing moves without you.
           </p>
         </button>
+        )}
       </div>
 
       {mode && (

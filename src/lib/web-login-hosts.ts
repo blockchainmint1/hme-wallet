@@ -14,8 +14,11 @@
  * Both the client validator (src/lib/nectar/auth.ts) and the server proxy
  * (src/routes/api/nectar.link.ts) read from this single source.
  *
- * This module must stay dependency-free: it is imported by client bundles.
+ * This module must stay dependency-free (only ./seeds/branch-rules): it is
+ * imported by client bundles.
  */
+
+import { isDelegableAccount } from "./seeds/branch-rules";
 
 export type LoginHostTier = "first-party" | "partner" | "unknown";
 
@@ -80,10 +83,38 @@ export function isPublicHostname(raw: string): boolean {
  * built-in list above stays as the offline fallback.
  */
 let ecosystemNames: Record<string, string> = {};
-let spendingHosts = new Set<string>();
+let spendingGrants = new Map<string, DelegateGrant>();
 let verifiedUntil = 0;
 
-export function setEcosystemSites(sites: { host: string; label: string; delegate?: boolean }[], verified = false): void {
+export type DelegateGrantMode = "approve" | "access";
+
+/** What honest.money lets one trading site ask for. */
+export interface DelegateGrant {
+  modes: DelegateGrantMode[];
+  /** Trading branches (hardened accounts) honest.money reserved for this site. */
+  branches: number[];
+}
+
+export interface RegistrySite {
+  host: string;
+  label: string;
+  delegate?: boolean;
+  delegate_modes?: unknown;
+  delegate_branches?: unknown;
+}
+
+function grantOf(s: RegistrySite): DelegateGrant | null {
+  if (s.delegate !== true) return null;
+  const modes = (Array.isArray(s.delegate_modes) ? s.delegate_modes : []).filter(
+    (m, i, a): m is DelegateGrantMode => (m === "approve" || m === "access") && a.indexOf(m) === i,
+  );
+  const branches = (Array.isArray(s.delegate_branches) ? s.delegate_branches : []).filter(
+    (b, i, a): b is number => typeof b === "number" && isDelegableAccount(b) && a.indexOf(b) === i,
+  );
+  return modes.length && branches.length ? { modes, branches } : null;
+}
+
+export function setEcosystemSites(sites: RegistrySite[], verified = false): void {
   const next: Record<string, string> = Object.create(null);
   for (const s of sites) {
     const host = s.host.trim().toLowerCase();
@@ -92,14 +123,23 @@ export function setEcosystemSites(sites: { host: string; label: string; delegate
   }
   ecosystemNames = next;
   if (verified) {
-    // Spending authority comes from HME: only sites the verified registry
-    // marks delegate: true. Every listed site still gets names/sign-in labels.
-    spendingHosts = new Set(
-      sites
-        .filter((s) => s.delegate === true)
-        .map((s) => s.host.trim().toLowerCase())
-        .filter((h) => Object.hasOwn(next, h)),
-    );
+    // Spending authority comes from HME: only sites the verified registry marks
+    // delegate: true, with the modes and branches HME reserved for them.
+    // A branch listed for two different sites is refused for both.
+    const grants = new Map<string, DelegateGrant>();
+    for (const s of sites) {
+      const host = s.host.trim().toLowerCase();
+      const g = grantOf(s);
+      if (g && Object.hasOwn(next, host)) grants.set(host, g);
+    }
+    const owners = new Map<number, Set<string>>();
+    for (const [host, g] of grants) for (const b of g.branches) owners.set(b, (owners.get(b) ?? new Set()).add(host));
+    for (const [host, g] of grants) {
+      const branches = g.branches.filter((b) => owners.get(b)!.size === 1);
+      if (branches.length) grants.set(host, { ...g, branches });
+      else grants.delete(host);
+    }
+    spendingGrants = grants;
     verifiedUntil = Date.now() + 5 * 60 * 1000;
   }
 }
@@ -110,8 +150,13 @@ export function isEcosystemSite(hostname: string): boolean {
 }
 
 /** Spending is authorized ONLY by a fresh server-verified registry entry marked delegate: true, never offline labels. */
+export function spendingGrant(hostname: string): DelegateGrant | null {
+  if (Date.now() >= verifiedUntil) return null;
+  return spendingGrants.get(hostname.trim().toLowerCase()) ?? null;
+}
+
 export function isSpendingSite(hostname: string): boolean {
-  return Date.now() < verifiedUntil && spendingHosts.has(hostname.trim().toLowerCase());
+  return spendingGrant(hostname) !== null;
 }
 
 /** Tier + display name for a sign-in host. */

@@ -1,12 +1,14 @@
 /**
- * The "Trading pocket": a separate hardened account (1106', then 1107', …
- * after each retirement) on every chain Seeds trades. Main-wallet funds
+ * The "Trading pocket": a separate hardened account per trading site — the
+ * branch honest.money reserved for that site (SEEDS = 1106') — on every chain
+ * it trades. Main-wallet funds
  * (account 0') are never derived, shown or shared from here.
  *
  * - Balances: receive + change addresses 0..POCKET_SCAN-1 on each UTXO chain,
  *   plus the single EVM address (native coin only).
  * - Sweep: moves everything back to the main wallet's first receive address.
- * - Retire: bumps the active account so an old shared key controls nothing.
+ * - Retire: the wallet never hands out a retired branch again
+ *   (src/lib/xpub-link/branches.ts).
  */
 import * as ecc from "@bitcoinerlab/secp256k1";
 import { BIP32Factory, type BIP32Interface } from "bip32";
@@ -26,9 +28,8 @@ import { scopedKey } from "@/lib/profiles";
 
 const bip32 = BIP32Factory(ecc);
 
-export const POCKET_BASE_ACCOUNT = 1106;
-/** Hard ceiling: a site can never push us onto an arbitrary account. */
-export const POCKET_MAX_ACCOUNT = POCKET_BASE_ACCOUNT + 999;
+export { POCKET_BASE_ACCOUNT, POCKET_MAX_ACCOUNT, isPocketAccount, isDelegableAccount } from "./branch-rules";
+import { isPocketAccount, POCKET_BASE_ACCOUNT } from "./branch-rules";
 export const POCKET_SCAN = 10;
 
 export type UtxoChain = "TXC" | "ISK" | "BTC" | "LTC";
@@ -60,30 +61,20 @@ export function accountPath(chain: PocketChain, account: number): string {
   return `m/${m.purpose}'/${m.coin}'/${account}'`;
 }
 
-export function isPocketAccount(account: number): boolean {
-  return Number.isInteger(account) && account >= POCKET_BASE_ACCOUNT && account <= POCKET_MAX_ACCOUNT;
-}
+/* ------------------------- legacy account counter ------------------------- */
 
-/* ------------------------- active account store ------------------------- */
+/**
+ * Before per-site branches, one counter per wallet held the active Trading
+ * account and moved up on every spending revoke. Read-only now: the branch
+ * book (src/lib/xpub-link/branches.ts) imports every account below it as
+ * retired, so an older build's revoke is never forgotten.
+ */
+export const LEGACY_ACCOUNT_KEY = "hme:trading-pocket-account";
 
-const ACCOUNT_KEY = "hme:trading-pocket-account";
-
-export function activePocketAccount(): number {
+export function legacyPocketAccount(): number {
   if (typeof window === "undefined") return POCKET_BASE_ACCOUNT;
-  const n = Number(window.localStorage.getItem(scopedKey(ACCOUNT_KEY)));
+  const n = Number(window.localStorage.getItem(scopedKey(LEGACY_ACCOUNT_KEY)));
   return isPocketAccount(n) ? n : POCKET_BASE_ACCOUNT;
-}
-
-/** Branches reserved for other HME features that the Trading pocket must never land on. */
-const RESERVED_ACCOUNTS = new Set([1107]); // 1107' = Tap card pocket
-
-/** Move to a fresh account so any key shared for the old one controls nothing new. */
-export function retirePocketAccount(): number {
-  let next = activePocketAccount() + 1;
-  while (RESERVED_ACCOUNTS.has(next)) next++;
-  next = Math.min(next, POCKET_MAX_ACCOUNT);
-  window.localStorage.setItem(scopedKey(ACCOUNT_KEY), String(next));
-  return next;
 }
 
 /* ------------------------------ derivation ------------------------------ */

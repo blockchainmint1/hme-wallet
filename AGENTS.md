@@ -40,7 +40,7 @@ The extension packages the full web app: `bun scripts/build-extension.mjs` runs 
 Registry/Hub use ecosystem-credential.server (current per-site HME convention); do not migrate partner signing implicitly. Spending requires fresh exact registry membership. Why: site recognition cannot authenticate payments.
 
 ## Trading links (hm-link-delegate)
-- Spending access is only ever for the Trading pocket account (1106'+, rotated on revoke) and only for sites the fresh honest.money registry marks `delegate: true` — list membership alone only grants sign-in labels; look-only links stay xpub-only. Why: a shared spending key can't be taken back, so the blast radius must be one separate, retirable pocket, and HME alone decides who may ask for it.
+- Trading links get only the branch(es) and modes the fresh signed honest.money registry reserves for that exact `delegate: true` site; a per-wallet branch book (src/lib/xpub-link/branches.ts) never reuses retired or other-site branches. Why: HME alone decides who may spend, and a shared key can't be taken back.
 - The top camera routes safe bare HTTPS ecosystem manifests through the same link approval page as Settings, after payment and sign-in recognition; recognition never grants trust or shares keys. Why: Seeds uses bare manifest URLs and must not require a different scanner.
 
 ## Tap card (NFC) service

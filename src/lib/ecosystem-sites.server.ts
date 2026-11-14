@@ -14,6 +14,10 @@ export interface EcosystemSite {
   label: string;
   /** HME grants trading/spending access only to sites marked delegate: true. */
   delegate: boolean;
+  /** Link modes HME allows this site ("approve" = xpubs only, "access" = spending key). */
+  delegate_modes: ("approve" | "access")[];
+  /** Trading branches (hardened accounts) HME reserved for this site. */
+  delegate_branches: number[];
 }
 
 const DEFAULT_URL = "https://honest.money/api/public/v1/trusted-sites";
@@ -40,7 +44,9 @@ export async function loadEcosystemSites(): Promise<EcosystemSite[]> {
   const b = Buffer.from(expected, "hex");
   if (a.length !== b.length || !timingSafeEqual(a, b)) throw new Error("registry signature invalid");
   if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) throw new Error("registry signature stale");
-  const parsed = JSON.parse(body) as { sites?: { host?: unknown; label?: unknown; active?: unknown; delegate?: unknown }[] };
+  const parsed = JSON.parse(body) as {
+    sites?: { host?: unknown; label?: unknown; active?: unknown; delegate?: unknown; delegate_modes?: unknown; delegate_branches?: unknown }[];
+  };
   const sites = (parsed.sites ?? [])
     .filter((s) => typeof s.host === "string" && s.active !== false)
     .map((s) => ({
@@ -48,6 +54,13 @@ export async function loadEcosystemSites(): Promise<EcosystemSite[]> {
       label: typeof s.label === "string" ? s.label : "",
       // Missing or anything but literal true means no spending authority.
       delegate: s.delegate === true,
+      delegate_modes: (Array.isArray(s.delegate_modes) ? s.delegate_modes : [])
+        .filter((m): m is "approve" | "access" => m === "approve" || m === "access")
+        .slice(0, 2),
+      // Range/reserved checks happen in the client policy (web-login-hosts).
+      delegate_branches: (Array.isArray(s.delegate_branches) ? s.delegate_branches : [])
+        .filter((b): b is number => typeof b === "number" && Number.isInteger(b))
+        .slice(0, 50),
     }))
     .slice(0, 500);
   cache = { at: Date.now(), sites };

@@ -1,5 +1,10 @@
 # Roadmap
 
+## Per-site Trading branches from honest.money (Nov 14)
+- [x] Wallet reads delegate_modes/delegate_branches; per-wallet branch book; 619 tests pass
+- [ ] honest.money: reserve HME Chat branch(es), add to DELEGATE_BRANCHES, grant wallet:propose/delegate (blocked: ecosystem project)
+- [ ] Auditor review of per-site branch note, then publish + APK/extension rebuild
+
 ## USDC THORChain send error (Oct 28)
 - [x] Wait for successful approval confirmations and verify exact allowance before preparing the deposit; 72 targeted tests pass, build OK, auditor note delivered
 - [x] Approve first, then refresh quote before deposit; deposit confirmation shown honestly (76 swap checks pass)
