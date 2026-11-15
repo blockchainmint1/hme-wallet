@@ -7,19 +7,31 @@
  *
  * Available on all supported platforms when a cash-out key is configured.
  */
-import { useState } from "react";
-import { ArrowDownUp, Check, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowDownUp, Check, Info, Trash2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useExchangeFeaturesAllowed } from "@/lib/native/capabilities";
-import { TSD_API_KEY_RE, maskKey, useCashoutApiKey } from "@/lib/cashout/api-key";
+import {
+  TSD_API_KEY_RE,
+  cashoutKeyConflictNoticePending,
+  dismissCashoutKeyConflictNotice,
+  maskKey,
+  useCashoutApiKey,
+} from "@/lib/cashout/api-key";
+import { DEFAULT_PROFILE_ID, activeProfileId } from "@/lib/profiles";
 
 export function TsdCashoutKeyCard({ compact }: { compact?: boolean }) {
   const allowed = useExchangeFeaturesAllowed();
   const [key, setKey] = useCashoutApiKey();
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // One-time notice, shown on the first wallet (whose slot held the old key).
+  const [conflictNotice, setConflictNotice] = useState(false);
+  useEffect(() => {
+    setConflictNotice(activeProfileId() === DEFAULT_PROFILE_ID && cashoutKeyConflictNoticePending());
+  }, [key]);
 
   if (!allowed) return null;
 
@@ -51,6 +63,31 @@ export function TsdCashoutKeyCard({ compact }: { compact?: boolean }) {
         </CardHeader>
       )}
       <CardContent className={compact ? "p-0" : undefined}>
+        {conflictNotice && (
+          <div className="mb-3 flex gap-2 rounded-md border border-border bg-muted/50 p-3 text-xs text-muted-foreground">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div className="flex-1">
+              <p>
+                An older version of the app kept one cash-out key for every wallet on this device. We
+                couldn't tell which wallet it belonged to, so we removed it from this wallet. If this
+                wallet should cash out, paste its key again. Removing it here doesn't revoke it at TSD
+                Swap.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                onClick={() => {
+                  dismissCashoutKeyConflictNotice();
+                  setConflictNotice(false);
+                }}
+              >
+                Got it
+              </Button>
+            </div>
+          </div>
+        )}
         {key ? (
           <>
           <div className="flex items-center gap-3">

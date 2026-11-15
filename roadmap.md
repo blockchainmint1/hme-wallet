@@ -7,8 +7,14 @@
 - [x] Auditor review (Nov 15 night): no cash-out ran (it was a buy); one-time fix live since Nov 12; disclosed list already live in the 21:46 build
 - [x] Cash-outs saved as "sending" before broadcast, "sent" after; failed broadcast leaves "Not confirmed — check the explorer" row (4 new tests, 674 total)
 - [x] Full source export + reply for auditor; draft note asking TSD Bridge for a key-scoped list-orders endpoint
-- [ ] Auditor sign-off on the "sending" change, then publish + extension rebuild + next APK (waits on auditor)
-- [ ] Bobby sends TSD Bridge the list-orders request (waits on Bobby)
+- [x] Auditor sign-off (Nov 15 night); already live via owner publish 22:24 UTC (build 1794780623429 = 209cf7d); extension 0.5.3 published (build 1794782149589 = ad8fb99)
+- [ ] Bobby sends TSD Bridge the list-orders request + the 40,000 purchase order id (waits on Bobby)
+- [ ] Next APK build so the phone carries the merged history + "sending" records (Bobby runs GitHub Actions)
+
+## Post-sign-off follow-ups (Nov 15 night)
+- [x] Cash-out key conflict case: legacy key deleted + one-time notice, 3 tests (677 pass) — awaiting auditor review, not published
+- [x] Branch-book design note (seed-keyed ledger + claim-time chain check) — awaiting auditor + Bobby's privacy choice
+- [ ] .env rename: recommended skip (platform-owned file, dev preview reads only .env); offered allowlist test instead (waits on Bobby)
 
 ## TSD Bridge routes on desktop Swap (Nov 15)
 - [x] Buy TSD with USDC/USDT/PYUSD on Ethereum and USDC/USDT on Base (TSD Bridge mint orders), verified + re-polled + exact-transfer guard; 27 tests; 646 total pass
@@ -22,7 +28,7 @@
 - [x] Fresh security scan clean; 666 tests pass; extension rebuilt 0.5.2; publish requested
 - [ ] New APK build (Bobby runs GitHub Actions → Android APK, then send the zip)
 - [ ] 10 USDC on Base → wallet's own TSD address; send order id to TSD Bridge (Bobby, after publish)
-- [ ] Leftovers (non-blocking): cash-out key conflict case, branch book surviving wallet removal, .gitignore reply
+- [ ] Leftovers: see "Post-sign-off follow-ups" below
 
 ## Per-site Trading branches from honest.money (Nov 14)
 - [x] Wallet reads delegate_modes/delegate_branches; per-wallet branch book; 619 tests pass

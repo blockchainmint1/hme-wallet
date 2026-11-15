@@ -10,7 +10,10 @@ vi.mock("@/lib/txc/message-sign", () => ({
 
 import {
   CASHOUT_KEY_BASE,
+  CASHOUT_KEY_CONFLICT_NOTICE,
   CASHOUT_KEY_MIGRATED_MARKER,
+  cashoutKeyConflictNoticePending,
+  dismissCashoutKeyConflictNotice,
   bindCashoutKey,
   cashoutBindingHolds,
   cashoutKeyFingerprint,
@@ -189,6 +192,45 @@ describe("one-time migration of the old device-wide key", () => {
     saveTsdLink(link("acct-b", "2026-11-01T10:00:00.000Z"), "pr_b");
     migrateLegacyCashoutKey();
     for (const [k, v] of Object.entries(untouched)) expect(store.get(k)).toBe(v);
+  });
+
+  it("owner already has a different key: the shared key is deleted from every wallet, one-time notice raised", () => {
+    store.set(CASHOUT_KEY_BASE, KEY_A);
+    store.set(`p:pr_b:${CASHOUT_KEY_BASE}`, KEY_B);
+    saveTsdLink(link("acct-b", "2026-11-01T10:00:00.000Z"), "pr_b");
+    expect(migrateLegacyCashoutKey()).toBe("conflict-removed");
+    expect(store.has(CASHOUT_KEY_BASE)).toBe(false);
+    expect(getCashoutApiKey("default")).toBeNull();
+    expect(getCashoutApiKey("pr_b")).toBe(KEY_B);
+    expect(getCashoutApiKey("pr_c")).toBeNull();
+    expect(store.get(CASHOUT_KEY_MIGRATED_MARKER)).toBe("1");
+    expect(cashoutKeyConflictNoticePending()).toBe(true);
+    dismissCashoutKeyConflictNotice();
+    expect(cashoutKeyConflictNoticePending()).toBe(false);
+    expect(migrateLegacyCashoutKey()).toBe("already-done");
+    expect(cashoutKeyConflictNoticePending()).toBe(false);
+  });
+
+  it("conflict case: a failed notice write keeps the marker unset and retries without restoring the key", () => {
+    store.set(CASHOUT_KEY_BASE, KEY_A);
+    store.set(`p:pr_b:${CASHOUT_KEY_BASE}`, KEY_B);
+    saveTsdLink(link("acct-b", "2026-11-01T10:00:00.000Z"), "pr_b");
+    failWritesTo = CASHOUT_KEY_CONFLICT_NOTICE;
+    expect(migrateLegacyCashoutKey()).toBe("failed");
+    expect(store.has(CASHOUT_KEY_MIGRATED_MARKER)).toBe(false);
+    expect(store.has(CASHOUT_KEY_BASE)).toBe(false);
+    failWritesTo = null;
+    // Shared key already gone: the retry finds nothing to assign and finishes.
+    expect(migrateLegacyCashoutKey()).toBe("no-key");
+    expect(getCashoutApiKey("default")).toBeNull();
+    expect(getCashoutApiKey("pr_b")).toBe(KEY_B);
+  });
+
+  it("no conflict, no notice", () => {
+    store.set(CASHOUT_KEY_BASE, KEY_A);
+    saveTsdLink(link("acct-b", "2026-11-01T10:00:00.000Z"), "pr_b");
+    expect(migrateLegacyCashoutKey()).toBe("moved");
+    expect(cashoutKeyConflictNoticePending()).toBe(false);
   });
 
   it("a shared key written later by an old phone app or extension stays with the first wallet", () => {

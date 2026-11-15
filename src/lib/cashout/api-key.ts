@@ -31,6 +31,12 @@ import { listTsdLinks, type TsdLinkRecord } from "@/lib/rewards/tsd-link-records
 export const CASHOUT_KEY_BASE = "hme:tsd-cashout-key";
 /** Device-wide marker: the legacy device-wide key has been assigned to a wallet. */
 export const CASHOUT_KEY_MIGRATED_MARKER = "hme:tsd-cashout-key.scope-migrated.v1";
+/**
+ * Device-wide one-time notice: the migration removed the legacy key because its
+ * owner could not be told apart (see the conflict case below). "1" = not yet
+ * seen, "seen" = dismissed.
+ */
+export const CASHOUT_KEY_CONFLICT_NOTICE = "hme:tsd-cashout-key.conflict-notice.v1";
 const EVENT = "hme:tsd-cashout-key-changed";
 
 /** Loose shape check so obvious paste mistakes are caught on the device. */
@@ -103,7 +109,7 @@ export type CashoutKeyMigration =
   | "already-done"
   | "no-key"
   | "kept-default"
-  | "conflict-kept-default"
+  | "conflict-removed"
   | "moved"
   | "failed";
 
@@ -141,10 +147,16 @@ export function migrateLegacyCashoutKey(): CashoutKeyMigration {
     const existing = s.getItem(target);
     if (existing && existing !== legacy) {
       // The owner already has a different key of its own: never overwrite it.
-      // Ownership of the legacy key is then unknown; it stays with the default
-      // wallet, which is what the storage convention says it is.
+      // Ownership of the legacy key is then unknown, and leaving it in the
+      // default wallet's slot would hand an account to a wallet that never
+      // earned it. Delete it (verify), raise the one-time notice, then mark.
+      // Any failure leaves the marker unset so the next load retries.
+      s.removeItem(CASHOUT_KEY_BASE);
+      if (s.getItem(CASHOUT_KEY_BASE) !== null) return "failed";
+      s.setItem(CASHOUT_KEY_CONFLICT_NOTICE, "1");
+      if (s.getItem(CASHOUT_KEY_CONFLICT_NOTICE) !== "1") return "failed";
       s.setItem(CASHOUT_KEY_MIGRATED_MARKER, "1");
-      return "conflict-kept-default";
+      return "conflict-removed";
     }
     if (!existing) {
       s.setItem(target, legacy);
@@ -164,6 +176,29 @@ export function migrateLegacyCashoutKey(): CashoutKeyMigration {
   } catch {
     return "failed";
   }
+}
+
+/** True until the user dismisses the "old shared key was removed" notice. */
+export function cashoutKeyConflictNoticePending(): boolean {
+  const s = storage();
+  if (!s) return false;
+  migrateLegacyCashoutKey();
+  try {
+    return s.getItem(CASHOUT_KEY_CONFLICT_NOTICE) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function dismissCashoutKeyConflictNotice(): void {
+  const s = storage();
+  if (!s) return;
+  try {
+    s.setItem(CASHOUT_KEY_CONFLICT_NOTICE, "seen");
+  } catch {
+    /* noop */
+  }
+  emit();
 }
 
 /* ------------------------------------------------------------------ */
