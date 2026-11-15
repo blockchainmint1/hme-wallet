@@ -1,7 +1,11 @@
 /**
  * TSD → USDC cash-outs sent from this wallet profile, kept on this device so
- * they can be listed in the swap history. Written only after the TSD transfer
- * has been broadcast. Holds public facts only (txid, order id, amounts,
+ * they can be listed in the swap history. Written as "sending" (with the txid
+ * computed locally from the signed transaction) right before the TSD transfer
+ * is broadcast, and upgraded to "sent" once the broadcast succeeds. A failed
+ * or uncertain broadcast therefore still leaves a row the user can check
+ * against the explorer — a broadcast error does not prove the transaction is
+ * absent. Holds public facts only (txid, order id, amounts,
  * addresses) plus the 8-hex cash-out key fingerprint — never the key itself —
  * so a later key never polls another key's orders.
  *
@@ -25,6 +29,12 @@ export interface CashoutRecord {
   depositAddress: string;
   keyFp: string;
   createdAt: number;
+  /** "sending" until the broadcast succeeded. Records written before this field existed are sent. */
+  status?: "sending" | "sent";
+}
+
+export function cashoutRecordStatus(rec: Pick<CashoutRecord, "status">): "sending" | "sent" {
+  return rec.status === "sending" ? "sending" : "sent";
 }
 
 const BASE = "hme:tsd-cashout-orders";
@@ -53,6 +63,40 @@ export function recordCashout(profileId: string, rec: CashoutRecord): void {
   } catch {
     /* history is a convenience; the order itself lives at TSD Swap */
   }
+}
+
+/** Upgrade a "sending" record to "sent" (and adopt the broadcaster's txid if it differs). */
+export function markCashoutSent(profileId: string, localTxid: string, txid: string = localTxid): void {
+  if (typeof window === "undefined") return;
+  const list = readCashoutHistory(profileId);
+  const rec = list.find((r) => r.txid === localTxid);
+  if (!rec) return;
+  const rest = list.filter((r) => r.txid !== localTxid && r.txid !== txid);
+  try {
+    window.localStorage.setItem(
+      scopedKey(BASE, profileId),
+      JSON.stringify([{ ...rec, txid: txid || localTxid, status: "sent" }, ...rest].slice(0, CASHOUT_HISTORY_MAX)),
+    );
+    window.dispatchEvent(new Event(EVENT));
+  } catch {
+    /* convenience only */
+  }
+}
+
+/**
+ * Record the cash-out as "sending" before broadcasting, then "sent" after.
+ * If the broadcast throws, the "sending" row stays and the error is re-thrown
+ * unchanged, so the send screen's own error handling is not affected.
+ */
+export async function broadcastRecordedCashout(
+  profileId: string,
+  rec: Omit<CashoutRecord, "status">,
+  broadcast: () => Promise<string>,
+): Promise<string> {
+  recordCashout(profileId, { ...rec, status: "sending" });
+  const txid = await broadcast();
+  markCashoutSent(profileId, rec.txid, txid);
+  return txid;
 }
 
 export function useCashoutHistory(profileId: string): CashoutRecord[] {

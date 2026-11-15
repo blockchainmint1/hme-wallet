@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { readCashoutHistory, recordCashout, type CashoutRecord } from "./cashout-history";
+import { broadcastRecordedCashout, cashoutRecordStatus, readCashoutHistory, recordCashout, type CashoutRecord } from "./cashout-history";
 
 const rec = (over: Partial<CashoutRecord> = {}): CashoutRecord => ({
   txid: "a".repeat(64),
@@ -43,5 +43,39 @@ describe("TSD cash-out history", () => {
     const raw = [...data.values()].join("");
     expect(raw).not.toContain("tsd_live_");
     expect(raw).toContain("abcd1234");
+  });
+
+  it("a failed broadcast still leaves a visible 'sending' row with the local txid", async () => {
+    const r = rec({ txid: "b".repeat(64) });
+    await expect(
+      broadcastRecordedCashout("default", r, async () => {
+        throw new Error("HTTP 520");
+      }),
+    ).rejects.toThrow("HTTP 520");
+    const list = readCashoutHistory("default");
+    expect(list).toHaveLength(1);
+    expect(list[0].txid).toBe("b".repeat(64));
+    expect(cashoutRecordStatus(list[0])).toBe("sending");
+  });
+
+  it("the row is saved before the broadcast starts", async () => {
+    let seenDuringBroadcast: string | undefined;
+    await broadcastRecordedCashout("default", rec(), async () => {
+      seenDuringBroadcast = readCashoutHistory("default")[0]?.status;
+      return "a".repeat(64);
+    });
+    expect(seenDuringBroadcast).toBe("sending");
+  });
+
+  it("a successful broadcast upgrades the same row to 'sent' without a duplicate", async () => {
+    await broadcastRecordedCashout("default", rec(), async () => "a".repeat(64));
+    const list = readCashoutHistory("default");
+    expect(list).toHaveLength(1);
+    expect(cashoutRecordStatus(list[0])).toBe("sent");
+  });
+
+  it("records saved by the earlier build (no status) read as sent", () => {
+    recordCashout("default", rec());
+    expect(cashoutRecordStatus(readCashoutHistory("default")[0])).toBe("sent");
   });
 });

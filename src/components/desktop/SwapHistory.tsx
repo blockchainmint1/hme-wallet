@@ -20,7 +20,7 @@ import { THOR_UTXO_COINS } from "@/lib/thorchain/execute";
 import { getThorTxStatus } from "@/lib/thorchain/swap.functions";
 import { useMintHistory, recordState, type MintRecord } from "@/lib/cashout/mint-history";
 import { mintSource, mintStatusLabel } from "@/lib/cashout/mint";
-import { useCashoutHistory, type CashoutRecord } from "@/lib/cashout/cashout-history";
+import { cashoutRecordStatus, useCashoutHistory, type CashoutRecord } from "@/lib/cashout/cashout-history";
 import { cashoutKeyFingerprint, useCashoutApiKey } from "@/lib/cashout/api-key";
 import { getCashoutOrder, getTsdMintOrder } from "@/lib/cashout/tsd.functions";
 import { cashoutStatusLabel, formatUsd, isTerminalCashoutStatus } from "@/lib/cashout/tsd";
@@ -211,6 +211,7 @@ function SellRow({ rec, apiKey }: { rec: CashoutRecord; apiKey: string | null })
     retry: 1,
   });
   const label = order.data ? cashoutStatusLabel(order.data.status)
+    : cashoutRecordStatus(rec) === "sending" ? "Not confirmed — check the explorer"
     : !canPoll ? "Sent to TSD Swap"
     : order.isError ? "Couldn't check" : "Checking…";
   const short = `${rec.payoutAddress.slice(0, 6)}…${rec.payoutAddress.slice(-4)}`;

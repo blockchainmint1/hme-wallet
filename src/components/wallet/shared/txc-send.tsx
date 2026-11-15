@@ -79,7 +79,7 @@ import {
 } from "@/lib/cashout/one-time";
 import { pickOmniSender } from "@/lib/txc/omni-sender";
 import { CashoutOrderTracker } from "@/components/wallet/CashoutOrderTracker";
-import { recordCashout } from "@/lib/cashout/cashout-history";
+import { broadcastRecordedCashout } from "@/lib/cashout/cashout-history";
 import { TSD_PROPERTY_ID, formatUsd, payoutFor } from "@/lib/cashout/tsd";
 
 
@@ -760,26 +760,31 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
       }
 
       setProgress(isTokenSend && activeToken ? `Sending ${activeToken.symbol}…` : "Sending TXC…");
-      const txid = await broadcastTx(built.hex);
+      const signedTx = built;
+      // A cash-out is saved as "sending" (local txid) before it is broadcast,
+      // so a failed or uncertain broadcast still leaves a checkable row.
+      const txid = cashout
+        ? await broadcastRecordedCashout(
+            cashout.binding.profileId,
+            {
+              txid: signedTx.txid,
+              kind: cashout.kind,
+              orderId: cashout.kind === "one-time-order" ? cashout.orderId : undefined,
+              amount: String(cashout.amount),
+              payoutAmount: cashout.payoutAmount,
+              payoutAddress: cashout.payoutAddress,
+              depositAddress: cashout.depositAddress,
+              keyFp: cashout.binding.keyFp,
+              createdAt: Date.now(),
+            },
+            () => broadcastTx(signedTx.hex),
+          )
+        : await broadcastTx(signedTx.hex);
       reserveOutpoints(picked.map((u) => ({ txid: u.txid, vout: u.vout })));
       hapticSuccess();
       void qc.invalidateQueries({ queryKey: ["account"] });
       void qc.invalidateQueries({ queryKey: ["txs"] });
       setStage({ kind: "sent", txid });
-      if (cashout) {
-        // Public facts only, for the swap history list; never blocks the send.
-        recordCashout(cashout.binding.profileId, {
-          txid,
-          kind: cashout.kind,
-          orderId: cashout.kind === "one-time-order" ? cashout.orderId : undefined,
-          amount: String(cashout.amount),
-          payoutAmount: cashout.payoutAmount,
-          payoutAddress: cashout.payoutAddress,
-          depositAddress: cashout.depositAddress,
-          keyFp: cashout.binding.keyFp,
-          createdAt: Date.now(),
-        });
-      }
       if (cashout?.kind === "account-inbox" && typeof cashout.amount === "number") {
         // Heads-up so TSD Swap watches for this deposit; never blocks the send.
         // Uses the key the order was created with, not a live re-read. TSD

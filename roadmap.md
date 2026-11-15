@@ -4,7 +4,11 @@
 - [x] One "Swap history" list under the Swap page: THORChain, SideShift/FixedFloat, TSD buys, TSD cash-outs (670 tests pass, browser-checked with sample records)
 - [x] TSD cash-outs now saved per wallet after sending (web, APK, extension share the Send screen)
 - [x] Bobby's 40,000 test was USDC → TSD: already saved; live site only showed it inside the Buy TSD panel. New list shows it; amounts now comma-grouped
-- [ ] Auditor look at the note, then publish + extension rebuild + next APK
+- [x] Auditor review (Nov 15 night): no cash-out ran (it was a buy); one-time fix live since Nov 12; disclosed list already live in the 21:46 build
+- [x] Cash-outs saved as "sending" before broadcast, "sent" after; failed broadcast leaves "Not confirmed — check the explorer" row (4 new tests, 674 total)
+- [x] Full source export + reply for auditor; draft note asking TSD Bridge for a key-scoped list-orders endpoint
+- [ ] Auditor sign-off on the "sending" change, then publish + extension rebuild + next APK (waits on auditor)
+- [ ] Bobby sends TSD Bridge the list-orders request (waits on Bobby)
 
 ## TSD Bridge routes on desktop Swap (Nov 15)
 - [x] Buy TSD with USDC/USDT/PYUSD on Ethereum and USDC/USDT on Base (TSD Bridge mint orders), verified + re-polled + exact-transfer guard; 27 tests; 646 total pass
