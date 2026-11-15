@@ -3,8 +3,12 @@
 ## TSD Bridge routes on desktop Swap (Nov 15)
 - [x] Buy TSD with USDC/USDT/PYUSD on Ethereum and USDC/USDT on Base (TSD Bridge mint orders), verified + re-polled + exact-transfer guard; 27 tests; 646 total pass
 - [x] Sell TSD → USDC on Ethereum from the Swap page hands off to the audited Send cash-out
-- [ ] Auditor review of Honest-Money-TSD-Bridge-Swap-Routes-2026-11-15.md, then publish + APK + extension
-- [ ] Ask TSD Bridge to echo recipient, depositToken and mintTxid on GET /cashout/orders/{id} for mint orders
+- [x] Auditor review received; applied: pinned contracts + refuse-on-mismatch, local record at Review, reuse/abandon, refuse reused deposit address, receipt wait, gas check, custody line, execution-policy entry (663 tests)
+- [x] Bobby kept paste-any-T… recipient (warning + required tick) instead of auditor's own-only rule
+- [x] Written request to TSD Bridge: confirm 5 contracts, publish depositTokenContracts, echo fields on orders, late-deposit policy
+- [ ] Auditor code review of Honest-Money-TSD-Bridge-Swap-Routes-Export-2026-11-15.zip (waits on auditor)
+- [ ] TSD Bridge written contract confirmation (+ late-deposit sentence) → fill TSD_BRIDGE_CONTRACT_PIN / TSD_BRIDGE_LATE_DEPOSIT_POLICY (waits on TSD Bridge)
+- [ ] Then publish + APK + extension
 - [ ] One small real purchase (e.g. 10 USDC) after publish
 
 ## Per-site Trading branches from honest.money (Nov 14)

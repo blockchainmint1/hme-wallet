@@ -45,6 +45,35 @@ export const MINT_SOURCES: readonly MintSource[] = [
   { id: "usdt-base", chain: "base", bridgeChain: "base", chainId: 8453, symbol: "USDT", label: "USDT on Base", contract: "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2", decimals: 6 },
 ];
 
+/**
+ * Where MINT_SOURCES' contracts come from. TSD Bridge's public feed names
+ * deposit tokens by symbol only, so the five contracts are pinned from TSD
+ * Bridge's own deposit-watcher list (detection reads only these contracts).
+ * `writtenConfirmation` stays null until TSD Bridge confirms the list in
+ * writing; publishing waits on it. Once the feed or an order publishes
+ * contracts, any difference from this pin is refused.
+ */
+export const TSD_BRIDGE_CONTRACT_PIN: Readonly<{ source: string; writtenConfirmation: string | null }> = Object.freeze({
+  source: "TSD Bridge src/lib/bridge-config.ts TOKENS (project snapshot 693bace2, read 2026-11-15)",
+  writtenConfirmation: null,
+});
+
+/**
+ * TSD Bridge's written promise about late or wrong-amount deposits, shown on
+ * the review dialog verbatim. Null until TSD Bridge commits in writing — the
+ * wallet never makes that promise on its behalf.
+ */
+export const TSD_BRIDGE_LATE_DEPOSIT_POLICY: string | null = null;
+
+/** Gas ceiling used to check the network fee before review (ERC-20 transfer to a fresh address is ~45–70k). */
+export const MINT_TRANSFER_GAS_CEILING = 100_000n;
+
+/** True when the native balance covers the transfer's network fee with 25% headroom. */
+export function mintGasCovered(native: bigint, maxFeePerGas: bigint, gasLimit: bigint = MINT_TRANSFER_GAS_CEILING): boolean {
+  if (native <= 0n || maxFeePerGas <= 0n || gasLimit <= 0n) return false;
+  return native >= (gasLimit * maxFeePerGas * 5n) / 4n;
+}
+
 export const MINT_SOURCE_IDS = MINT_SOURCES.map((s) => s.id) as [MintSourceId, ...MintSourceId[]];
 
 export function mintSource(id: string): MintSource | null {
@@ -60,6 +89,12 @@ export interface TsdBridgeTerms {
   redeemFeeBps: number;
   depositTokens: string[];
   chains: string[];
+  /**
+   * Contracts TSD Bridge publishes per chain and token
+   * (`depositTokenContracts: { ethereum: { USDC: "0x…" } }`), or null while
+   * the feed names tokens by symbol only.
+   */
+  tokenContracts?: Partial<Record<"ethereum" | "base", Record<string, string>>> | null;
 }
 
 /** Sources offered right now: both registries agree and TSD Bridge is live. */
@@ -67,7 +102,13 @@ export function availableMintSources(terms: TsdBridgeTerms | null | undefined): 
   if (!terms?.live) return [];
   const tokens = new Set(terms.depositTokens.map((t) => t.toUpperCase()));
   const chains = new Set(terms.chains.map((c) => c.toLowerCase()));
-  return MINT_SOURCES.filter((s) => tokens.has(s.symbol) && chains.has(s.bridgeChain));
+  const published = terms.tokenContracts;
+  return MINT_SOURCES.filter((s) => {
+    if (!tokens.has(s.symbol) || !chains.has(s.bridgeChain)) return false;
+    if (!published) return true; // symbol-only feed: rely on the pinned contracts
+    const c = published[s.bridgeChain]?.[s.symbol];
+    return typeof c === "string" && c.trim().toLowerCase() === s.contract.toLowerCase();
+  });
 }
 
 /**
@@ -134,6 +175,8 @@ export interface MintOrderResponse {
   sendTo?: unknown;
   address?: unknown;
   depositToken?: unknown;
+  /** Token contract TSD Bridge will credit, once it echoes one. */
+  depositTokenContract?: unknown;
   recipient?: unknown;
   chain?: unknown;
   amountExpected?: unknown;
@@ -145,6 +188,9 @@ export interface MintOrderResponse {
 export interface VerifiedMintOrder {
   id: string;
   sourceId: MintSourceId;
+  /** TSD Bridge chain name and the exact token contract the wallet will pay. */
+  chain: "ethereum" | "base";
+  tokenContract: Address;
   depositAddress: Address;
   /** Stablecoin base units the wallet will transfer. */
   units: string;
@@ -198,6 +244,10 @@ export function verifyMintOrder(
 
   if (str(res.chain).toLowerCase() !== req.source.bridgeChain) fail("network changed");
   if (str(res.depositToken).toUpperCase() !== req.source.symbol) fail("stablecoin changed");
+  const echoedContract = str(res.depositTokenContract);
+  if (echoedContract && echoedContract.toLowerCase() !== req.source.contract.toLowerCase()) {
+    fail("TSD Bridge expects a different token contract");
+  }
   if (!isLegacyTxcP2pkh(req.recipient) || str(res.recipient) !== req.recipient.trim()) {
     fail("TSD recipient changed");
   }
@@ -218,6 +268,8 @@ export function verifyMintOrder(
   return {
     id,
     sourceId: req.source.id,
+    chain: req.source.bridgeChain,
+    tokenContract: req.source.contract,
     depositAddress: deposit as Address,
     units: wanted!.toString(),
     amount: req.amount.trim(),
@@ -255,7 +307,55 @@ export function recheckMintOrder(
   if (chain && chain !== source!.bridgeChain) fail("network changed");
   const echoed = decimalUnits(order.amountExpected, source!.decimals);
   if (echoed === null || echoed.toString() !== locked.units) fail("amount changed");
+  // Checked whenever TSD Bridge echoes them (requested; not in today's reply).
+  const dir = str(order.direction).toLowerCase();
+  if (dir && dir !== "mint") fail("not a TSD purchase order");
+  const rcpt = str(order.recipient);
+  if (rcpt && rcpt !== locked.recipient) fail("TSD recipient changed");
+  const token = str(order.depositToken).toUpperCase();
+  if (token && token !== source!.symbol) fail("stablecoin changed");
+  const contract = str(order.depositTokenContract);
+  if (contract && contract.toLowerCase() !== source!.contract.toLowerCase()) fail("token contract changed");
   if (!mintOrderStillOpen(str(order.expiresAt), now)) fail("less than an hour left");
+}
+
+export interface MintLockContext {
+  ownEvmAddresses: readonly string[];
+  /** Deposit addresses from this wallet's earlier mint orders (any state). */
+  priorOrders: readonly { orderId: string; depositAddress: string }[];
+  now?: number;
+}
+
+/**
+ * Device-side check of an order the server already verified (or one being
+ * reused from local history): it must be exactly the request, pay the pinned
+ * contract, use a deposit address no earlier order of this wallet used, and
+ * still have the expiry margin left. Throws a user-readable message.
+ */
+export function confirmLockedMintOrder(
+  locked: VerifiedMintOrder,
+  expected: { sourceId: MintSourceId; amount: string; recipient: string },
+  ctx: MintLockContext,
+): void {
+  const fail = (why: string): never => {
+    throw new Error(`TSD Bridge's order didn't match (${why}). Nothing was sent.`);
+  };
+  const source = mintSource(expected.sourceId);
+  if (!source || locked.sourceId !== source.id) fail("stablecoin changed");
+  if (locked.chain !== source!.bridgeChain) fail("network changed");
+  if (locked.tokenContract.toLowerCase() !== source!.contract.toLowerCase()) fail("token contract changed");
+  if (locked.amount !== expected.amount.trim()) fail("amount changed");
+  const units = parseMintAmount(expected.amount, source!);
+  if (units === null || units.toString() !== locked.units) fail("amount changed");
+  if (!isLegacyTxcP2pkh(locked.recipient) || locked.recipient !== expected.recipient.trim()) fail("TSD recipient changed");
+  const deposit = locked.depositAddress.toLowerCase();
+  if (!EVM_RE.test(locked.depositAddress) || deposit === ZERO) fail("deposit address is not a valid 0x… address");
+  if (ctx.ownEvmAddresses.some((a) => a.trim().toLowerCase() === deposit)) fail("deposit address belongs to this wallet");
+  if (MINT_SOURCES.some((s) => s.contract.toLowerCase() === deposit)) fail("deposit address is a token contract");
+  if (ctx.priorOrders.some((o) => o.orderId !== locked.id && o.depositAddress.toLowerCase() === deposit)) {
+    fail("this deposit address was used by an earlier order — try again for a fresh one");
+  }
+  if (!mintOrderStillOpen(locked.expiresAt, ctx.now ?? Date.now())) fail("less than an hour left");
 }
 
 /** The single ERC-20 transfer that pays a verified mint order. */

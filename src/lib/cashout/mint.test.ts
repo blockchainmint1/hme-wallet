@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { decodeFunctionData, erc20Abi } from "viem";
 import {
-  MINT_SOURCES, assertMintTransferRequest, availableMintSources, buildMintTransfer, decimalUnits,
-  estimateTsdOut, mintAmountInLimits, mintSource, parseMintAmount, recheckMintOrder, verifyMintOrder,
+  MINT_SOURCES, TSD_BRIDGE_CONTRACT_PIN, TSD_BRIDGE_LATE_DEPOSIT_POLICY, assertMintTransferRequest,
+  availableMintSources, buildMintTransfer, confirmLockedMintOrder, decimalUnits, estimateTsdOut,
+  mintAmountInLimits, mintGasCovered, mintSource, parseMintAmount, recheckMintOrder, verifyMintOrder,
   type MintOrderResponse, type TsdBridgeTerms,
 } from "./mint";
+import {
+  findReusableMintOrder, isPaidMintRecord, lockedFromRecord, reviewedRecord, staleReviewedOrders, type MintRecord,
+} from "./mint-history";
 import { USDC_BY_CHAIN, USDT_BY_CHAIN, PYUSD_BY_CHAIN } from "@/lib/chains/erc20";
 import { EVM_CHAINS } from "@/lib/chains/evm";
 import { base58 } from "@scure/base";
@@ -142,5 +146,106 @@ describe("decimalUnits", () => {
   it("never uses float maths", () => {
     expect(decimalUnits(0.1 + 0.2, 6)).toBeNull();
     expect(decimalUnits("100000.000001", 6)).toBe(100_000_000_001n);
+  });
+});
+
+describe("token contract pinning", () => {
+  it("pins exactly the five contracts in TSD Bridge's deposit-watcher list", () => {
+    expect(MINT_SOURCES.map((s) => [s.bridgeChain, s.symbol, s.contract])).toEqual([
+      ["ethereum", "USDC", "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"],
+      ["ethereum", "USDT", "0xdAC17F958D2ee523a2206206994597C13D831ec7"],
+      ["ethereum", "PYUSD", "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8"],
+      ["base", "USDC", "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"],
+      ["base", "USDT", "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2"],
+    ]);
+    expect(MINT_SOURCES.some((s) => s.bridgeChain === "base" && s.symbol === "PYUSD")).toBe(false);
+  });
+  it("makes no written promises TSD Bridge hasn't given yet", () => {
+    expect(TSD_BRIDGE_CONTRACT_PIN.writtenConfirmation).toBeNull();
+    expect(TSD_BRIDGE_LATE_DEPOSIT_POLICY).toBeNull();
+  });
+  const published = {
+    ethereum: { USDC: usdc.contract.toLowerCase(), USDT: "0xdAC17F958D2ee523a2206206994597C13D831ec7", PYUSD: "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8" },
+    base: { USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", USDT: "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2" },
+  };
+  it("offers a token whose published contract matches the pin (any letter case)", () => {
+    expect(availableMintSources({ ...terms, tokenContracts: published }).map((s) => s.id)).toEqual(MINT_SOURCES.map((s) => s.id));
+  });
+  it("hides a token whose published contract differs or is missing", () => {
+    const other = { ...published, base: { USDC: published.base.USDC, USDT: "0x4444444444444444444444444444444444444444" } };
+    expect(availableMintSources({ ...terms, tokenContracts: other }).map((s) => s.id)).not.toContain("usdt-base");
+    const missing = { ethereum: published.ethereum };
+    expect(availableMintSources({ ...terms, tokenContracts: missing }).some((s) => s.chain === "base")).toBe(false);
+  });
+  it("refuses an order that echoes a different token contract", () => {
+    expect(() => verifyMintOrder(req, reply({ depositTokenContract: "0x4444444444444444444444444444444444444444" }), ctx)).toThrow(/different token contract/);
+    expect(verifyMintOrder(req, reply({ depositTokenContract: usdc.contract.toLowerCase() }), ctx).tokenContract).toBe(usdc.contract);
+  });
+  it("re-check refuses changed echoes of recipient, token or contract", () => {
+    const locked = verifyMintOrder(req, reply(), ctx);
+    expect(() => recheckMintOrder(locked, reply({ recipient: RECIPIENT, depositTokenContract: usdc.contract }), NOW)).not.toThrow();
+    expect(() => recheckMintOrder(locked, reply({ recipient: txcAddr(9) }), NOW)).toThrow(/recipient/);
+    expect(() => recheckMintOrder(locked, reply({ depositToken: "USDT" }), NOW)).toThrow(/stablecoin/);
+    expect(() => recheckMintOrder(locked, reply({ depositTokenContract: USDT_BY_CHAIN.eth.address }), NOW)).toThrow(/contract/);
+  });
+});
+
+describe("confirmLockedMintOrder (device check)", () => {
+  const locked = verifyMintOrder(req, reply(), ctx);
+  const want = { sourceId: usdc.id, amount: "250.5", recipient: RECIPIENT };
+  const lctx = { ownEvmAddresses: [OWN_EVM], priorOrders: [] as { orderId: string; depositAddress: string }[], now: NOW };
+  it("accepts the order we asked for, also when it is already in local history", () => {
+    expect(() => confirmLockedMintOrder(locked, want, lctx)).not.toThrow();
+    expect(() => confirmLockedMintOrder(locked, want, { ...lctx, priorOrders: [{ orderId: locked.id, depositAddress: DEPOSIT }] })).not.toThrow();
+  });
+  it("refuses a deposit address an earlier order of this wallet used", () => {
+    const prior = [{ orderId: "older-order", depositAddress: DEPOSIT.toUpperCase().replace("0X", "0x") }];
+    expect(() => confirmLockedMintOrder(locked, want, { ...lctx, priorOrders: prior })).toThrow(/earlier order/);
+  });
+  it("refuses a different amount, recipient, contract or too little time", () => {
+    expect(() => confirmLockedMintOrder(locked, { ...want, amount: "250.6" }, lctx)).toThrow(/amount/);
+    expect(() => confirmLockedMintOrder(locked, { ...want, recipient: txcAddr(9) }, lctx)).toThrow(/recipient/);
+    expect(() => confirmLockedMintOrder({ ...locked, tokenContract: USDT_BY_CHAIN.eth.address }, want, lctx)).toThrow(/contract/);
+    expect(() => confirmLockedMintOrder(locked, want, { ...lctx, now: NOW + 23 * HOUR + 1 })).toThrow(/an hour/);
+  });
+});
+
+describe("network fee check", () => {
+  it("needs the 100k-gas transfer plus 25% headroom", () => {
+    const fee = 10_000_000_000n; // 10 gwei
+    expect(mintGasCovered(1_250_000_000_000_000n, fee)).toBe(true);
+    expect(mintGasCovered(1_249_999_999_999_999n, fee)).toBe(false);
+    expect(mintGasCovered(0n, fee)).toBe(false);
+  });
+});
+
+describe("local mint history", () => {
+  const locked = verifyMintOrder(req, reply(), ctx);
+  const rec = reviewedRecord(locked, "fp1", true, NOW);
+  const want = { sourceId: usdc.id, units: "250500000", recipient: RECIPIENT, keyFp: "fp1" };
+  it("keeps the wallet's own copy of what was agreed", () => {
+    expect(rec).toMatchObject({ chain: "ethereum", tokenContract: usdc.contract, units: "250500000", recipient: RECIPIENT, depositAddress: DEPOSIT, state: "reviewed" });
+    expect(lockedFromRecord(rec)).toEqual(locked);
+  });
+  it("reuses an identical unpaid order with more than an hour left", () => {
+    expect(findReusableMintOrder([rec], want, NOW + 22 * HOUR)?.orderId).toBe(locked.id);
+    expect(findReusableMintOrder([rec], want, NOW + 23 * HOUR + 1)).toBeNull();
+  });
+  it("never reuses a different amount, recipient, key, or an abandoned or paid order", () => {
+    expect(findReusableMintOrder([rec], { ...want, units: "250000000" }, NOW)).toBeNull();
+    expect(findReusableMintOrder([rec], { ...want, recipient: txcAddr(9) }, NOW)).toBeNull();
+    expect(findReusableMintOrder([rec], { ...want, keyFp: "fp2" }, NOW)).toBeNull();
+    expect(findReusableMintOrder([{ ...rec, state: "abandoned" }], want, NOW)).toBeNull();
+    expect(findReusableMintOrder([{ ...rec, state: "sent", txHash: "0xabc" }], want, NOW)).toBeNull();
+  });
+  it("tracks only paid orders; older records without a state were paid", () => {
+    const legacy: MintRecord = { orderId: "old", txHash: "0xabc", sourceId: "usdc-eth", amount: "10", recipient: RECIPIENT, depositAddress: DEPOSIT, keyFp: "fp1", createdAt: 1 };
+    expect(isPaidMintRecord(legacy)).toBe(true);
+    expect(isPaidMintRecord(rec)).toBe(false);
+    expect(isPaidMintRecord({ ...rec, state: "abandoned" })).toBe(false);
+  });
+  it("abandons other unpaid orders for the same key when a new one is used", () => {
+    const other = { ...rec, orderId: "other" };
+    expect(staleReviewedOrders([rec, other, { ...rec, orderId: "k2", keyFp: "fp2" }], "fp1", locked.id).map((r) => r.orderId)).toEqual(["other"]);
   });
 });

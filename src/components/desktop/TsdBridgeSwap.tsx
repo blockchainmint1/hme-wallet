@@ -12,11 +12,12 @@ import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { createWalletClient, erc20Abi, http } from "viem";
+import { createWalletClient, erc20Abi, http, type Hex } from "viem";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -24,6 +25,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useWallet } from "@/lib/txc/wallet-context";
 import { getOmniDepositAddress } from "@/lib/txc/tokens";
+import { deriveAddresses } from "@/lib/txc/wallet";
+import { assertTsdMintEvmExecution } from "@/lib/security/execution-policy";
 import { EVM_CHAINS, deriveEvmAccount, evmClient } from "@/lib/chains/evm";
 import { sendEvmTransaction } from "@/lib/chains/evm-send";
 import { confirmWithBiometric } from "@/lib/native/biometric";
@@ -35,13 +38,17 @@ import {
 } from "@/lib/cashout/api-key";
 import { isLegacyTxcP2pkh } from "@/lib/cashout/one-time";
 import {
-  MINT_SOURCES, assertMintTransferRequest, availableMintSources, buildMintTransfer,
-  estimateTsdOut, formatUnitsPlain, mintAmountInLimits, mintSource, mintStatusLabel,
-  parseMintAmount, recheckMintOrder, type MintSourceId, type TsdBridgeTerms, type VerifiedMintOrder,
+  MINT_SOURCES, MINT_TRANSFER_GAS_CEILING, TSD_BRIDGE_LATE_DEPOSIT_POLICY, assertMintTransferRequest,
+  availableMintSources, buildMintTransfer, confirmLockedMintOrder, estimateTsdOut, formatUnitsPlain,
+  mintAmountInLimits, mintGasCovered, mintSource, mintStatusLabel, parseMintAmount, recheckMintOrder,
+  type MintSourceId, type TsdBridgeTerms, type VerifiedMintOrder,
 } from "@/lib/cashout/mint";
 import { createTsdMintOrder, getTsdBridgeTerms, getTsdMintOrder } from "@/lib/cashout/tsd.functions";
 import { isTerminalCashoutStatus } from "@/lib/cashout/tsd";
-import { recordMintOrder, useMintHistory, type MintRecord } from "@/lib/cashout/mint-history";
+import {
+  findReusableMintOrder, isPaidMintRecord, lockedFromRecord, readMintHistory, recordMintOrder, reviewedRecord,
+  staleReviewedOrders, updateMintRecord, useMintHistory, type MintRecord,
+} from "@/lib/cashout/mint-history";
 import type { CashoutKeyBinding } from "@/lib/cashout/api-key";
 
 const OTHER = "__other";
@@ -134,7 +141,7 @@ export function TsdBridgeSwap({
         ) : terms.data && !sources.some((s) => s.id === source.id) ? (
           <p className="mt-6 text-sm text-muted-foreground">TSD Bridge isn't accepting {source.label} right now — pick another stablecoin.</p>
         ) : terms.data ? (
-          <MintRoute key={`${source.id}:${apiKey.slice(-6)}`} apiKey={apiKey} sourceId={source.id} terms={terms.data} />
+          <MintRoute key={`${source.id}:${apiKey.slice(-6)}`} apiKey={apiKey} sourceId={source.id} terms={terms.data} evmSwapOn={evmSwapOn} />
         ) : (
           <p className="mt-6 text-sm text-muted-foreground">Loading TSD Bridge terms…</p>
         )}
@@ -173,29 +180,41 @@ function RedeemRoute({ redeemFeeBps }: { redeemFeeBps: number | null }) {
   );
 }
 
-function MintRoute({ apiKey, sourceId, terms }: {
+function MintRoute({ apiKey, sourceId, terms, evmSwapOn }: {
   apiKey: string;
   sourceId: MintSourceId;
   terms: TsdBridgeTerms;
+  evmSwapOn: boolean;
 }) {
   const { root, unlocked, activeProfileId } = useWallet();
   const qc = useQueryClient();
   const createOrder = useServerFn(createTsdMintOrder);
   const fetchOrder = useServerFn(getTsdMintOrder);
   const source = mintSource(sourceId)!;
+  const nativeSymbol = source.chain === "eth" ? "ETH" : "Base ETH";
   const isLocalSigner = !!root && unlocked?.mode !== "vault" && unlocked?.mode !== "keyonly";
   const evmAddress = useMemo(() => (root ? deriveEvmAccount(root).address : null), [root]);
   const ownTsd = useMemo(() => (root ? getOmniDepositAddress(root).address : null), [root]);
+  /** This wallet's own legacy TEXITcoin addresses (first 50 receive, 20 change). */
+  const ownTxc = useMemo(() => {
+    if (!root) return new Set<string>();
+    return new Set([
+      ...deriveAddresses(root, "bip44", 0, 50).map((a) => a.address),
+      ...deriveAddresses(root, "bip44", 1, 20).map((a) => a.address),
+    ]);
+  }, [root]);
 
   const [amount, setAmount] = useState("");
   const [recipientOverride, setRecipientOverride] = useState<string | null>(null);
-  const [order, setOrder] = useState<{ locked: VerifiedMintOrder; binding: CashoutKeyBinding } | null>(null);
+  const [order, setOrder] = useState<{ locked: VerifiedMintOrder; binding: CashoutKeyBinding; reused: boolean } | null>(null);
+  const [checkedOther, setCheckedOther] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sent, setSent] = useState<{ hash: string; locked: VerifiedMintOrder } | null>(null);
+  const [sent, setSent] = useState<{ hash: string; locked: VerifiedMintOrder; state: "waiting" | "confirmed" | "pending" } | null>(null);
 
   const recipient = (recipientOverride ?? ownTsd ?? "").trim();
   const recipientValid = isLegacyTxcP2pkh(recipient);
+  const recipientOwn = recipientValid && ownTxc.has(recipient);
   const units = parseMintAmount(amount, source);
   const inLimits = units !== null && mintAmountInLimits(units, source, terms);
 
@@ -204,28 +223,70 @@ function MintRoute({ apiKey, sourceId, terms }: {
     enabled: isLocalSigner && !!evmAddress,
     queryFn: async () => {
       const pub = evmClient(source.chain);
-      const [token, native] = await Promise.all([
+      const [token, native, maxFeePerGas] = await Promise.all([
         pub.readContract({ address: source.contract, abi: erc20Abi, functionName: "balanceOf", args: [evmAddress!] }) as Promise<bigint>,
         pub.getBalance({ address: evmAddress! }),
+        currentMaxFee(source.chain),
       ]);
-      return { token, native };
+      return { token, native, maxFeePerGas };
     },
     staleTime: 20_000,
   });
-  const enough = units !== null && !!balance.data && balance.data.token >= units && balance.data.native > 0n;
+  const tokenEnough = units !== null && !!balance.data && balance.data.token >= units;
+  const gasEnough = !!balance.data && mintGasCovered(balance.data.native, balance.data.maxFeePerGas);
+  const gasNeeded = balance.data ? (MINT_TRANSFER_GAS_CEILING * balance.data.maxFeePerGas * 5n) / 4n : 0n;
   const outUnits = units ? estimateTsdOut(units, source, terms.mintFeeBps) : 0n;
 
   async function review() {
     if (!units || !recipientValid || !evmAddress || busy) return;
     setBusy(true);
     setError(null);
+    setCheckedOther(false);
     try {
       const binding = bindCashoutKey(apiKey);
       if (!binding) throw new Error("Wallet changed — start again.");
+      // Network fee check before opening anything at TSD Bridge.
+      const pub = evmClient(source.chain);
+      const [native, maxFee] = await Promise.all([pub.getBalance({ address: evmAddress }), currentMaxFee(source.chain)]);
+      if (!mintGasCovered(native, maxFee)) throw new Error(`Not enough ${nativeSymbol} for the network fee. Nothing was opened.`);
+
+      const keyFp = cashoutKeyFingerprint(apiKey);
+      const history = readMintHistory(activeProfileId);
+      const ctx = { ownEvmAddresses: [evmAddress], priorOrders: history };
+      const expected = { sourceId: source.id, amount: amount.trim(), recipient };
+
+      // Reuse an identical unpaid order with more than an hour left.
+      const reusable = findReusableMintOrder(history, { sourceId: source.id, units: units.toString(), recipient, keyFp });
+      if (reusable) {
+        const locked = lockedFromRecord(reusable);
+        try {
+          if (!locked) throw new Error("incomplete record");
+          confirmLockedMintOrder(locked, expected, ctx);
+          recheckMintOrder(locked, await fetchOrder({ data: { apiKey, id: locked.id } }));
+          for (const r of staleReviewedOrders(history, keyFp, locked.id)) updateMintRecord(activeProfileId, r.orderId, { state: "abandoned" });
+          setOrder({ locked, binding, reused: true });
+          return;
+        } catch {
+          updateMintRecord(activeProfileId, reusable.orderId, { state: "abandoned" });
+        }
+      }
+
       const locked = await createOrder({
         data: { apiKey, sourceId: source.id, amount: amount.trim(), recipient, ownEvmAddresses: [evmAddress] },
       });
-      setOrder({ locked, binding });
+      // Keep our own record of what was agreed before checking it, so a
+      // refused order's deposit address still counts as "seen".
+      recordMintOrder(activeProfileId, reviewedRecord(locked, keyFp, recipientOwn));
+      try {
+        confirmLockedMintOrder(locked, expected, ctx);
+      } catch (e) {
+        updateMintRecord(activeProfileId, locked.id, { state: "abandoned" });
+        throw e;
+      }
+      for (const r of staleReviewedOrders(readMintHistory(activeProfileId), keyFp, locked.id)) {
+        updateMintRecord(activeProfileId, r.orderId, { state: "abandoned" });
+      }
+      setOrder({ locked, binding, reused: false });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't open a TSD Bridge order.");
     } finally {
@@ -239,42 +300,53 @@ function MintRoute({ apiKey, sourceId, terms }: {
     setBusy(true);
     setError(null);
     try {
+      assertTsdMintEvmExecution(evmSwapOn);
       if (!cashoutBindingHolds(binding)) throw new Error("Wallet or TSD Swap key changed. Nothing was sent — start again.");
       if (amount.trim() !== locked.amount || recipient !== locked.recipient) {
         throw new Error("The amount or TSD address changed. Nothing was sent — start again.");
       }
+      if (!recipientOwn && !checkedOther) throw new Error("Confirm you checked the TSD address. Nothing was sent.");
+      const account = deriveEvmAccount(root);
+      confirmLockedMintOrder(
+        locked,
+        { sourceId: source.id, amount: locked.amount, recipient },
+        { ownEvmAddresses: [account.address], priorOrders: readMintHistory(activeProfileId) },
+      );
       // Re-poll right before signing: still open, same deposit, same amount, ≥1h left.
       const fresh = await fetchOrder({ data: { apiKey, id: locked.id } });
       recheckMintOrder(locked, fresh);
       const ok = await confirmWithBiometric(`Confirm paying ${locked.amount} ${source.symbol} for TSD`);
       if (!ok) throw new Error("Confirmation was cancelled. Nothing was sent.");
-      const account = deriveEvmAccount(root);
-      if (account.address.toLowerCase() === locked.depositAddress.toLowerCase()) {
-        throw new Error("The deposit address belongs to this wallet. Nothing was sent.");
-      }
       const pub = evmClient(source.chain);
-      const bal = (await pub.readContract({
-        address: source.contract, abi: erc20Abi, functionName: "balanceOf", args: [account.address],
-      })) as bigint;
+      const [bal, native, maxFee] = await Promise.all([
+        pub.readContract({ address: source.contract, abi: erc20Abi, functionName: "balanceOf", args: [account.address] }) as Promise<bigint>,
+        pub.getBalance({ address: account.address }),
+        currentMaxFee(source.chain),
+      ]);
       if (bal < BigInt(locked.units)) throw new Error(`Not enough ${source.symbol}. Nothing was sent.`);
+      if (!mintGasCovered(native, maxFee)) throw new Error(`Not enough ${nativeSymbol} for the network fee. Nothing was sent.`);
       const walletClient = createWalletClient({
         account, chain: EVM_CHAINS[source.chain].viemChain, transport: http(`/api/evm/${source.chain}`),
       });
       const hash = await sendEvmTransaction(source.chain, walletClient, buildMintTransfer(locked), (req) =>
         assertMintTransferRequest(locked, req),
       );
-      recordMintOrder(activeProfileId, {
-        orderId: locked.id, txHash: hash, sourceId: source.id, amount: locked.amount,
-        recipient: locked.recipient, depositAddress: locked.depositAddress,
-        keyFp: cashoutKeyFingerprint(apiKey), createdAt: Date.now(),
-      });
-      hapticSuccess();
-      setSent({ hash, locked });
+      updateMintRecord(activeProfileId, locked.id, { state: "sent", txHash: hash });
+      setSent({ hash, locked, state: "waiting" });
       setOrder(null);
+      // "Sent" means mined: wait for the receipt before saying so.
+      const state = await waitForMintPayment(source.chain, hash);
+      updateMintRecord(activeProfileId, locked.id, { state });
+      hapticSuccess();
+      setSent({ hash, locked, state });
       void qc.invalidateQueries({ queryKey: ["tsd-mint-balance"] });
     } catch (e) {
       hapticError();
       setOrder(null);
+      if (e instanceof MintPaymentReverted) {
+        updateMintRecord(activeProfileId, order.locked.id, { state: "failed" });
+        setSent(null);
+      }
       setError(friendlyBroadcastError(e));
     } finally {
       setBusy(false);
@@ -282,14 +354,20 @@ function MintRoute({ apiKey, sourceId, terms }: {
   }
 
   if (sent) {
+    const tsdOut = formatUnitsPlain(estimateTsdOut(BigInt(sent.locked.units), source, sent.locked.feeBps), 8);
     return (
       <div className="mt-6">
-        <h2 className="text-xl font-semibold">Stablecoins sent to TSD Bridge</h2>
+        <h2 className="text-xl font-semibold">
+          {sent.state === "waiting" ? "Waiting for your payment to confirm…"
+            : sent.state === "confirmed" ? "Payment confirmed"
+            : "Payment sent — not confirmed yet"}
+        </h2>
         <p className="mt-3 max-w-xl text-sm text-muted-foreground">
-          {sent.locked.amount} {source.symbol} is on its way. TSD Bridge sends about{" "}
-          {formatUnitsPlain(estimateTsdOut(BigInt(sent.locked.units), source, sent.locked.feeBps), 8)} TSD to{" "}
-          <span className="font-mono text-xs">{sent.locked.recipient}</span> once{" "}
-          {source.chain === "eth" ? "Ethereum" : "Base"} confirms it — usually 5–15 minutes, longer for large amounts.
+          {sent.state === "waiting" && "Your payment was broadcast. Keep this page open until it confirms. "}
+          {sent.state === "pending" && "We couldn't see the confirmation yet — check the payment link before trying again. "}
+          {sent.locked.amount} {source.symbol} {sent.state === "confirmed" ? "reached" : "is on its way to"} TSD Bridge. It sends about{" "}
+          {tsdOut} TSD to <span className="font-mono text-xs">{sent.locked.recipient}</span> once{" "}
+          {source.chain === "eth" ? "Ethereum" : "Base"} has enough confirmations — usually 5–15 minutes, longer for large amounts.
         </p>
         <MintTracker apiKey={apiKey} orderId={sent.locked.id} />
         <div className="mt-4 flex flex-wrap gap-3">
@@ -298,7 +376,9 @@ function MintRoute({ apiKey, sourceId, terms }: {
               View payment <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
             </a>
           </Button>
-          <Button variant="ghost" onClick={() => { setSent(null); setAmount(""); }}>Buy more TSD</Button>
+          {sent.state !== "waiting" && (
+            <Button variant="ghost" onClick={() => { setSent(null); setAmount(""); }}>Buy more TSD</Button>
+          )}
         </div>
       </div>
     );
@@ -324,25 +404,36 @@ function MintRoute({ apiKey, sourceId, terms }: {
       <div className="mt-5">
         <Label htmlFor="tsd-recipient">TSD goes to (TEXITcoin)</Label>
         <Input id="tsd-recipient" value={recipient}
-          onChange={(e) => { setRecipientOverride(e.target.value); setOrder(null); }}
+          onChange={(e) => { setRecipientOverride(e.target.value); setOrder(null); setCheckedOther(false); }}
           placeholder="T…" className="mt-1.5 font-mono text-xs" />
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          {recipientOverride == null
-            ? "Auto-filled with this wallet's TSD address. Paste a different legacy T… address to send the TSD elsewhere."
-            : "Custom TSD address — double-check it, purchases can't be undone."}
-        </p>
+        {recipientValid && !recipientOwn ? (
+          <p className="mt-1.5 text-xs text-destructive">
+            This isn't one of this wallet's TSD addresses. TSD sent there can't be recovered by this wallet — double-check every character.
+          </p>
+        ) : (
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {recipientOverride == null
+              ? "Auto-filled with this wallet's TSD address. You can paste a different legacy T… address."
+              : "One of this wallet's own TSD addresses."}
+          </p>
+        )}
         {recipient && !recipientValid && <p className="mt-1.5 text-xs text-destructive">TSD can only go to a legacy T… TEXITcoin address.</p>}
       </div>
 
       {error && <p className="mt-4 break-words text-sm text-destructive">{error}</p>}
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
-        <Button size="lg" disabled={busy || !inLimits || !recipientValid || !enough} onClick={() => void review()}>
+        <Button size="lg" disabled={busy || !inLimits || !recipientValid || !tokenEnough || !gasEnough} onClick={() => void review()}>
           {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Review purchase
         </Button>
-        {units !== null && balance.data && !enough && (
-          <span className="text-xs text-destructive">Not enough {source.symbol}, or no {source.chain === "eth" ? "ETH" : "Base ETH"} for the network fee.</span>
+        {units !== null && balance.data && !tokenEnough && (
+          <span className="text-xs text-destructive">Not enough {source.symbol}.</span>
+        )}
+        {balance.data && !gasEnough && (
+          <span className="text-xs text-destructive">
+            Not enough {nativeSymbol} for the network fee (about {formatUnitsPlain(gasNeeded, 18)} {nativeSymbol} needed).
+          </span>
         )}
       </div>
 
@@ -358,7 +449,21 @@ function MintRoute({ apiKey, sourceId, terms }: {
                     <p className="break-all font-mono text-xs">{order.locked.depositAddress}</p>
                     <p>You receive about <strong>{formatUnitsPlain(estimateTsdOut(BigInt(order.locked.units), source, order.locked.feeBps), 8)} TSD</strong> (fee {order.locked.feeBps / 100}%) at:</p>
                     <p className="break-all font-mono text-xs">{order.locked.recipient}</p>
-                    <p className="text-xs">Order {order.locked.id} · open until {new Date(order.locked.expiresAt).toLocaleString()}. The wallet checks the order again right before signing and only signs this exact transfer.</p>
+                    {!recipientOwn && (
+                      <label className="flex items-start gap-2 rounded-md border border-destructive/50 p-2 text-xs text-destructive">
+                        <Checkbox checked={checkedOther} onCheckedChange={(v) => setCheckedOther(v === true)} className="mt-0.5" aria-label="I checked this TSD address" />
+                        <span>This address isn't part of this wallet. I checked it — TSD sent there can't be recovered by this wallet.</span>
+                      </label>
+                    )}
+                    <p className="text-xs">
+                      TSD Bridge holds the stablecoins you pay as reserves; TSD is a claim on those reserves, not a self-custody swap.
+                      {TSD_BRIDGE_LATE_DEPOSIT_POLICY ? ` ${TSD_BRIDGE_LATE_DEPOSIT_POLICY}` : ""}
+                    </p>
+                    <p className="text-xs">
+                      Order {order.locked.id}{order.reused ? " (your open order, reused)" : ""} · open until {new Date(order.locked.expiresAt).toLocaleString()}.
+                      The wallet checks the order again right before signing and only signs this exact transfer on the {source.symbol} contract{" "}
+                      <span className="font-mono">{source.contract.slice(0, 6)}…{source.contract.slice(-4)}</span>.
+                    </p>
                   </>
                 )}
               </div>
@@ -366,7 +471,7 @@ function MintRoute({ apiKey, sourceId, terms }: {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Back</AlertDialogCancel>
-            <AlertDialogAction disabled={busy} onClick={(e) => { e.preventDefault(); void send(); }}>
+            <AlertDialogAction disabled={busy || (!recipientOwn && !checkedOther)} onClick={(e) => { e.preventDefault(); void send(); }}>
               {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Confirm and send
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -379,6 +484,35 @@ function MintRoute({ apiKey, sourceId, terms }: {
       )}
     </>
   );
+}
+
+class MintPaymentReverted extends Error {}
+
+/** Current max fee per gas on a chain (EIP-1559 estimate, else legacy gas price). */
+async function currentMaxFee(chain: "eth" | "base"): Promise<bigint> {
+  const pub = evmClient(chain);
+  try {
+    const f = await pub.estimateFeesPerGas();
+    if (f.maxFeePerGas && f.maxFeePerGas > 0n) return f.maxFeePerGas;
+  } catch { /* fall back */ }
+  return pub.getGasPrice();
+}
+
+/**
+ * "confirmed" only on a successful receipt; "pending" when confirmation could
+ * not be observed in time (the payment may still land). A reverted payment throws.
+ */
+async function waitForMintPayment(chain: "eth" | "base", hash: Hex): Promise<"confirmed" | "pending"> {
+  let receipt;
+  try {
+    receipt = await evmClient(chain).waitForTransactionReceipt({ hash, confirmations: 1, timeout: 180_000 });
+  } catch {
+    return "pending";
+  }
+  if (receipt.status !== "success") {
+    throw new MintPaymentReverted(`The payment failed on-chain (${hash}). Your stablecoins did not leave your wallet; only the network fee was spent.`);
+  }
+  return "confirmed";
 }
 
 function MintTracker({ apiKey, orderId }: { apiKey: string; orderId: string }) {
@@ -403,7 +537,7 @@ function MintTracker({ apiKey, orderId }: { apiKey: string; orderId: string }) {
 function RecentMints({ apiKey }: { apiKey: string }) {
   const { activeProfileId } = useWallet();
   const fp = cashoutKeyFingerprint(apiKey);
-  const list = useMintHistory(activeProfileId).filter((r) => r.keyFp === fp);
+  const list = useMintHistory(activeProfileId).filter((r) => r.keyFp === fp && isPaidMintRecord(r));
   if (!list.length) return null;
   return (
     <div className="mt-8">

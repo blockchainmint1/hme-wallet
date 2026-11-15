@@ -223,6 +223,8 @@ const bridgeAssetSchema = z
     mintFeeBps: z.coerce.number(),
     redeemFeeBps: z.coerce.number(),
     live: z.boolean(),
+    /** Requested from TSD Bridge: `{ ethereum: { USDC: "0x…" }, base: { … } }`. */
+    depositTokenContracts: z.record(z.string(), z.record(z.string(), z.string())).nullable().optional(),
   })
   .passthrough();
 const bridgeTermsSchema = z.object({ assets: z.array(bridgeAssetSchema), chains: z.array(z.string()) });
@@ -240,7 +242,22 @@ async function loadTsdBridgeTerms(): Promise<TsdBridgeTerms> {
       redeemFeeBps: bps(tsd.redeemFeeBps),
       depositTokens: tsd.depositTokens.map((t) => t.toUpperCase()),
       chains: parsed.chains.map((c) => c.toLowerCase()),
+      tokenContracts: normaliseTokenContracts(tsd.depositTokenContracts),
     };
+}
+
+/** Lower-case chain keys, upper-case symbols; null when TSD Bridge publishes none. */
+function normaliseTokenContracts(
+  raw: Record<string, Record<string, string>> | null | undefined,
+): TsdBridgeTerms["tokenContracts"] {
+  if (!raw) return null;
+  const out: NonNullable<TsdBridgeTerms["tokenContracts"]> = {};
+  for (const [chain, tokens] of Object.entries(raw)) {
+    const key = chain.toLowerCase();
+    if (key !== "ethereum" && key !== "base") continue;
+    out[key] = Object.fromEntries(Object.entries(tokens).map(([sym, addr]) => [sym.toUpperCase(), addr.trim()]));
+  }
+  return out;
 }
 
 /** TSD's live mint terms from TSD Bridge's public registry. */
@@ -298,6 +315,12 @@ const mintOrderSchema = z.object({
   chain: z.string().nullable().optional(),
   expiresAt: z.string().nullable(),
   error: z.string().nullable().optional(),
+  // Echoes requested from TSD Bridge; checked by recheckMintOrder when present.
+  direction: z.string().nullable().optional(),
+  recipient: z.string().nullable().optional(),
+  depositToken: z.string().nullable().optional(),
+  depositTokenContract: z.string().nullable().optional(),
+  mintTxid: z.string().nullable().optional(),
 });
 export type TsdMintOrderStatus = z.infer<typeof mintOrderSchema>;
 

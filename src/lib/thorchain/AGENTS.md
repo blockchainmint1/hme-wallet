@@ -10,4 +10,4 @@
 
 ## Legacy LTC/DOGE phone flow
 - `thornode.server.ts` / `swap.functions.ts` / `assets.ts` serve the phone's multi-provider screen; quotes use `liquidity_tolerance_bps` against expected after-fee output. Why: liquidity fees must not consume price protection or reject valid streaming quotes.
-- Desktop sources are gated per toggle: BTC/LTC/DOGE on `utxoSwap`, ETH/Base/BNB on `evmSwap`; the THORChain router is the only reviewed EVM swap surface in `security/execution-policy.ts`. Why: settings must truthfully describe what can sign.
+- Desktop sources are gated per toggle: BTC/LTC/DOGE on `utxoSwap`, ETH/Base/BNB on `evmSwap`; `security/execution-policy.ts` lists the reviewed EVM swap surfaces (THORChain router; TSD Bridge plain transfer). Why: settings must truthfully describe what can sign.
