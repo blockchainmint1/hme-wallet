@@ -765,7 +765,7 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
       void qc.invalidateQueries({ queryKey: ["account"] });
       void qc.invalidateQueries({ queryKey: ["txs"] });
       setStage({ kind: "sent", txid });
-      if (cashout?.kind === "account-inbox") {
+      if (cashout?.kind === "account-inbox" && typeof cashout.amount === "number") {
         // Heads-up so TSD Swap watches for this deposit; never blocks the send.
         // Uses the key the order was created with, not a live re-read. TSD
         // Swap only accepts it for the permanent inbox, so one-time orders

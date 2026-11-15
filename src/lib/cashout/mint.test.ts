@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { decodeFunctionData, erc20Abi } from "viem";
 import {
   MINT_SOURCES, TSD_BRIDGE_CONTRACT_PIN, TSD_BRIDGE_LATE_DEPOSIT_POLICY, assertMintTransferRequest,
-  availableMintSources, buildMintTransfer, confirmLockedMintOrder, decimalUnits, estimateTsdOut,
+  availableMintSources, mintContractsConfirmed, buildMintTransfer, confirmLockedMintOrder, decimalUnits, estimateTsdOut,
   mintAmountInLimits, mintGasCovered, mintSource, parseMintAmount, recheckMintOrder, verifyMintOrder,
   type MintOrderResponse, type TsdBridgeTerms,
 } from "./mint";
@@ -47,6 +47,10 @@ function reply(over: Partial<MintOrderResponse> = {}): MintOrderResponse {
 const req = { source: usdc, amount: "250.5", recipient: RECIPIENT };
 const ctx = { ownEvmAddresses: [OWN_EVM], now: NOW };
 
+/** The rules with a confirmed pin, for tests of the other conditions. */
+const CONFIRMED = { writtenConfirmation: "test: TSD Bridge confirmed in writing" };
+const availableMintSourcesC = (t: Parameters<typeof availableMintSources>[0]) => availableMintSources(t, CONFIRMED);
+
 describe("buy-TSD sources", () => {
   it("only offer contracts both TSD Bridge and this wallet use", () => {
     const wallet = [USDC_BY_CHAIN.eth, USDT_BY_CHAIN.eth, PYUSD_BY_CHAIN.eth!, USDC_BY_CHAIN.base, USDT_BY_CHAIN.base];
@@ -54,8 +58,8 @@ describe("buy-TSD sources", () => {
     for (const s of MINT_SOURCES) expect(s.chainId).toBe(EVM_CHAINS[s.chain].viemChain.id);
   });
   it("are hidden while TSD Bridge is paused and filtered by its accepted tokens", () => {
-    expect(availableMintSources({ ...terms, live: false })).toEqual([]);
-    expect(availableMintSources({ ...terms, depositTokens: ["USDC"], chains: ["base"] }).map((s) => s.id)).toEqual(["usdc-base"]);
+    expect(availableMintSourcesC({ ...terms, live: false })).toEqual([]);
+    expect(availableMintSourcesC({ ...terms, depositTokens: ["USDC"], chains: ["base"] }).map((s) => s.id)).toEqual(["usdc-base"]);
   });
 });
 
@@ -134,11 +138,12 @@ describe("signed transfer", () => {
   it("guard accepts the reviewed bytes and refuses anything else", () => {
     expect(() => assertMintTransferRequest(locked, { ...tx, chainId: 1 })).not.toThrow();
     expect(() => assertMintTransferRequest(locked, { ...tx, chainId: 8453 })).toThrow(/wrong network/);
-    expect(() => assertMintTransferRequest(locked, { ...tx, to: USDT_BY_CHAIN.eth.address })).toThrow(/different contract/);
-    expect(() => assertMintTransferRequest(locked, { ...tx, value: 1n })).toThrow(/coin value/);
+    expect(() => assertMintTransferRequest(locked, { ...tx })).toThrow(/wrong network/);
+    expect(() => assertMintTransferRequest(locked, { ...tx, chainId: 1, to: USDT_BY_CHAIN.eth.address })).toThrow(/different contract/);
+    expect(() => assertMintTransferRequest(locked, { ...tx, chainId: 1, value: 1n })).toThrow(/coin value/);
     const other = buildMintTransfer({ ...locked, units: "250500001" });
-    expect(() => assertMintTransferRequest(locked, { ...tx, data: other.data })).toThrow(/different address or amount/);
-    expect(() => assertMintTransferRequest(locked, { ...tx, data: "0x095ea7b3" })).toThrow(/plain transfer/);
+    expect(() => assertMintTransferRequest(locked, { ...tx, chainId: 1, data: other.data })).toThrow(/different address or amount/);
+    expect(() => assertMintTransferRequest(locked, { ...tx, chainId: 1, data: "0x095ea7b3" })).toThrow(/plain transfer/);
   });
 });
 
@@ -160,6 +165,13 @@ describe("token contract pinning", () => {
     ]);
     expect(MINT_SOURCES.some((s) => s.bridgeChain === "base" && s.symbol === "PYUSD")).toBe(false);
   });
+  it("offers no stablecoin at all until TSD Bridge confirms the contracts in writing", () => {
+    expect(mintContractsConfirmed()).toBe(false);
+    expect(availableMintSources(terms)).toEqual([]);
+    expect(availableMintSources({ ...terms, tokenContracts: published })).toEqual([]);
+    expect(availableMintSources(terms, { writtenConfirmation: "  " })).toEqual([]);
+    expect(availableMintSources(terms, CONFIRMED).length).toBe(MINT_SOURCES.length);
+  });
   it("makes no written promises TSD Bridge hasn't given yet", () => {
     expect(TSD_BRIDGE_CONTRACT_PIN.writtenConfirmation).toBeNull();
     expect(TSD_BRIDGE_LATE_DEPOSIT_POLICY).toBeNull();
@@ -169,13 +181,13 @@ describe("token contract pinning", () => {
     base: { USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", USDT: "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2" },
   };
   it("offers a token whose published contract matches the pin (any letter case)", () => {
-    expect(availableMintSources({ ...terms, tokenContracts: published }).map((s) => s.id)).toEqual(MINT_SOURCES.map((s) => s.id));
+    expect(availableMintSourcesC({ ...terms, tokenContracts: published }).map((s) => s.id)).toEqual(MINT_SOURCES.map((s) => s.id));
   });
   it("hides a token whose published contract differs or is missing", () => {
     const other = { ...published, base: { USDC: published.base.USDC, USDT: "0x4444444444444444444444444444444444444444" } };
-    expect(availableMintSources({ ...terms, tokenContracts: other }).map((s) => s.id)).not.toContain("usdt-base");
+    expect(availableMintSourcesC({ ...terms, tokenContracts: other }).map((s) => s.id)).not.toContain("usdt-base");
     const missing = { ethereum: published.ethereum };
-    expect(availableMintSources({ ...terms, tokenContracts: missing }).some((s) => s.chain === "base")).toBe(false);
+    expect(availableMintSourcesC({ ...terms, tokenContracts: missing }).some((s) => s.chain === "base")).toBe(false);
   });
   it("refuses an order that echoes a different token contract", () => {
     expect(() => verifyMintOrder(req, reply({ depositTokenContract: "0x4444444444444444444444444444444444444444" }), ctx)).toThrow(/different token contract/);

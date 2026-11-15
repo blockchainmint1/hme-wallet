@@ -39,7 +39,7 @@ import {
 import { isLegacyTxcP2pkh } from "@/lib/cashout/one-time";
 import {
   MINT_SOURCES, MINT_TRANSFER_GAS_CEILING, TSD_BRIDGE_LATE_DEPOSIT_POLICY, assertMintTransferRequest,
-  availableMintSources, buildMintTransfer, confirmLockedMintOrder, estimateTsdOut, formatUnitsPlain,
+  availableMintSources, mintContractsConfirmed, buildMintTransfer, confirmLockedMintOrder, estimateTsdOut, formatUnitsPlain,
   mintAmountInLimits, mintGasCovered, mintSource, mintStatusLabel, parseMintAmount, recheckMintOrder,
   type MintSourceId, type TsdBridgeTerms, type VerifiedMintOrder,
 } from "@/lib/cashout/mint";
@@ -129,6 +129,12 @@ export function TsdBridgeSwap({
           </div>
         ) : direction === "redeem" ? (
           <RedeemRoute redeemFeeBps={terms.data?.redeemFeeBps ?? null} />
+        ) : !mintContractsConfirmed() ? (
+          <p className="mt-6 max-w-xl text-sm text-muted-foreground">
+            Buying TSD with stablecoins is awaiting TSD Bridge's written confirmation of the token contracts it
+            watches. Until it arrives, this route stays off so no payment can reach a contract TSD Bridge hasn't
+            confirmed. Selling TSD works today.
+          </p>
         ) : !evmSwapOn ? (
           <div className="mt-6">
             <p className="text-sm text-muted-foreground">Paying with stablecoins needs EVM swaps turned on in desktop settings.</p>

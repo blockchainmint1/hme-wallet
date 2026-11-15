@@ -104,7 +104,8 @@ export interface VerifiedOneTimeOrder {
   feeBps: number;
   payoutAddress: string;
   payoutAmount: number | null;
-  amount: number;
+  /** The requested TSD amount as an exact decimal string (never a float). */
+  amount: string;
   refundAddress: string;
   expiresAt: string;
 }
@@ -181,7 +182,7 @@ export function verifyOneTimeOrder(
     feeBps,
     payoutAddress: req.payoutAddress.trim(),
     payoutAmount: Number.isFinite(payout) ? payout : null,
-    amount: Number(req.amount),
+    amount: String(req.amount).trim(),
     refundAddress: req.refundAddress,
     expiresAt,
   };

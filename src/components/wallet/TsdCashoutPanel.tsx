@@ -48,7 +48,12 @@ export interface CashoutPlan {
   depositAddress: string;
   feeBps: number;
   payoutAddress: string;
-  amount: number;
+  /**
+   * TSD amount. One-time orders carry the exact decimal string that was
+   * verified against the order (never a float); the permanent-inbox path
+   * keeps the typed number TSD Swap's deposit notice takes.
+   */
+  amount: number | string;
   /** USDC the bridge says it will pay (one-time orders), else our estimate. */
   payoutAmount: number;
   /** One-time orders only. */
@@ -199,7 +204,7 @@ export function TsdCashoutPanel({ amount, apiKey, refundAddress, ownAddresses, o
         return;
       }
       const req = { amount: numeric, payoutAddress: to, refundAddress };
-      const res = await createOrder({ data: { apiKey, ...req, permanentInbox: a.depositAddress } });
+      const res = await createOrder({ data: { apiKey, ...req } });
       const order = verifyOneTimeOrder({ ...req, amount: amount.trim() }, res, {
         permanentInbox: a.depositAddress,
         ownAddresses,
@@ -210,7 +215,7 @@ export function TsdCashoutPanel({ amount, apiKey, refundAddress, ownAddresses, o
         feeBps: order.feeBps,
         payoutAddress: order.payoutAddress,
         amount: order.amount,
-        payoutAmount: order.payoutAmount ?? payoutFor(order.amount, order.feeBps),
+        payoutAmount: order.payoutAmount ?? payoutFor(numeric, order.feeBps),
         orderId: order.id,
         expiresAt: order.expiresAt,
         refundAddress: order.refundAddress,

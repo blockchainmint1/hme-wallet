@@ -99,11 +99,18 @@ export const createOneTimeCashout = createServerFn({ method: "POST" })
         amount: z.number().positive().max(1_000_000),
         payoutAddress: z.string().regex(/^0x[0-9a-fA-F]{40}$/, "Enter a valid 0x… address"),
         refundAddress: z.string().refine(isLegacyTxcP2pkh, "Refund address must be a legacy T… address"),
-        permanentInbox: z.string().max(64).nullable(),
+        // Older builds still send `permanentInbox`; it is ignored (stripped) —
+        // the server reads the account's inbox itself below.
       })
       .parse(raw),
   )
   .handler(async ({ data }): Promise<OneTimeCashoutResponse> => {
+    // Read the key's own permanent inbox here rather than trusting the caller,
+    // so the server-side check doesn't depend on the caller being honest.
+    const account = accountSchema.parse(await fetchDepositAddress(data.apiKey));
+    if (!isLegacyTxcP2pkh(account.depositAddress)) {
+      throw new Error("Couldn't read your TSD Swap account's deposit address. Nothing was sent.");
+    }
     const raw = (await createCashout({
       apiKey: data.apiKey,
       amount: data.amount,
@@ -114,7 +121,7 @@ export const createOneTimeCashout = createServerFn({ method: "POST" })
     verifyOneTimeOrder(
       { amount: data.amount, payoutAddress: data.payoutAddress, refundAddress: data.refundAddress },
       res,
-      { permanentInbox: data.permanentInbox },
+      { permanentInbox: account.depositAddress },
     );
     return res;
   });
@@ -275,6 +282,9 @@ export const createTsdMintOrder = createServerFn({ method: "POST" })
         sourceId: z.enum(MINT_SOURCE_IDS),
         amount: z.string().trim().regex(/^\d{1,7}(\.\d{1,6})?$/, "Enter a plain amount"),
         recipient: z.string().trim().refine(isLegacyTxcP2pkh, "TSD must go to a legacy T… address"),
+        // The server has no way to know a self-custodial wallet's addresses,
+        // so this list can only ADD refusals; the device repeats the check
+        // with the address it derives itself, and that check gates signing.
         ownEvmAddresses: z.array(z.string().regex(/^0x[0-9a-fA-F]{40}$/)).max(8),
       })
       .parse(raw),

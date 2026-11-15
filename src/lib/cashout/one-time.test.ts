@@ -66,7 +66,7 @@ describe("one-time order checks", () => {
     expect(v.depositAddress).toBe(ONE_TIME);
     expect(v.depositAddress).not.toBe(INBOX);
     expect(v.payoutAddress).toBe(OTHER);
-    expect(v.amount).toBe(4000);
+    expect(v.amount).toBe("4000");
   });
   it("refuses an order whose deposit address is the permanent inbox", () => {
     expect(() =>
@@ -110,7 +110,7 @@ describe("one-time order checks", () => {
   });
   it("compares amounts exactly as decimals, not floats", () => {
     const r = { ...req, amount: "4000.12345678" };
-    expect(verifyOneTimeOrder(r, { ...good, amountExpected: 4000.12345678 }, ctx).amount).toBe(4000.12345678);
+    expect(verifyOneTimeOrder(r, { ...good, amountExpected: 4000.12345678 }, ctx).amount).toBe("4000.12345678");
     expect(() => verifyOneTimeOrder(r, { ...good, amountExpected: 4000.12345679 }, ctx)).toThrow(/amount/);
     expect(() => verifyOneTimeOrder({ ...req, amount: "0.3" }, { ...good, amountExpected: 0.1 + 0.2 }, ctx)).toThrow(/amount/);
   });

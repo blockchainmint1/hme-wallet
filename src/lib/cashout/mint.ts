@@ -50,7 +50,8 @@ export const MINT_SOURCES: readonly MintSource[] = [
  * deposit tokens by symbol only, so the five contracts are pinned from TSD
  * Bridge's own deposit-watcher list (detection reads only these contracts).
  * `writtenConfirmation` stays null until TSD Bridge confirms the list in
- * writing; publishing waits on it. Once the feed or an order publishes
+ * writing; while it is null `availableMintSources` offers nothing and the
+ * server refuses to open orders. Once the feed or an order publishes
  * contracts, any difference from this pin is refused.
  */
 export const TSD_BRIDGE_CONTRACT_PIN: Readonly<{ source: string; writtenConfirmation: string | null }> = Object.freeze({
@@ -97,8 +98,26 @@ export interface TsdBridgeTerms {
   tokenContracts?: Partial<Record<"ethereum" | "base", Record<string, string>>> | null;
 }
 
-/** Sources offered right now: both registries agree and TSD Bridge is live. */
-export function availableMintSources(terms: TsdBridgeTerms | null | undefined): MintSource[] {
+/**
+ * True once TSD Bridge has confirmed the pinned contract list in writing.
+ * Until then no stablecoin source is offered and no order can be opened, so
+ * publishing the code cannot switch the route on by accident.
+ */
+export function mintContractsConfirmed(
+  pin: { writtenConfirmation: string | null } = TSD_BRIDGE_CONTRACT_PIN,
+): boolean {
+  return typeof pin.writtenConfirmation === "string" && pin.writtenConfirmation.trim().length > 0;
+}
+
+/**
+ * Sources offered right now: TSD Bridge has confirmed the pin in writing,
+ * both registries agree and TSD Bridge is live. `pin` exists for tests only.
+ */
+export function availableMintSources(
+  terms: TsdBridgeTerms | null | undefined,
+  pin: { writtenConfirmation: string | null } = TSD_BRIDGE_CONTRACT_PIN,
+): MintSource[] {
+  if (!mintContractsConfirmed(pin)) return [];
   if (!terms?.live) return [];
   const tokens = new Set(terms.depositTokens.map((t) => t.toUpperCase()));
   const chains = new Set(terms.chains.map((c) => c.toLowerCase()));
@@ -387,7 +406,7 @@ export function assertMintTransferRequest(
     throw new Error(`Signing refused: the transaction ${why}. Nothing was sent.`);
   };
   if (!source) fail("names an unknown stablecoin");
-  if (request.chainId !== undefined && request.chainId !== source!.chainId) fail("is on the wrong network");
+  if (request.chainId !== source!.chainId) fail("is on the wrong network");
   if ((request.to ?? "").toLowerCase() !== source!.contract.toLowerCase()) fail("targets a different contract");
   if (request.value !== undefined && request.value !== 0n) fail("carries a coin value");
   const expected = buildMintTransfer(locked).data.toLowerCase();
