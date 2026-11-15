@@ -6,19 +6,20 @@
 - [x] Auditor review received; applied: pinned contracts + refuse-on-mismatch, local record at Review, reuse/abandon, refuse reused deposit address, receipt wait, gas check, custody line, execution-policy entry (663 tests)
 - [x] Bobby kept paste-any-T… recipient (warning + required tick) instead of auditor's own-only rule
 - [x] Written request to TSD Bridge: confirm 5 contracts, publish depositTokenContracts, echo fields on orders, late-deposit policy
-- [ ] Auditor code review of Honest-Money-TSD-Bridge-Swap-Routes-Export-2026-11-15.zip (waits on auditor)
 - [x] Auditor code review (Nov 15 pm): runtime gate on writtenConfirmation, server reads inbox itself, exact string amount, unconditional chain id, full-source export
 - [x] TSD Bridge written contract confirmation (+ late-deposit sentence) filled in; mint margin 2h; mintFeeBps only (reply 2026-11-15)
-- [ ] Auditor sign-off on the confirmation diff → publish, APK, extension, 10 USDC Base test (waits on auditor)
-- [ ] Then publish + APK + extension
-- [ ] One small real purchase (e.g. 10 USDC) after publish
+- [x] Auditor sign-off on the confirmation diff (Nov 15 evening); live feed matches all five pins
+- [x] Fresh security scan clean; 666 tests pass; extension rebuilt 0.5.2; publish requested
+- [ ] New APK build (Bobby runs GitHub Actions → Android APK, then send the zip)
+- [ ] 10 USDC on Base → wallet's own TSD address; send order id to TSD Bridge (Bobby, after publish)
+- [ ] Leftovers (non-blocking): cash-out key conflict case, branch book surviving wallet removal, .gitignore reply
 
 ## Per-site Trading branches from honest.money (Nov 14)
 - [x] Wallet reads delegate_modes/delegate_branches; per-wallet branch book; 619 tests pass
 - [x] honest.money reserves HME Chat branch 1108 (access only); spare branch suggested
 - [x] Website already live with per-site branches; APK 0.1.202611142323 released to everyone as required update (Nov 15)
 - [ ] Auditor review of per-site branch note (Bobby shipped ahead of it)
-- [ ] Rebuild Chrome extension with per-site branches, then publish (bundled 0.5.1 predates it)
+- [x] Rebuild Chrome extension with per-site branches (0.5.2, Nov 15)
 
 ## USDC THORChain send error (Oct 28)
 - [x] Wait for successful approval confirmations and verify exact allowance before preparing the deposit; 72 targeted tests pass, build OK, auditor note delivered
