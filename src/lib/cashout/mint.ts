@@ -13,7 +13,7 @@
  * token contract.
  */
 import { decodeFunctionData, encodeFunctionData, erc20Abi, type Address, type Hex } from "viem";
-import { isLegacyTxcP2pkh, ONE_TIME_EXPIRY_MARGIN_MS } from "./one-time";
+import { isLegacyTxcP2pkh } from "./one-time";
 
 export type MintChain = "eth" | "base";
 export type MintSourceId = "usdc-eth" | "usdt-eth" | "pyusd-eth" | "usdc-base" | "usdt-base";
@@ -56,7 +56,8 @@ export const MINT_SOURCES: readonly MintSource[] = [
  */
 export const TSD_BRIDGE_CONTRACT_PIN: Readonly<{ source: string; writtenConfirmation: string | null }> = Object.freeze({
   source: "TSD Bridge src/lib/bridge-config.ts TOKENS (project snapshot 693bace2, read 2026-11-15)",
-  writtenConfirmation: null,
+  writtenConfirmation:
+    "TSD Bridge written reply 2026-11-15 (reply-to-hme-wallet-buy-tsd-v2): all five contracts confirmed as accepted; no PYUSD on Base listed",
 });
 
 /**
@@ -64,7 +65,15 @@ export const TSD_BRIDGE_CONTRACT_PIN: Readonly<{ source: string; writtenConfirma
  * the review dialog verbatim. Null until TSD Bridge commits in writing — the
  * wallet never makes that promise on its behalf.
  */
-export const TSD_BRIDGE_LATE_DEPOSIT_POLICY: string | null = null;
+export const TSD_BRIDGE_LATE_DEPOSIT_POLICY: string | null =
+  "TSD Swap creates TSD for the amount that actually arrives, even if it is more or less than the order. A payment sent after the order expires is not processed automatically; contact TSD Swap support and it will be reviewed by hand.";
+
+/**
+ * Time that must remain on a mint order to pay it. TSD Bridge asks that no
+ * payment is made within 1 hour of `expiresAt` (orders last 24 hours); the
+ * extra hour covers the confirmation prompt, broadcast and mining.
+ */
+export const MINT_EXPIRY_MARGIN_MS = 2 * 60 * 60 * 1000;
 
 /** Gas ceiling used to check the network fee before review (ERC-20 transfer to a fresh address is ~45–70k). */
 export const MINT_TRANSFER_GAS_CEILING = 100_000n;
@@ -232,7 +241,7 @@ const ZERO = "0x0000000000000000000000000000000000000000";
 /**
  * Accept a mint order only if it is exactly what we asked for: same token,
  * chain, amount and TSD recipient, a fresh EVM deposit address that is not
- * this wallet, a token contract or the zero address, and at least an hour
+ * this wallet, a token contract or the zero address, and more than two hours
  * before it expires. Throws a user-readable message otherwise.
  */
 export function verifyMintOrder(
@@ -275,14 +284,15 @@ export function verifyMintOrder(
   const echoed = decimalUnits(res.amountExpected, req.source.decimals);
   if (wanted === null || wanted <= 0n || echoed === null || wanted !== echoed) fail("amount changed");
 
-  const feeRaw = res.mintFeeBps ?? res.feeBps;
+  // Only `mintFeeBps`: on mint orders `feeBps` describes cash-outs (TSD Bridge, 2026-11-15).
+  const feeRaw = res.mintFeeBps;
   const feeBps = typeof feeRaw === "number" ? feeRaw : typeof feeRaw === "string" && feeRaw.trim() ? Number(feeRaw) : NaN;
   if (!Number.isInteger(feeBps) || feeBps < 0 || feeBps > 10_000) fail("fee is missing");
 
   const expiresAt = str(res.expiresAt);
   const exp = Date.parse(expiresAt);
   if (!Number.isFinite(exp)) fail("no expiry time");
-  if (exp - now <= ONE_TIME_EXPIRY_MARGIN_MS) fail("order already expired");
+  if (exp - now <= MINT_EXPIRY_MARGIN_MS) fail("less than two hours left on the order");
 
   return {
     id,
@@ -301,7 +311,7 @@ export function verifyMintOrder(
 /** True while a mint order can still safely be paid. */
 export function mintOrderStillOpen(expiresAt: string, now: number = Date.now()): boolean {
   const exp = Date.parse(expiresAt);
-  return Number.isFinite(exp) && exp - now > ONE_TIME_EXPIRY_MARGIN_MS;
+  return Number.isFinite(exp) && exp - now > MINT_EXPIRY_MARGIN_MS;
 }
 
 /**
@@ -335,7 +345,7 @@ export function recheckMintOrder(
   if (token && token !== source!.symbol) fail("stablecoin changed");
   const contract = str(order.depositTokenContract);
   if (contract && contract.toLowerCase() !== source!.contract.toLowerCase()) fail("token contract changed");
-  if (!mintOrderStillOpen(str(order.expiresAt), now)) fail("less than an hour left");
+  if (!mintOrderStillOpen(str(order.expiresAt), now)) fail("less than two hours left");
 }
 
 export interface MintLockContext {
@@ -374,7 +384,7 @@ export function confirmLockedMintOrder(
   if (ctx.priorOrders.some((o) => o.orderId !== locked.id && o.depositAddress.toLowerCase() === deposit)) {
     fail("this deposit address was used by an earlier order — try again for a fresh one");
   }
-  if (!mintOrderStillOpen(locked.expiresAt, ctx.now ?? Date.now())) fail("less than an hour left");
+  if (!mintOrderStillOpen(locked.expiresAt, ctx.now ?? Date.now())) fail("less than two hours left");
 }
 
 /** The single ERC-20 transfer that pays a verified mint order. */

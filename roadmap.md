@@ -8,7 +8,8 @@
 - [x] Written request to TSD Bridge: confirm 5 contracts, publish depositTokenContracts, echo fields on orders, late-deposit policy
 - [ ] Auditor code review of Honest-Money-TSD-Bridge-Swap-Routes-Export-2026-11-15.zip (waits on auditor)
 - [x] Auditor code review (Nov 15 pm): runtime gate on writtenConfirmation, server reads inbox itself, exact string amount, unconditional chain id, full-source export
-- [ ] TSD Bridge written contract confirmation (+ late-deposit sentence) → fill TSD_BRIDGE_CONTRACT_PIN / TSD_BRIDGE_LATE_DEPOSIT_POLICY (waits on TSD Bridge)
+- [x] TSD Bridge written contract confirmation (+ late-deposit sentence) filled in; mint margin 2h; mintFeeBps only (reply 2026-11-15)
+- [ ] Auditor sign-off on the confirmation diff → publish, APK, extension, 10 USDC Base test (waits on auditor)
 - [ ] Then publish + APK + extension
 - [ ] One small real purchase (e.g. 10 USDC) after publish
 

@@ -40,7 +40,7 @@ import { isLegacyTxcP2pkh } from "@/lib/cashout/one-time";
 import {
   MINT_SOURCES, MINT_TRANSFER_GAS_CEILING, TSD_BRIDGE_LATE_DEPOSIT_POLICY, assertMintTransferRequest,
   availableMintSources, mintContractsConfirmed, buildMintTransfer, confirmLockedMintOrder, estimateTsdOut, formatUnitsPlain,
-  mintAmountInLimits, mintGasCovered, mintSource, mintStatusLabel, parseMintAmount, recheckMintOrder,
+  mintAmountInLimits, mintGasCovered, mintOrderStillOpen, mintSource, mintStatusLabel, parseMintAmount, recheckMintOrder,
   type MintSourceId, type TsdBridgeTerms, type VerifiedMintOrder,
 } from "@/lib/cashout/mint";
 import { createTsdMintOrder, getTsdBridgeTerms, getTsdMintOrder } from "@/lib/cashout/tsd.functions";
@@ -261,7 +261,7 @@ function MintRoute({ apiKey, sourceId, terms, evmSwapOn }: {
       const ctx = { ownEvmAddresses: [evmAddress], priorOrders: history };
       const expected = { sourceId: source.id, amount: amount.trim(), recipient };
 
-      // Reuse an identical unpaid order with more than an hour left.
+      // Reuse an identical unpaid order with more than two hours left.
       const reusable = findReusableMintOrder(history, { sourceId: source.id, units: units.toString(), recipient, keyFp });
       if (reusable) {
         const locked = lockedFromRecord(reusable);
@@ -318,11 +318,15 @@ function MintRoute({ apiKey, sourceId, terms, evmSwapOn }: {
         { sourceId: source.id, amount: locked.amount, recipient },
         { ownEvmAddresses: [account.address], priorOrders: readMintHistory(activeProfileId) },
       );
-      // Re-poll right before signing: still open, same deposit, same amount, ≥1h left.
+      // Re-poll right before signing: still open, same deposit, same amount, >2h left.
       const fresh = await fetchOrder({ data: { apiKey, id: locked.id } });
       recheckMintOrder(locked, fresh);
       const ok = await confirmWithBiometric(`Confirm paying ${locked.amount} ${source.symbol} for TSD`);
       if (!ok) throw new Error("Confirmation was cancelled. Nothing was sent.");
+      // The confirmation prompt can sit open; check the deadline again after it.
+      if (!mintOrderStillOpen(locked.expiresAt)) {
+        throw new Error("This order is too close to its deadline. Nothing was sent — start again for a fresh order.");
+      }
       const pub = evmClient(source.chain);
       const [bal, native, maxFee] = await Promise.all([
         pub.readContract({ address: source.contract, abi: erc20Abi, functionName: "balanceOf", args: [account.address] }) as Promise<bigint>,

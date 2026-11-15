@@ -102,7 +102,9 @@ describe("verifyMintOrder", () => {
     ["recipient missing", { recipient: undefined }],
     ["amount drift", { amountExpected: 250.500001 }],
     ["fee missing", { mintFeeBps: undefined, feeBps: undefined }],
-    ["under an hour left", { expiresAt: new Date(NOW + HOUR - 1).toISOString() }],
+    // On mint orders `feeBps` describes cash-outs (TSD Bridge, 2026-11-15); only mintFeeBps counts.
+    ["only the cash-out fee field", { mintFeeBps: undefined, feeBps: 0 }],
+    ["two hours or less left", { expiresAt: new Date(NOW + 2 * HOUR).toISOString() }],
   ];
   for (const [name, over] of bad) {
     it(`refuses: ${name}`, () => expect(() => verifyMintOrder(req, reply(over), ctx)).toThrow(/Nothing was sent/));
@@ -114,8 +116,9 @@ describe("recheckMintOrder", () => {
   it("passes while the order is unchanged and open", () => {
     expect(() => recheckMintOrder(locked, reply(), NOW + HOUR)).not.toThrow();
   });
-  it("refuses once less than an hour is left", () => {
-    expect(() => recheckMintOrder(locked, reply(), NOW + 23 * HOUR + 1)).toThrow(/less than an hour/);
+  it("refuses once two hours or less are left (TSD Bridge: never pay in the last hour)", () => {
+    expect(() => recheckMintOrder(locked, reply(), NOW + 22 * HOUR - 1)).not.toThrow();
+    expect(() => recheckMintOrder(locked, reply(), NOW + 22 * HOUR)).toThrow(/less than two hours/);
   });
   it("refuses a changed deposit, amount, status or order", () => {
     expect(() => recheckMintOrder(locked, reply({ depositAddress: "0x3333333333333333333333333333333333333333" }), NOW)).toThrow(/deposit address/);
@@ -166,15 +169,23 @@ describe("token contract pinning", () => {
     expect(MINT_SOURCES.some((s) => s.bridgeChain === "base" && s.symbol === "PYUSD")).toBe(false);
   });
   it("offers no stablecoin at all until TSD Bridge confirms the contracts in writing", () => {
-    expect(mintContractsConfirmed()).toBe(false);
-    expect(availableMintSources(terms)).toEqual([]);
-    expect(availableMintSources({ ...terms, tokenContracts: published })).toEqual([]);
+    const unconfirmed = { writtenConfirmation: null };
+    expect(mintContractsConfirmed(unconfirmed)).toBe(false);
+    expect(availableMintSources(terms, unconfirmed)).toEqual([]);
+    expect(availableMintSources({ ...terms, tokenContracts: published }, unconfirmed)).toEqual([]);
     expect(availableMintSources(terms, { writtenConfirmation: "  " })).toEqual([]);
     expect(availableMintSources(terms, CONFIRMED).length).toBe(MINT_SOURCES.length);
   });
-  it("makes no written promises TSD Bridge hasn't given yet", () => {
-    expect(TSD_BRIDGE_CONTRACT_PIN.writtenConfirmation).toBeNull();
-    expect(TSD_BRIDGE_LATE_DEPOSIT_POLICY).toBeNull();
+  it("is switched on by TSD Bridge's written confirmation of 15 Nov 2026", () => {
+    expect(TSD_BRIDGE_CONTRACT_PIN.writtenConfirmation).toMatch(/2026-11-15/);
+    expect(mintContractsConfirmed()).toBe(true);
+    expect(availableMintSources(terms).map((s) => s.id)).toEqual(MINT_SOURCES.map((s) => s.id));
+  });
+  it("shows TSD Bridge's own late/wrong-amount sentence, word for word, and no refund promise", () => {
+    expect(TSD_BRIDGE_LATE_DEPOSIT_POLICY).toBe(
+      "TSD Swap creates TSD for the amount that actually arrives, even if it is more or less than the order. A payment sent after the order expires is not processed automatically; contact TSD Swap support and it will be reviewed by hand.",
+    );
+    expect(TSD_BRIDGE_LATE_DEPOSIT_POLICY).not.toMatch(/returned|refund/i);
   });
   const published = {
     ethereum: { USDC: usdc.contract.toLowerCase(), USDT: "0xdAC17F958D2ee523a2206206994597C13D831ec7", PYUSD: "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8" },
@@ -218,7 +229,7 @@ describe("confirmLockedMintOrder (device check)", () => {
     expect(() => confirmLockedMintOrder(locked, { ...want, amount: "250.6" }, lctx)).toThrow(/amount/);
     expect(() => confirmLockedMintOrder(locked, { ...want, recipient: txcAddr(9) }, lctx)).toThrow(/recipient/);
     expect(() => confirmLockedMintOrder({ ...locked, tokenContract: USDT_BY_CHAIN.eth.address }, want, lctx)).toThrow(/contract/);
-    expect(() => confirmLockedMintOrder(locked, want, { ...lctx, now: NOW + 23 * HOUR + 1 })).toThrow(/an hour/);
+    expect(() => confirmLockedMintOrder(locked, want, { ...lctx, now: NOW + 22 * HOUR })).toThrow(/two hours/);
   });
 });
 
@@ -239,9 +250,9 @@ describe("local mint history", () => {
     expect(rec).toMatchObject({ chain: "ethereum", tokenContract: usdc.contract, units: "250500000", recipient: RECIPIENT, depositAddress: DEPOSIT, state: "reviewed" });
     expect(lockedFromRecord(rec)).toEqual(locked);
   });
-  it("reuses an identical unpaid order with more than an hour left", () => {
-    expect(findReusableMintOrder([rec], want, NOW + 22 * HOUR)?.orderId).toBe(locked.id);
-    expect(findReusableMintOrder([rec], want, NOW + 23 * HOUR + 1)).toBeNull();
+  it("reuses an identical unpaid order with more than two hours left", () => {
+    expect(findReusableMintOrder([rec], want, NOW + 21 * HOUR)?.orderId).toBe(locked.id);
+    expect(findReusableMintOrder([rec], want, NOW + 22 * HOUR)).toBeNull();
   });
   it("never reuses a different amount, recipient, key, or an abandoned or paid order", () => {
     expect(findReusableMintOrder([rec], { ...want, units: "250000000" }, NOW)).toBeNull();
