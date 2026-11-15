@@ -3,6 +3,7 @@
 ## Full swap history on desktop Swap (Nov 15)
 - [x] One "Swap history" list under the Swap page: THORChain, SideShift/FixedFloat, TSD buys, TSD cash-outs (670 tests pass, browser-checked with sample records)
 - [x] TSD cash-outs now saved per wallet after sending (web, APK, extension share the Send screen)
+- [x] Bobby's 40,000 test was USDC → TSD: already saved; live site only showed it inside the Buy TSD panel. New list shows it; amounts now comma-grouped
 - [ ] Auditor look at the note, then publish + extension rebuild + next APK
 
 ## TSD Bridge routes on desktop Swap (Nov 15)

@@ -43,6 +43,13 @@ function fmtWhen(ms: number): string {
   return new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
+/** Group the whole-number part of an exact decimal string ("40000.5" → "40,000.5") without converting it to a float. */
+function groupDecimal(amount: string): string {
+  const m = /^(\d+)(\.\d+)?$/.exec(amount.trim());
+  if (!m) return amount;
+  return m[1].replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (m[2] ?? "");
+}
+
 function assetMeta(id: string) {
   return (THOR_CATALOG as Record<string, (typeof THOR_CATALOG)[ThorAssetId] | undefined>)[id] ?? null;
 }
@@ -185,7 +192,7 @@ function BuyRow({ rec, apiKey }: { rec: MintRecord; apiKey: string | null }) {
   const href = rec.txHash && source ? EVM_CHAINS[source.chain].explorerTx(rec.txHash) : null;
   return (
     <Row
-      title={`${rec.amount} ${source?.symbol ?? ""} → TSD`}
+      title={`${groupDecimal(rec.amount)} ${source?.symbol ?? ""} → TSD`}
       detail={`TSD Bridge · buy TSD with ${source?.label ?? "stablecoins"} · ${fmtWhen(rec.createdAt)}`}
       status={label}
       href={href}
