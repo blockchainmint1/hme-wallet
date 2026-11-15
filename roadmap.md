@@ -2,8 +2,10 @@
 
 ## Per-site Trading branches from honest.money (Nov 14)
 - [x] Wallet reads delegate_modes/delegate_branches; per-wallet branch book; 619 tests pass
-- [ ] honest.money: reserve HME Chat branch(es), add to DELEGATE_BRANCHES, grant wallet:propose/delegate (blocked: ecosystem project)
-- [ ] Auditor review of per-site branch note, then publish + APK/extension rebuild
+- [x] honest.money reserves HME Chat branch 1108 (access only); spare branch suggested
+- [x] Website already live with per-site branches; APK 0.1.202611142323 released to everyone as required update (Nov 15)
+- [ ] Auditor review of per-site branch note (Bobby shipped ahead of it)
+- [ ] Rebuild Chrome extension with per-site branches, then publish (bundled 0.5.1 predates it)
 
 ## USDC THORChain send error (Oct 28)
 - [x] Wait for successful approval confirmations and verify exact allowance before preparing the deposit; 72 targeted tests pass, build OK, auditor note delivered
