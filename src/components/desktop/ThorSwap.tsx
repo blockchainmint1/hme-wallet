@@ -77,7 +77,12 @@ function fmtSeconds(s: number | null): string {
   return `~${Math.round(s / 60)} min`;
 }
 
-export function ThorSwap({ utxoSwapOn = true, evmSwapOn = false }: { utxoSwapOn?: boolean; evmSwapOn?: boolean } = {}) {
+export function ThorSwap({ utxoSwapOn = true, evmSwapOn = false, onTsd }: {
+  utxoSwapOn?: boolean;
+  evmSwapOn?: boolean;
+  /** Picking TSD on either side hands over to the TSD Bridge routes. */
+  onTsd?: (direction: "mint" | "redeem") => void;
+} = {}) {
   const { root, unlocked, activeProfileId } = useWallet();
   const qc = useQueryClient();
   const fetchRoutes = useServerFn(getThorCatalogRoutes);
@@ -320,23 +325,25 @@ export function ThorSwap({ utxoSwapOn = true, evmSwapOn = false }: { utxoSwapOn?
         <div className="grid gap-5 sm:grid-cols-2">
           <div>
             <Label htmlFor="thor-from">Pay with</Label>
-            <Select value={from} onValueChange={(v) => pickFrom(v as ThorAssetId)}>
+            <Select value={from} onValueChange={(v) => (v === "tsd" && onTsd ? onTsd("redeem") : pickFrom(v as ThorAssetId))}>
               <SelectTrigger id="thor-from" aria-label="Pay with"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {payable.map((id) => (
                   <SelectItem key={id} value={id}>{THOR_CATALOG[id].label}</SelectItem>
                 ))}
+                {onTsd && <SelectItem value="tsd">TSD on TEXITcoin (TSD Bridge)</SelectItem>}
               </SelectContent>
             </Select>
           </div>
           <div>
             <Label htmlFor="thor-to">Receive</Label>
-            <Select value={to} onValueChange={(v) => pickTo(v as ThorAssetId)}>
+            <Select value={to} onValueChange={(v) => (v === "tsd" && onTsd ? onTsd("mint") : pickTo(v as ThorAssetId))}>
               <SelectTrigger id="thor-to" aria-label="Receive"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {available.map((id) => (
                   <SelectItem key={id} value={id}>{THOR_CATALOG[id].label}</SelectItem>
                 ))}
+                {onTsd && <SelectItem value="tsd">TSD on TEXITcoin (TSD Bridge)</SelectItem>}
               </SelectContent>
             </Select>
           </div>

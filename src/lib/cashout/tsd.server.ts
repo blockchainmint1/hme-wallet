@@ -184,3 +184,49 @@ export async function notifyDeposit(n: DepositNotice): Promise<void> {
   const res = await fetch(`${baseUrl()}/api/public/v1/cashout/notify`, { method: "POST", headers, body });
   if (!res.ok) console.warn("TSD deposit notice not accepted", res.status);
 }
+
+/** Public TSD Bridge registry of stable tokens (no key, no PII). */
+export async function fetchStablesAssets(): Promise<unknown> {
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl()}/api/public/v1/stables/assets`, {
+      headers: { accept: "application/json" },
+      redirect: "manual",
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    throw new Error("Couldn't reach TSD Bridge. Try again in a moment.");
+  }
+  if (!res.ok) throw new Error(`TSD Bridge is unavailable (${res.status}).`);
+  const type = res.headers.get("content-type") ?? "";
+  if (!type.includes("application/json")) throw new Error("TSD Bridge returned an unexpected response.");
+  return res.json();
+}
+
+export interface MintArgs {
+  apiKey: string;
+  chain: "ethereum" | "base";
+  token: string;
+  recipient: string;
+  amount: number;
+}
+
+/**
+ * Buy-TSD order: TSD Bridge issues a fresh deposit address on `chain` and
+ * mints TSD to `recipient` (legacy T…) for whatever stablecoins arrive there
+ * before the order expires.
+ */
+export function createMintOrder(args: MintArgs): Promise<unknown> {
+  return call<unknown>("/api/public/v1/stables/orders", args.apiKey, {
+    method: "POST",
+    body: JSON.stringify({
+      asset: "TSD",
+      direction: "mint",
+      chain: args.chain,
+      token: args.token,
+      recipient: args.recipient,
+      amount: args.amount,
+      source: CASHOUT_SOURCE,
+    }),
+  });
+}

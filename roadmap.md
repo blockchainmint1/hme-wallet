@@ -1,5 +1,12 @@
 # Roadmap
 
+## TSD Bridge routes on desktop Swap (Nov 15)
+- [x] Buy TSD with USDC/USDT/PYUSD on Ethereum and USDC/USDT on Base (TSD Bridge mint orders), verified + re-polled + exact-transfer guard; 27 tests; 646 total pass
+- [x] Sell TSD → USDC on Ethereum from the Swap page hands off to the audited Send cash-out
+- [ ] Auditor review of Honest-Money-TSD-Bridge-Swap-Routes-2026-11-15.md, then publish + APK + extension
+- [ ] Ask TSD Bridge to echo recipient, depositToken and mintTxid on GET /cashout/orders/{id} for mint orders
+- [ ] One small real purchase (e.g. 10 USDC) after publish
+
 ## Per-site Trading branches from honest.money (Nov 14)
 - [x] Wallet reads delegate_modes/delegate_branches; per-wallet branch book; 619 tests pass
 - [x] honest.money reserves HME Chat branch 1108 (access only); spare branch suggested

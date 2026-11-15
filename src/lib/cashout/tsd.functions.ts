@@ -8,8 +8,23 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { CashoutAccount, CashoutOrder, CashoutSettings } from "./tsd";
 import { isLegacyTxcP2pkh, verifyOneTimeOrder } from "./one-time";
+import { TSD_PROPERTY_ID } from "./tsd";
+import {
+  MINT_SOURCE_IDS,
+  availableMintSources,
+  decimalUnits,
+  mintAmountInLimits,
+  mintSource,
+  parseMintAmount,
+  verifyMintOrder,
+  type MintOrderResponse,
+  type TsdBridgeTerms,
+  type VerifiedMintOrder,
+} from "./mint";
 import {
   createCashout,
+  createMintOrder,
+  fetchStablesAssets,
   fetchCashoutOrder,
   fetchCashoutSettings,
   fetchDepositAddress,
@@ -191,4 +206,106 @@ export const notifyCashoutDeposit = createServerFn({ method: "POST" })
       console.warn("TSD deposit notice failed", e);
       return { ok: false };
     }
+  });
+
+/* ------------------------------------------------------------------ */
+/* Buy TSD with stablecoins (TSD Bridge mint orders)                    */
+/* ------------------------------------------------------------------ */
+
+const bridgeAssetSchema = z
+  .object({
+    symbol: z.string(),
+    propertyId: z.coerce.number(),
+    decimals: z.coerce.number(),
+    depositTokens: z.array(z.string()),
+    minAmount: z.coerce.number(),
+    maxAmount: z.coerce.number(),
+    mintFeeBps: z.coerce.number(),
+    redeemFeeBps: z.coerce.number(),
+    live: z.boolean(),
+  })
+  .passthrough();
+const bridgeTermsSchema = z.object({ assets: z.array(bridgeAssetSchema), chains: z.array(z.string()) });
+
+async function loadTsdBridgeTerms(): Promise<TsdBridgeTerms> {
+    const parsed = bridgeTermsSchema.parse(await fetchStablesAssets());
+    const tsd = parsed.assets.find((a) => a.symbol === "TSD" && a.propertyId === TSD_PROPERTY_ID);
+    if (!tsd || tsd.decimals !== 8) throw new Error("TSD Bridge isn't offering TSD right now.");
+    const bps = (n: number) => (Number.isInteger(n) && n >= 0 && n <= 10_000 ? n : 10_000);
+    return {
+      live: tsd.live,
+      minAmount: tsd.minAmount,
+      maxAmount: tsd.maxAmount,
+      mintFeeBps: bps(tsd.mintFeeBps),
+      redeemFeeBps: bps(tsd.redeemFeeBps),
+      depositTokens: tsd.depositTokens.map((t) => t.toUpperCase()),
+      chains: parsed.chains.map((c) => c.toLowerCase()),
+    };
+}
+
+/** TSD's live mint terms from TSD Bridge's public registry. */
+export const getTsdBridgeTerms = createServerFn({ method: "GET" }).handler(loadTsdBridgeTerms);
+
+/**
+ * Open a buy-TSD order and verify the reply here before the device sees it;
+ * the device verifies again and re-polls right before signing.
+ */
+export const createTsdMintOrder = createServerFn({ method: "POST" })
+  .inputValidator((raw: unknown) =>
+    z
+      .object({
+        apiKey,
+        sourceId: z.enum(MINT_SOURCE_IDS),
+        amount: z.string().trim().regex(/^\d{1,7}(\.\d{1,6})?$/, "Enter a plain amount"),
+        recipient: z.string().trim().refine(isLegacyTxcP2pkh, "TSD must go to a legacy T… address"),
+        ownEvmAddresses: z.array(z.string().regex(/^0x[0-9a-fA-F]{40}$/)).max(8),
+      })
+      .parse(raw),
+  )
+  .handler(async ({ data }): Promise<VerifiedMintOrder> => {
+    const source = mintSource(data.sourceId)!;
+    const terms = await loadTsdBridgeTerms();
+    if (!availableMintSources(terms).some((s) => s.id === source.id)) {
+      throw new Error(`TSD Bridge isn't accepting ${source.label} right now.`);
+    }
+    const units = parseMintAmount(data.amount, source);
+    if (units === null || !mintAmountInLimits(units, source, terms)) {
+      throw new Error(`Amount must be between ${terms.minAmount} and ${terms.maxAmount} ${source.symbol}.`);
+    }
+    // TSD Bridge takes a JSON number; refuse anything that doesn't round-trip exactly.
+    const amount = Number(data.amount);
+    if (decimalUnits(amount, source.decimals) !== units) throw new Error("Enter a plain amount.");
+    const raw = await createMintOrder({
+      apiKey: data.apiKey,
+      chain: source.bridgeChain,
+      token: source.symbol,
+      recipient: data.recipient,
+      amount,
+    });
+    return verifyMintOrder(
+      { source, amount: data.amount, recipient: data.recipient },
+      raw as MintOrderResponse,
+      { ownEvmAddresses: data.ownEvmAddresses },
+    );
+  });
+
+const mintOrderSchema = z.object({
+  id: z.string(),
+  status: z.string(),
+  depositAddress: z.string(),
+  amountExpected: z.coerce.number().nullable(),
+  amountReceived: z.coerce.number().nullable().optional(),
+  chain: z.string().nullable().optional(),
+  expiresAt: z.string().nullable(),
+  error: z.string().nullable().optional(),
+});
+export type TsdMintOrderStatus = z.infer<typeof mintOrderSchema>;
+
+/** Poll a buy-TSD order (TSD Bridge only lets a key read its own orders). */
+export const getTsdMintOrder = createServerFn({ method: "POST" })
+  .inputValidator((raw: unknown) =>
+    z.object({ apiKey, id: z.string().regex(/^[A-Za-z0-9-]{4,80}$/) }).parse(raw),
+  )
+  .handler(async ({ data }): Promise<TsdMintOrderStatus> => {
+    return mintOrderSchema.parse(await fetchCashoutOrder(data.id, data.apiKey));
   });
