@@ -79,6 +79,7 @@ import {
 } from "@/lib/cashout/one-time";
 import { pickOmniSender } from "@/lib/txc/omni-sender";
 import { CashoutOrderTracker } from "@/components/wallet/CashoutOrderTracker";
+import { recordCashout } from "@/lib/cashout/cashout-history";
 import { TSD_PROPERTY_ID, formatUsd, payoutFor } from "@/lib/cashout/tsd";
 
 
@@ -765,6 +766,20 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
       void qc.invalidateQueries({ queryKey: ["account"] });
       void qc.invalidateQueries({ queryKey: ["txs"] });
       setStage({ kind: "sent", txid });
+      if (cashout) {
+        // Public facts only, for the swap history list; never blocks the send.
+        recordCashout(cashout.binding.profileId, {
+          txid,
+          kind: cashout.kind,
+          orderId: cashout.kind === "one-time-order" ? cashout.orderId : undefined,
+          amount: String(cashout.amount),
+          payoutAmount: cashout.payoutAmount,
+          payoutAddress: cashout.payoutAddress,
+          depositAddress: cashout.depositAddress,
+          keyFp: cashout.binding.keyFp,
+          createdAt: Date.now(),
+        });
+      }
       if (cashout?.kind === "account-inbox" && typeof cashout.amount === "number") {
         // Heads-up so TSD Swap watches for this deposit; never blocks the send.
         // Uses the key the order was created with, not a live re-read. TSD

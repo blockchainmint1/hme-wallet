@@ -5,6 +5,7 @@ import { useFeature } from "@/lib/feature-prefs";
 import { desktopHead } from "@/components/desktop/metadata";
 import { ThorSwap } from "@/components/desktop/ThorSwap";
 import { TsdBridgeSwap } from "@/components/desktop/TsdBridgeSwap";
+import { SwapHistory } from "@/components/desktop/SwapHistory";
 import { useState } from "react";
 import { useWallet } from "@/lib/txc/wallet-context";
 import { useExchangeFeaturesAllowed } from "@/lib/native/capabilities";
@@ -58,6 +59,7 @@ function Page() {
           )
         )}
       </div>
+      <SwapHistory key={d.activeProfileId} />
     </>
   );
 }

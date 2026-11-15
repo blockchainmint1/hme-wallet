@@ -37,7 +37,7 @@ import { DOGE_DEFAULT_KIND } from "@/lib/doge/network";
 import { confirmWithBiometric } from "@/lib/native/biometric";
 import { hapticError, hapticSuccess } from "@/lib/native/ui";
 import { friendlyBroadcastError } from "@/lib/broadcast-error";
-import { recordSwap, useSwapHistory, canTrackSwap, updateSwap } from "@/lib/swap-history";
+import { recordSwap } from "@/lib/swap-history";
 import {
   THOR_CATALOG,
   assertQuoteFresh,
@@ -48,7 +48,6 @@ import {
   type ThorCatalogQuote,
 } from "@/lib/thorchain/catalog";
 import { getThorCatalogQuote, getThorCatalogRoutes } from "@/lib/thorchain/catalog.functions";
-import { getThorTxStatus } from "@/lib/thorchain/swap.functions";
 import {
   THOR_UTXO_COINS,
   executeEvmThorSwap,
@@ -304,7 +303,7 @@ export function ThorSwap({ utxoSwapOn = true, evmSwapOn = false, onTsd }: {
           {fmtUnits(sent.quote.amountIn)} {THOR_CATALOG[sent.quote.from].symbol} is on its way to THORChain.
           Expected payout: about {fmtUnits(sent.quote.expectedOut)} {THOR_CATALOG[sent.quote.to].symbol} to{" "}
           <span className="font-mono text-xs">{sent.quote.destination}</span>, usually within{" "}
-          {fmtSeconds(sent.quote.seconds)}. Progress is tracked below and in your swap history.
+          {fmtSeconds(sent.quote.seconds)}. Progress is tracked in the swap history below.
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
           <Button asChild variant="outline">
@@ -314,7 +313,6 @@ export function ThorSwap({ utxoSwapOn = true, evmSwapOn = false, onTsd }: {
           </Button>
           <Button variant="ghost" onClick={() => { setSent(null); setAmount(""); }}>Start another swap</Button>
         </div>
-        <RecentThorSwaps profileId={activeProfileId} destination={evmAddress} />
       </div>
     );
   }
@@ -454,55 +452,7 @@ export function ThorSwap({ utxoSwapOn = true, evmSwapOn = false, onTsd }: {
         <p className="mt-4 text-xs text-muted-foreground">
           Native THORChain swaps — no wrapping, no custodian, no wallet fee. Quotes refresh as you edit and expire quickly.
         </p>
-        <RecentThorSwaps profileId={activeProfileId} destination={evmAddress} />
       </aside>
     </div>
-  );
-}
-
-/** Recent THORChain swaps with live status polling. */
-function RecentThorSwaps({ profileId, destination }: { profileId: string; destination: string | null }) {
-  const swaps = useSwapHistory(profileId, destination).filter((s) => s.provider === "thorchain" && s.txid);
-  if (!swaps.length) return null;
-  return (
-    <div className="mt-8">
-      <h3 className="text-sm font-medium">Recent swaps</h3>
-      <ul className="mt-3 space-y-2">
-        {swaps.slice(0, 5).map((s) => (
-          <ThorSwapRow key={s.txid} swap={s} />
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function ThorSwapRow({ swap }: { swap: ReturnType<typeof useSwapHistory>[number] }) {
-  const fetchStatus = useServerFn(getThorTxStatus);
-  const status = useQuery({
-    queryKey: ["thor-swap-status", swap.txid],
-    enabled: canTrackSwap(swap) && !swap.done && !swap.failed,
-    queryFn: () => fetchStatus({ data: { txid: swap.txid } }),
-    refetchInterval: 60_000,
-    retry: 1,
-  });
-  useEffect(() => {
-    const st = status.data;
-    if (!st) return;
-    if (st.outboundSent && st.outboundTxid && !swap.done) {
-      updateSwap(swap.txid, { done: true, outboundTxid: st.outboundTxid, checkedAt: Date.now() });
-    }
-  }, [status.data, swap]);
-  const label = swap.done
-    ? "Paid out"
-    : status.data?.observed
-      ? "Swapping…"
-      : "Waiting for deposit…";
-  return (
-    <li className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm">
-      <span className="min-w-0 truncate">
-        {thorUnitsToNumber(swap.amountSats).toLocaleString(undefined, { maximumFractionDigits: 8 })} {swap.coin.toUpperCase()} → {swap.dest.symbol}
-      </span>
-      <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
-    </li>
   );
 }

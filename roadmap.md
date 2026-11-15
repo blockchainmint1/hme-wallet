@@ -1,5 +1,10 @@
 # Roadmap
 
+## Full swap history on desktop Swap (Nov 15)
+- [x] One "Swap history" list under the Swap page: THORChain, SideShift/FixedFloat, TSD buys, TSD cash-outs (670 tests pass, browser-checked with sample records)
+- [x] TSD cash-outs now saved per wallet after sending (web, APK, extension share the Send screen)
+- [ ] Auditor look at the note, then publish + extension rebuild + next APK
+
 ## TSD Bridge routes on desktop Swap (Nov 15)
 - [x] Buy TSD with USDC/USDT/PYUSD on Ethereum and USDC/USDT on Base (TSD Bridge mint orders), verified + re-polled + exact-transfer guard; 27 tests; 646 total pass
 - [x] Sell TSD → USDC on Ethereum from the Swap page hands off to the audited Send cash-out

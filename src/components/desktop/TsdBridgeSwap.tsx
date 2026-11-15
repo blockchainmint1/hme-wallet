@@ -46,8 +46,8 @@ import {
 import { createTsdMintOrder, getTsdBridgeTerms, getTsdMintOrder } from "@/lib/cashout/tsd.functions";
 import { isTerminalCashoutStatus } from "@/lib/cashout/tsd";
 import {
-  findReusableMintOrder, isPaidMintRecord, lockedFromRecord, readMintHistory, recordMintOrder, reviewedRecord,
-  staleReviewedOrders, updateMintRecord, useMintHistory, type MintRecord,
+  findReusableMintOrder, lockedFromRecord, readMintHistory, recordMintOrder, reviewedRecord,
+  staleReviewedOrders, updateMintRecord,
 } from "@/lib/cashout/mint-history";
 import type { CashoutKeyBinding } from "@/lib/cashout/api-key";
 
@@ -167,7 +167,6 @@ export function TsdBridgeSwap({
           TSD is a dollar token on TEXITcoin, backed 1:1 by stablecoins TSD Bridge holds in reserve. Unlike THORChain
           swaps, TSD Bridge holds the stablecoins you pay in. Honest Money adds no fee.
         </p>
-        {apiKey && <RecentMints apiKey={apiKey} />}
       </aside>
     </div>
   );
@@ -541,39 +540,5 @@ function MintTracker({ apiKey, orderId }: { apiKey: string; orderId: string }) {
       <span className="text-muted-foreground">Order status:</span>
       <span className="font-medium">{status ? mintStatusLabel(status) : order.isError ? "Couldn't check" : "Checking…"}</span>
     </p>
-  );
-}
-
-function RecentMints({ apiKey }: { apiKey: string }) {
-  const { activeProfileId } = useWallet();
-  const fp = cashoutKeyFingerprint(apiKey);
-  const list = useMintHistory(activeProfileId).filter((r) => r.keyFp === fp && isPaidMintRecord(r));
-  if (!list.length) return null;
-  return (
-    <div className="mt-8">
-      <h3 className="text-sm font-medium">Recent TSD purchases</h3>
-      <ul className="mt-3 space-y-2">
-        {list.slice(0, 5).map((r) => <MintRow key={r.orderId} rec={r} apiKey={apiKey} />)}
-      </ul>
-    </div>
-  );
-}
-
-function MintRow({ rec, apiKey }: { rec: MintRecord; apiKey: string }) {
-  const fetchOrder = useServerFn(getTsdMintOrder);
-  const source = mintSource(rec.sourceId);
-  const order = useQuery({
-    queryKey: ["tsd-mint-order", rec.orderId],
-    queryFn: () => fetchOrder({ data: { apiKey, id: rec.orderId } }),
-    refetchInterval: (q) => (q.state.data && isTerminalCashoutStatus(q.state.data.status) ? false : 60_000),
-    retry: 1,
-  });
-  return (
-    <li className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm">
-      <span className="min-w-0 truncate">{rec.amount} {source?.symbol ?? ""} → TSD</span>
-      <span className="shrink-0 text-xs text-muted-foreground">
-        {order.data ? mintStatusLabel(order.data.status) : order.isError ? "Couldn't check" : "Checking…"}
-      </span>
-    </li>
   );
 }
