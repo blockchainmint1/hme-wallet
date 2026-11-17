@@ -94,8 +94,8 @@ function PocketRows({ link }: { link: DelegateLinkRecord }) {
     <ul className="divide-y divide-border text-sm">
       {rows.map((r) => (
         <li key={r.chain} className="flex items-center gap-2 py-2">
-          <span className="w-12 font-medium">{r.chain}</span>
-          <span className="flex-1 truncate font-mono text-xs text-muted-foreground">{r.address}</span>
+          <span className="w-12 shrink-0 font-medium">{r.chain}</span>
+          <span className="w-0 min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">{r.address}</span>
           <span className="text-xs tabular-nums">{r.balance ?? <Loader2 className="h-3 w-3 animate-spin" />}</span>
           <Button
             size="icon"
@@ -184,8 +184,8 @@ export function TradingSitePanel({ link }: { link: DelegateLinkRecord }) {
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="min-w-0 text-sm">
           <span className="font-medium">{link.appName}</span>{" "}
           <span className="text-xs text-muted-foreground">
             · {link.mode === "access" ? "has access (instant trades)" : "you approve each trade"} · branch {link.account}
