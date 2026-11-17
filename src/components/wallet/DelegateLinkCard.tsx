@@ -18,6 +18,7 @@ import { useExchangeFeaturesAllowed } from "@/lib/native/capabilities";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { verifyWalletPassword } from "@/lib/txc/storage";
+import { EXTRA_CHAIN_LABEL } from "@/lib/xpub-link/delegate-keys";
 
 const CHAIN_LABEL: Record<string, string> = {
   TXC: "TXC / TSD",
@@ -62,6 +63,7 @@ export function DelegateLinkCard({ manifestUrl, onDone }: { manifestUrl: string;
   const account = manifest.account;
   const canAccess = manifest.modes.includes("access");
   const canApprove = manifest.modes.includes("approve");
+  const extras = manifest.extraChains.map((c) => EXTRA_CHAIN_LABEL[c]).join(", ");
 
   async function approve() {
     if (!manifest || !mode || !unlocked?.mnemonic) return;
@@ -101,9 +103,17 @@ export function DelegateLinkCard({ manifestUrl, onDone }: { manifestUrl: string;
             </p>
           )}
           {manifest.purpose && <p className="mt-1 text-xs text-muted-foreground">“{manifest.purpose}”</p>}
-          <p className="mt-1 text-xs text-muted-foreground">
-            Chains: {manifest.chains.map((c) => CHAIN_LABEL[c] ?? c).join(" · ")}
-          </p>
+          {manifest.chains.length > 0 && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Chains: {manifest.chains.map((c) => CHAIN_LABEL[c] ?? c).join(" · ")}
+            </p>
+          )}
+          {extras && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              With “Give access”, {manifest.appName} can also trade from your {extras} Trading pockets (same branch{" "}
+              {account}). Honest Money doesn't show these coins; you see and move them on {manifest.appName}.
+            </p>
+          )}
         </div>
       </div>
 
@@ -138,6 +148,7 @@ export function DelegateLinkCard({ manifestUrl, onDone }: { manifestUrl: string;
             {manifest.appName} holds no key. Each trade shows up in your wallet and you tap to approve it. Slower, but
             nothing moves without you.
           </p>
+          {extras && <p className="mt-1 text-xs text-muted-foreground">Covers only the coins listed above, not {extras}.</p>}
         </button>
         )}
       </div>
@@ -147,7 +158,7 @@ export function DelegateLinkCard({ manifestUrl, onDone }: { manifestUrl: string;
           <Checkbox checked={ack} onCheckedChange={(v) => setAck(v === true)} />
           <span>
             {mode === "access"
-              ? `I understand ${manifest.appName} can move the coins in my Trading pocket. Revoking moves them back and retires that pocket.`
+              ? `I understand ${manifest.appName} can move the coins in my Trading pocket. Revoking moves them back and retires that pocket.${extras ? ` Honest Money can't move ${extras} back, so I'll move those out on ${manifest.appName} before revoking.` : ""}`
               : `I'll approve or decline each ${manifest.appName} trade myself.`}
           </span>
         </label>

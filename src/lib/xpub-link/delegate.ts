@@ -11,7 +11,10 @@
  * - Site must be marked delegate: true on a fresh, signed honest.money list
  *   (no "continue anyway"), and only the modes HME allows it are offered.
  * - Requested paths must all be one branch honest.money reserved for that
- *   site, on the known coin types. If this wallet already retired that branch
+ *   site, on the known coin types. A site may also list coins the wallet
+ *   doesn't support itself (`request_optional`, see ./delegate-keys.ts): their
+ *   keys go only into "access" links, at the same branch, and the wallet never
+ *   shows, sends or sweeps them. If this wallet already retired that branch
  *   (or another site owns it here), the next reserved branch is used; the
  *   real `account`/`paths` go back in the submission. See ./branches.ts.
  * - submit_url / revoke_url share the manifest origin.
@@ -29,6 +32,7 @@ import { isEcosystemSite, loginSiteName, setEcosystemSites, spendingGrant } from
 import { getEcosystemSites } from "@/lib/ecosystem-sites.functions";
 import { accountPath, chainRoot, legacyPocketAccount, POCKET_CHAINS, type PocketChain } from "@/lib/seeds/pocket";
 import { chooseDelegateBranch, claimBranch, loadBranchBook, type BranchBook } from "./branches";
+import { deriveExtraKey, extraAccountOf, isExtraChain, type ExtraChain } from "./delegate-keys";
 
 const PROXY = "/api/nectar/link";
 
@@ -41,6 +45,8 @@ export interface DelegateManifest {
   token: string;
   challenge: string;
   chains: PocketChain[];
+  /** Coins the wallet doesn't support itself; keys shared in "access" links only. */
+  extraChains: ExtraChain[];
   /** Branch the site asked for (one of its honest.money reservations). */
   requestedAccount: number;
   /** Branch this wallet will actually use for the site. */
@@ -107,18 +113,34 @@ export function validateDelegate(
   if (recipientPub.length !== 32) fail("Link is missing its encryption key.");
 
   const req = Array.isArray(raw["request"]) ? (raw["request"] as Record<string, unknown>[]) : [];
+  const opt = Array.isArray(raw["request_optional"]) ? (raw["request_optional"] as Record<string, unknown>[]) : [];
   if (req.length === 0) fail("Link doesn't ask for any chain.");
+  if (req.length + opt.length > 40) fail("Link is malformed.");
   const chains: PocketChain[] = [];
+  const extraChains: ExtraChain[] = [];
+  let requiredExtra = false;
   let requested: number | null = null;
-  for (const r of req) {
-    const chain = String(r["chain"] ?? "").toUpperCase() as PocketChain;
-    if (!POCKET_CHAINS.includes(chain)) fail(`Unsupported chain: ${chain}`);
+  const entries = [...req.map((r) => ({ r, optional: false })), ...opt.map((r) => ({ r, optional: true }))];
+  for (const { r, optional } of entries) {
+    const chain = String(r?.["chain"] ?? "").toUpperCase();
+    const core = (POCKET_CHAINS as string[]).includes(chain);
+    const extra = isExtraChain(chain);
+    if (!core && !extra) {
+      // A coin this wallet can't make a key for: skip it if optional, refuse if required.
+      if (optional) continue;
+      fail(`Unsupported chain: ${chain}`);
+    }
     // One whole hardened account, on that chain's own coin type.
-    const n = requestedAccountOf(chain, r["path"]);
+    const n = core ? requestedAccountOf(chain as PocketChain, r["path"]) : extraAccountOf(chain as ExtraChain, r["path"]);
     if (n === null) fail(`Refused key request: ${chain} ${String(r["path"])} isn't a trading branch path.`);
     if (requested !== null && n !== requested) fail("Link asks for different branches on different chains.");
     requested = n;
-    if (!chains.includes(chain)) chains.push(chain);
+    if (core) {
+      if (!chains.includes(chain as PocketChain)) chains.push(chain as PocketChain);
+    } else {
+      if (!optional) requiredExtra = true;
+      if (!extraChains.includes(chain as ExtraChain)) extraChains.push(chain as ExtraChain);
+    }
   }
   const choice = chooseDelegateBranch({ host, siteName, requested: requested!, reserved: grant!.branches, book });
   if (!choice.ok) fail(`Refused key request: ${choice.reason}`);
@@ -131,9 +153,12 @@ export function validateDelegate(
     token: token as string,
     challenge: challenge as string,
     chains,
+    extraChains,
     requestedAccount: requested!,
     account,
-    modes: grant!.modes,
+    // The wallet can't approve trades on coins it doesn't support, so a link
+    // that requires one, or has no supported coin, is offered "access" only.
+    modes: grant!.modes.filter((m) => m !== "approve" || (!requiredExtra && chains.length > 0)),
     recipientPub,
     submitUrl: raw["submit_url"] as string,
     revokeUrl: raw["revoke_url"] as string,
@@ -202,6 +227,8 @@ export interface DelegateLinkRecord {
   mode: DelegateMode;
   account: number;
   chains: PocketChain[];
+  /** Extra coins whose trading keys went to the site (access links only). */
+  extraChains?: ExtraChain[];
   revokeUrl: string;
   /** Where pending-trade proposals are read from (approve mode). */
   origin: string;
@@ -221,6 +248,7 @@ export async function submitDelegate(args: {
   const grant = spendingGrant(manifest.host);
   if (!grant) throw new Error("This site is no longer on the verified spending list.");
   if (!grant.modes.includes(mode)) throw new Error("honest.money no longer allows this kind of link for this site.");
+  if (!manifest.modes.includes(mode)) throw new Error("This link can't be used that way.");
   // Re-check the branch against the fresh list and this wallet's own record.
   const book = currentBranchBook();
   const choice = chooseDelegateBranch({
@@ -246,7 +274,18 @@ export async function submitDelegate(args: {
     xpubs[c] = node.neutered().toBase58();
     if (mode === "access") xprvs[c] = node.toBase58();
   }
-  seed.fill(0);
+  // Extra coins are spend-only: their keys go to the site in access links, never approve.
+  const extraChains = mode === "access" ? manifest.extraChains : [];
+  try {
+    for (const c of extraChains) {
+      const k = deriveExtraKey({ chain: c, account, seed, mnemonic, passphrase, withPrivate: true });
+      paths.push(k.path);
+      xpubs[c] = k.pub;
+      xprvs[c] = k.priv!;
+    }
+  } finally {
+    seed.fill(0);
+  }
 
   let payload: string | undefined;
   let payloadSha = "none";
@@ -294,6 +333,7 @@ export async function submitDelegate(args: {
     mode,
     account,
     chains: manifest.chains,
+    ...(extraChains.length ? { extraChains: [...extraChains] } : {}),
     revokeUrl: manifest.revokeUrl,
     origin: new URL(manifest.manifestUrl).origin,
     identity: signed.address,

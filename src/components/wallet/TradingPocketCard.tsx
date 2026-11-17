@@ -31,6 +31,7 @@ import {
 } from "@/lib/seeds/pocket";
 import { retireBranch } from "@/lib/xpub-link/branches";
 import { SeedsTradesList } from "@/components/wallet/SeedsTradesList";
+import { EXTRA_CHAIN_LABEL } from "@/lib/xpub-link/delegate-keys";
 
 const SEND_ROUTE: Record<string, string> = {
   TXC: "/wallet/send",
@@ -154,8 +155,13 @@ export function TradingSitePanel({ link }: { link: DelegateLinkRecord }) {
     }
   }
 
+  const extras = (link.extraChains ?? []).map((c) => EXTRA_CHAIN_LABEL[c] ?? c).join(", ");
+
   async function revoke() {
-    if (!confirm(`Revoke ${link.appName}'s access? Coins in this shared wallet will be moved back to your main wallet.`)) return;
+    const extraWarning = extras
+      ? ` Honest Money can't move ${extras} back — move those out on ${link.appName} first.`
+      : "";
+    if (!confirm(`Revoke ${link.appName}'s access? Coins in this shared wallet will be moved back to your main wallet.${extraWarning}`)) return;
     setBusy(link.linkId);
     setResult(null);
     let serverNote = "";
@@ -206,6 +212,11 @@ export function TradingSitePanel({ link }: { link: DelegateLinkRecord }) {
         </div>
       </div>
       <PocketRows link={link} />
+      {extras && (
+        <p className="text-xs text-muted-foreground">
+          Also shared with {link.appName}: {extras}. Honest Money doesn't show these; see and move them on {link.appName}.
+        </p>
+      )}
       {link.mode === "approve" && <SeedsTradesList link={link} />}
       {result && <p className="text-xs text-muted-foreground">{result}</p>}
     </div>

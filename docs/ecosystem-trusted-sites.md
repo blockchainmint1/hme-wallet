@@ -61,3 +61,20 @@ may still display offline, but cannot grant spending access.
 
 Asymmetric registry verification remains a coordinated partner change: no
 public-key registry endpoint exists in the current Honest Money source.
+
+## Extra trading-pocket coins (Nov 17 2026)
+
+A trading link may add `request_optional: [{ chain, path }]` next to `request`.
+The wallet can make trading-branch keys for DOGE, BCH, DASH, TRX, SOL, ZEC,
+XRP, ATOM, RUNE and ADA (src/lib/xpub-link/delegate-keys.ts), on top of the
+five it supports itself (TXC, ISK, BTC, LTC, EVM).
+
+- Same branch for every coin; any other branch, account 0 or a deeper path refuses the whole link.
+- Unknown coins in `request_optional` are skipped; unknown coins in `request` refuse the link.
+- Extra coins go only into "access" links (sealed private halves). "Approve every trade"
+  sends only the five supported coins, and a link that *requires* an extra coin is offered "access" only.
+- Formats: secp256k1 = account xpub/xprv with standard version bytes; SOL = base58 public key /
+  hex 32-byte SLIP-0010 private key at `m/44'/501'/N'/0'`; ADA = CIP-1852 Icarus account key at
+  `m/1852'/1815'/N'`, hex public (key ‖ chain code) / hex private (kL ‖ kR ‖ chain code).
+- The wallet never shows balances for, sends from, or sweeps the extra coins; revoking warns the
+  member to move them out on the site first.

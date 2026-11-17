@@ -95,3 +95,9 @@
 - [x] Bridge: one-time orders for every cash-out not needed — saved-address path stays
 - [ ] Auditor reads v2 note + source export, runs tests (waits on auditor); a real small one-time cash-out to a non-saved address (waits on Bobby, after publish)
 - [x] Publish + APK/extension rebuild after audit; tell bridge team when live (published Nov 12; APK rebuild runs in GitHub Actions)
+
+## Seeds extra coin keys (Nov 17)
+- [x] Trading-branch spend keys for DOGE, BCH, DASH, TRX, SOL, ZEC, XRP, ATOM, RUNE, ADA in access links (687 tests, browser-checked with mocked Seeds)
+- [x] Auditor note: Honest-Money-Seeds-Extra-Coin-Keys-Audit-2026-11-17.md
+- [ ] Auditor review, then publish + extension rebuild + next APK (waits on auditor/Bobby)
+- [ ] Seeds lists + accepts DASH, ATOM, RUNE, ADA; confirms Cardano Icarus method (waits on Seeds)
