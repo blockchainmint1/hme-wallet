@@ -32,7 +32,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const { validateDelegate, submitDelegate } = await import("./delegate");
+const { validateDelegate, submitDelegate, onePerSitePocket } = await import("./delegate");
+const { EXTRA_FORMAT } = await import("./delegate-keys");
 const { setEcosystemSites } = await import("@/lib/web-login-hosts");
 const bip32 = BIP32Factory(ecc);
 const WORDS = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -71,7 +72,7 @@ function seedsManifest(recipientPriv: Uint8Array, optional: Record<string, strin
       revoke_url: `https://${host}/api/public/hme-link/revoke`,
       request: Object.entries(CORE).map(([chain, path]) => ({ chain, path })),
       request_optional: [
-        ...Object.entries(optional).map(([chain, path]) => ({ chain, path })),
+        ...Object.entries(optional).map(([chain, path]) => ({ chain, path, format: EXTRA_FORMAT[chain as keyof typeof EXTRA_FORMAT] })),
         { chain: "FOO", path: "m/44'/9999'/1106'" },
       ],
     } as Record<string, unknown>,
@@ -122,7 +123,7 @@ describe("Seeds extra coins in a trading link", () => {
   it("offers only spend access when a required coin can't be approved in the wallet", () => {
     setEcosystemSites([SEEDS], true);
     const m = seedsManifest(x25519.utils.randomPrivateKey(), {});
-    (m.raw.request as { chain: string; path: string }[]).push({ chain: "DOGE", path: EXTRA.DOGE! });
+    (m.raw.request as { chain: string; path: string; format?: string }[]).push({ chain: "DOGE", path: EXTRA.DOGE!, format: "bip32" });
     expect(validateDelegate(m.raw, m.url, {}).modes).toEqual(["access"]);
   });
 
@@ -149,8 +150,8 @@ describe("Seeds extra coins in a trading link", () => {
     expect(xpubs.SOL).toBe("DXTivYcF78Vznitg6f8JGXouZwsm3xioik1LGWj2H1jV");
     expect(xprvs.ADA).toHaveLength(192);
     expect(xpubs.ADA!.slice(64)).toBe(xprvs.ADA!.slice(128));
-    expect(xpubs.XMR).toBe("4BFkVXcwWqBafjVY3977Dbj9gwLMG63gGZcp5PoTefWfEa95GzdAoKPgSJwF2wNayB1zdzi1GHhXE2k6hRTNtuvfJ2j6YGp");
-    expect(xprvs.XMR).toBe("f4f6b286d6e3260502bb783436ef08846d3211aaebbfe180afd332249ddbe101");
+    expect(xpubs.XMR).toBe("4A4meFan68GQTKM2GJemCwBkfbVP2UsH2ZLPxWKquxhF93ruBpNL3PjSQzkKWFX5ELS8P4MKc4DVqb5sDFuswXJFCRuGsea");
+    expect(xprvs.XMR).toBe("675040abc909b52bca0ce90007a1a1a262d94523e45cce46323f1d513831ca09");
     expect(rec.extraChains).toEqual(Object.keys(EXTRA));
   });
 
@@ -164,5 +165,43 @@ describe("Seeds extra coins in a trading link", () => {
     expect(Object.keys(sent.body!["xpubs"] as object)).toEqual(Object.keys(CORE));
     expect(sent.body!["payload"]).toBeUndefined();
     expect(rec.extraChains).toBeUndefined();
+  });
+
+  it("skips an extra coin whose key method is missing or different", () => {
+    setEcosystemSites([SEEDS], true);
+    const m = seedsManifest(x25519.utils.randomPrivateKey(), {});
+    (m.raw.request_optional as Record<string, unknown>[]).push(
+      { chain: "XMR", path: EXTRA.XMR, format: "bip32-secp256k1-monero-ledger" },
+      { chain: "ADA", path: EXTRA.ADA },
+      { chain: "SOL", path: "m/44'/501'/1106'/0'", format: "slip10-ed25519" },
+    );
+    expect(validateDelegate(m.raw, m.url, {}, []).extraChains).toEqual(["SOL"]);
+  });
+
+  it("linking again to the same site and pocket updates that link, adding only the new coins", () => {
+    setEcosystemSites([SEEDS], true);
+    const prior = {
+      linkId: "old-link", host: "seeds.honest.money", appName: "Seeds", mode: "access" as const, account: 1106,
+      chains: ["TXC", "ISK", "BTC", "LTC", "EVM"] as never, extraChains: ["DOGE", "SOL"] as never,
+      revokeUrl: "", origin: "", identity: "", linkedAt: "2026-11-17T00:00:00Z",
+    };
+    const m = seedsManifest(x25519.utils.randomPrivateKey(), { DOGE: EXTRA.DOGE!, SOL: EXTRA.SOL!, XMR: EXTRA.XMR! });
+    const v = validateDelegate(m.raw, m.url, { "1106": { host: "seeds.honest.money", retired: false } }, [prior]);
+    expect(v.account).toBe(1106);
+    expect(v.replaces).toEqual({ linkId: "old-link", mode: "access", addedExtraChains: ["XMR"] });
+    // The site already holds this pocket's spending keys: no approve-only "downgrade" on it.
+    expect(v.modes).toEqual(["access"]);
+    // A different site's link on another pocket is not an update.
+    expect(validateDelegate(m.raw, m.url, {}, [{ ...prior, host: "chat.honest.money", account: 1108 }]).replaces).toBeUndefined();
+  });
+
+  it("keeps only the newest link per site and pocket (older builds kept both)", () => {
+    const base = { host: "seeds.honest.money", appName: "Seeds", mode: "access" as const, account: 1106, chains: [] as never, revokeUrl: "", origin: "", identity: "" };
+    const list = onePerSitePocket([
+      { ...base, linkId: "old", linkedAt: "2026-11-17T00:00:00Z" },
+      { ...base, linkId: "chat", host: "chat.honest.money", account: 1108, linkedAt: "2026-11-16T00:00:00Z" },
+      { ...base, linkId: "new", linkedAt: "2026-11-18T00:00:00Z" },
+    ]);
+    expect(list.map((l) => l.linkId)).toEqual(["new", "chat"]);
   });
 });

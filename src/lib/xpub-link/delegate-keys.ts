@@ -13,8 +13,9 @@
  *   private = hex 32 bytes.
  * - ADA: CIP-1852 Icarus (CIP-3) master key, account m/1852'/1815'/N';
  *   public = hex(A 32 ‖ chain code 32), private = hex(kL ‖ kR ‖ chain code).
- * - XMR: SLIP-0010 ed25519 at m/44'/128'/N' (Trezor's method); private spend
- *   key = sc_reduce32(keccak256(slip10 key)), view key = sc_reduce32(keccak256(spend)).
+ * - XMR: Trezor's method (trezor-firmware apps/monero get_creds): SLIP-0010
+ *   ed25519 at m/44'/128'/N'; private spend key = slip10 key mod l, view key =
+ *   keccak256(spend) mod l. Matches Trezor's own device test vectors.
  *   public = standard primary address (starts with 4), private = hex spend key;
  *   any Monero wallet rebuilds the same view key from the spend key.
  */
@@ -35,6 +36,25 @@ const H = 0x80000000;
 
 export const EXTRA_CHAINS = ["DOGE", "BCH", "DASH", "TRX", "SOL", "ZEC", "XRP", "ATOM", "RUNE", "ADA", "XMR"] as const;
 export type ExtraChain = (typeof EXTRA_CHAINS)[number];
+
+/**
+ * Exact key method per coin, as the site names it in its link (`format`).
+ * A coin whose format is missing or different is treated as unknown, so a
+ * changed method can never produce a key the site doesn't expect.
+ */
+export const EXTRA_FORMAT: Record<ExtraChain, string> = {
+  DOGE: "bip32",
+  BCH: "bip32",
+  DASH: "bip32",
+  TRX: "bip32",
+  ZEC: "bip32",
+  XRP: "bip32",
+  ATOM: "bip32",
+  RUNE: "bip32",
+  SOL: "slip10-ed25519",
+  ADA: "cip1852-icarus",
+  XMR: "slip10-ed25519-monero-trezor",
+};
 
 export function isExtraChain(c: string): c is ExtraChain {
   return (EXTRA_CHAINS as readonly string[]).includes(c);
@@ -217,10 +237,8 @@ function moneroBase58(bytes: Uint8Array): string {
 
 export function moneroAccountKey(seed: Uint8Array, account: number): { address: string; spend: string } {
   const k = slip10Ed25519(seed, `m/44'/128'/${account}'`);
-  const h = keccak_256(k);
+  const spend = scReduce(k);
   k.fill(0);
-  const spend = scReduce(h);
-  h.fill(0);
   const spendBytes = bigToLe(spend, 32);
   const vh = keccak_256(spendBytes);
   const view = scReduce(vh);

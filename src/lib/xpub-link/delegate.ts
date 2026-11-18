@@ -32,7 +32,7 @@ import { isEcosystemSite, loginSiteName, setEcosystemSites, spendingGrant } from
 import { getEcosystemSites } from "@/lib/ecosystem-sites.functions";
 import { accountPath, chainRoot, legacyPocketAccount, POCKET_CHAINS, type PocketChain } from "@/lib/seeds/pocket";
 import { chooseDelegateBranch, claimBranch, loadBranchBook, type BranchBook } from "./branches";
-import { deriveExtraKey, extraAccountOf, isExtraChain, type ExtraChain } from "./delegate-keys";
+import { deriveExtraKey, EXTRA_FORMAT, extraAccountOf, isExtraChain, type ExtraChain } from "./delegate-keys";
 
 const PROXY = "/api/nectar/link";
 
@@ -57,6 +57,8 @@ export interface DelegateManifest {
   submitUrl: string;
   revokeUrl: string;
   manifestUrl: string;
+  /** This wallet already has a link to the same site on the same pocket; submitting replaces it. */
+  replaces?: { linkId: string; mode: DelegateMode; addedExtraChains: ExtraChain[] };
 }
 
 export function isDelegateDialect(raw: Record<string, unknown>): boolean {
@@ -75,6 +77,7 @@ export function validateDelegate(
   raw: Record<string, unknown>,
   manifestUrl: string,
   book: BranchBook = currentBranchBook(),
+  existing: DelegateLinkRecord[] = listDelegateLinks(),
 ): DelegateManifest {
   const fail = (m: string): never => {
     throw new Error(m);
@@ -124,7 +127,8 @@ export function validateDelegate(
   for (const { r, optional } of entries) {
     const chain = String(r?.["chain"] ?? "").toUpperCase();
     const core = (POCKET_CHAINS as string[]).includes(chain);
-    const extra = isExtraChain(chain);
+    // Extra coins must name the exact key method this wallet implements; any other is unknown.
+    const extra = isExtraChain(chain) && r?.["format"] === EXTRA_FORMAT[chain];
     if (!core && !extra) {
       // A coin this wallet can't make a key for: skip it if optional, refuse if required.
       if (optional) continue;
@@ -145,6 +149,8 @@ export function validateDelegate(
   const choice = chooseDelegateBranch({ host, siteName, requested: requested!, reserved: grant!.branches, book });
   if (!choice.ok) fail(`Refused key request: ${choice.reason}`);
   const account = (choice as { account: number }).account;
+  // Linking again to the same site on the same pocket updates that link.
+  const prior = existing.find((l) => l.host === host && l.account === account);
   const app = (raw["app"] ?? {}) as Record<string, unknown>;
   return {
     host,
@@ -158,7 +164,20 @@ export function validateDelegate(
     account,
     // The wallet can't approve trades on coins it doesn't support, so a link
     // that requires one, or has no supported coin, is offered "access" only.
-    modes: grant!.modes.filter((m) => m !== "approve" || (!requiredExtra && chains.length > 0)),
+    // A site that already holds this pocket's spending keys can't be "downgraded" to
+    // approve-only on the same pocket: revoke (which retires it) and link again instead.
+    modes: grant!.modes.filter(
+      (m) => m !== "approve" || (!requiredExtra && chains.length > 0 && prior?.mode !== "access"),
+    ),
+    ...(prior
+      ? {
+          replaces: {
+            linkId: prior.linkId,
+            mode: prior.mode,
+            addedExtraChains: extraChains.filter((c) => !(prior.extraChains ?? []).includes(c)),
+          },
+        }
+      : {}),
     recipientPub,
     submitUrl: raw["submit_url"] as string,
     revokeUrl: raw["revoke_url"] as string,
@@ -378,11 +397,26 @@ export function currentBranchBook(): BranchBook {
 const STORE = "hme:delegate-links";
 export const DELEGATE_LINKS_EVENT = "hme:delegate-links-changed";
 
+/**
+ * One link per site and pocket: a newer link replaces an older one (the site
+ * retires the old link itself). Older builds kept both, so reading also keeps
+ * only the newest per site + pocket.
+ */
+export function onePerSitePocket(list: DelegateLinkRecord[]): DelegateLinkRecord[] {
+  const out: DelegateLinkRecord[] = [];
+  for (const r of list) {
+    const i = out.findIndex((l) => l.host === r.host && l.account === r.account);
+    if (i < 0) out.push(r);
+    else if (Date.parse(r.linkedAt) >= Date.parse(out[i]!.linkedAt)) out[i] = r;
+  }
+  return out;
+}
+
 export function listDelegateLinks(): DelegateLinkRecord[] {
   if (typeof window === "undefined") return [];
   try {
     const v = JSON.parse(window.localStorage.getItem(scopedKey(STORE)) ?? "[]") as DelegateLinkRecord[];
-    return Array.isArray(v) ? v : [];
+    return Array.isArray(v) ? onePerSitePocket(v) : [];
   } catch {
     return [];
   }
@@ -394,7 +428,7 @@ function write(list: DelegateLinkRecord[]) {
 }
 
 export function saveDelegateLink(r: DelegateLinkRecord) {
-  write([...listDelegateLinks().filter((l) => l.linkId !== r.linkId), r]);
+  write([...listDelegateLinks().filter((l) => l.linkId !== r.linkId && !(l.host === r.host && l.account === r.account)), r]);
 }
 
 export function removeDelegateLink(linkId: string) {

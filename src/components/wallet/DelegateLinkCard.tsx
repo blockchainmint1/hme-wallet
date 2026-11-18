@@ -64,6 +64,8 @@ export function DelegateLinkCard({ manifestUrl, onDone }: { manifestUrl: string;
   const canAccess = manifest.modes.includes("access");
   const canApprove = manifest.modes.includes("approve");
   const extras = manifest.extraChains.map((c) => EXTRA_CHAIN_LABEL[c]).join(", ");
+  const update = manifest.replaces;
+  const added = (update?.addedExtraChains ?? []).map((c) => EXTRA_CHAIN_LABEL[c]).join(", ");
 
   async function approve() {
     if (!manifest || !mode || !unlocked?.mnemonic) return;
@@ -74,7 +76,9 @@ export function DelegateLinkCard({ manifestUrl, onDone }: { manifestUrl: string;
       setPassword("");
       const rec = await submitDelegate({ manifest, mode, mnemonic: unlocked.mnemonic, passphrase: unlocked.passphrase ?? "" });
       setDone(
-        mode === "access"
+        update
+          ? `Updated. ${rec.appName}'s link on Trading pocket ${rec.account} now covers the coins above. Same pocket and addresses, so no coins moved.`
+          : mode === "access"
           ? `Linked. ${rec.appName} can now trade from your Trading pocket. Revoke it any time from the Trading pocket card.`
           : `Linked. ${rec.appName} will send each trade to your wallet for approval.`,
       );
@@ -91,7 +95,16 @@ export function DelegateLinkCard({ manifestUrl, onDone }: { manifestUrl: string;
       <div className="flex items-start gap-2">
         <ShieldCheck className="mt-0.5 h-4 w-4 text-emerald-500" />
         <div>
-          <p className="text-sm font-semibold">How should {manifest.appName} trade for you?</p>
+          <p className="text-sm font-semibold">
+            {update ? `Update your ${manifest.appName} link` : `How should ${manifest.appName} trade for you?`}
+          </p>
+          {update && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              This wallet is already linked to {manifest.appName} on Trading pocket {account}. This replaces that
+              link{added ? ` and adds ${added}` : ""}. Same pocket and addresses, so no coins move.
+              {update.mode === "access" ? ` ${manifest.appName} already holds this pocket's keys, so only “Give access” is offered.` : ""}
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">
             Verified honest.money ecosystem site ({manifest.host}). Trades use a separate Trading pocket
             (branch {account}, reserved for this site by honest.money). Your main wallet is never shared.

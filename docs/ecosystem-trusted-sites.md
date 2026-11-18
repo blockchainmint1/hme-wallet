@@ -77,8 +77,12 @@ five it supports itself (TXC, ISK, BTC, LTC, EVM).
   hex 32-byte SLIP-0010 private key at `m/44'/501'/N'/0'`; ADA = CIP-1852 Icarus account key at
   `m/1852'/1815'/N'`, hex public (key ‖ chain code) / hex private (kL ‖ kR ‖ chain code);
   XMR (added Nov 18 2026) = Trezor method, SLIP-0010 ed25519 at `m/44'/128'/N'`, private spend key =
-  sc_reduce32(keccak256(slip10 key)), view key = sc_reduce32(keccak256(spend)); public = primary
-  address (starts with 4), private = hex spend key.
+  slip10 key mod l, view key = keccak256(spend) mod l (matches Trezor's device test vectors); public =
+  primary address (starts with 4), private = hex reduced spend key.
+- Every extra coin must carry the exact `format` the wallet implements (bip32, slip10-ed25519,
+  cip1852-icarus, slip10-ed25519-monero-trezor); a missing or different format is treated as unknown.
+- Linking again to the same site on the same pocket replaces the wallet's earlier record for it (the
+  site retires its old link). If the earlier link was "access", only "access" is offered again.
 - Maya Protocol (CACAO) uses THORChain's coin type 931, so the RUNE key at `m/44'/931'/N'` is also
   the Maya key (same key, `maya` address prefix). No separate entry is sent.
 - The coin list is fixed in wallet code. A coin with a new key type needs a wallet release; the site's
