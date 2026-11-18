@@ -16,3 +16,4 @@
 - EIP-712 signing stays off and nonce-based CSP is deferred for the packaged APK/extension shells until a signed-shell design is reviewed.
 - Native NFC card reading and native iOS are intentionally out of scope; typed card codes and iPhone web install remain.
 - NectarPay invoice relay forwards only strict invoice ID + `t` nonce, exact `{option}` POST bodies, rate-limited per client (nectar-pay-policy.ts). Why: public route must not let anyone poke arbitrary invoices or flood the partner.
+- The partner relay's trading-link schema lists pocket + extra coins literally (relay-policy.ts); a test pins it to delegate-keys/pocket lists. Why: a new coin must be allowed in the relay too, or links fail with invalid_protocol_body.

@@ -35,6 +35,7 @@ afterEach(() => {
 const { validateDelegate, submitDelegate, onePerSitePocket, saveDelegateLink, listDelegateLinks, removeDelegateLink, currentBranchBook } = await import("./delegate");
 const { EXTRA_FORMAT } = await import("./delegate-keys");
 const { setEcosystemSites } = await import("@/lib/web-login-hosts");
+const { validateRelayPost } = await import("@/lib/security/relay-policy");
 const bip32 = BIP32Factory(ecc);
 const WORDS = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
@@ -247,5 +248,18 @@ describe("Seeds extra coins in a trading link", () => {
     removeDelegateLink("old");
     expect(listDelegateLinks().map((l) => l.linkId)).toEqual(["new"]);
     expect(currentBranchBook()["1106"]?.retired).toBe(false);
+  });
+
+  it("the wallet's own relay accepts the real link body, with and without extra coins", async () => {
+    setEcosystemSites([SEEDS], true);
+    const target = new URL("https://seeds.honest.money/api/public/hme-link/submit");
+    for (const [mode, optional] of [["access", EXTRA], ["approve", EXTRA], ["access", {}]] as const) {
+      store.clear();
+      const m = seedsManifest(x25519.utils.randomPrivateKey(), optional);
+      const manifest = validateDelegate(m.raw, m.url, {});
+      const sent = captureSubmit();
+      await submitDelegate({ manifest, mode, mnemonic: WORDS });
+      expect(() => validateRelayPost(sent.body, target), `${mode} ${Object.keys(optional).length}`).not.toThrow();
+    }
   });
 });
