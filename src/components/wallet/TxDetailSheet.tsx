@@ -5,7 +5,7 @@
  */
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
-import { ArrowDown, ArrowUp, Check, Copy, ExternalLink } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Check, Copy, ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { formatTxc } from "@/lib/txc/units";
 import { formatTokenAmount } from "@/lib/txc/tokens";
@@ -36,7 +36,7 @@ export type TxDetail =
       explorerTxUrl: (txid: string) => string;
       explorerName: string;
     }
-  | { kind: "evm"; chain: EvmChainId; transfer: EvmTransfer };
+  | { kind: "evm"; chain: EvmChainId; transfer: EvmTransfer; reason?: string | null };
 
 export function TxDetailSheet({
   detail,
@@ -201,10 +201,19 @@ function EvmDetail({ detail }: { detail: Extract<TxDetail, { kind: "evm" }> }) {
         })} ${t.asset}`}
         subtitle={t.timestamp ? new Date(t.timestamp).toLocaleString() : `Block ${t.blockNum}`}
       />
+      {detail.reason && (
+        <div role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            {detail.reason}. Not a real payment you can rely on. Copying addresses is turned off here so a
+            scammer's lookalike can't end up in your next send.
+          </span>
+        </div>
+      )}
       <Field label="Network" value={meta.name} />
       <Field label="Type" value={t.category} />
-      <Field label="From" value={t.from} mono copy />
-      {t.to && <Field label="To" value={t.to} mono copy />}
+      <Field label="From" value={t.from} mono copy={!detail.reason} />
+      {t.to && <Field label="To" value={t.to} mono copy={!detail.reason} />}
       <Field label="Transaction hash" value={t.hash} mono copy />
       {meta.explorerTx(t.hash) && (
         <Button asChild variant="outline" className="w-full">

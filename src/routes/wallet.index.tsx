@@ -45,7 +45,7 @@ import { useTokenHolderTopUp } from "@/lib/txc/topup";
 import { getTxcTokenBalancesForAddresses, getOmniTxValidity } from "@/lib/txc/tokens.functions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowDown, ArrowUp, ArrowLeftRight, ChevronLeft, ChevronRight, RefreshCw, Send, QrCode, Eye, Trash2, Lock, Key, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowLeftRight, ChevronLeft, ChevronRight, RefreshCw, Send, QrCode, Eye, Trash2, Lock, Key, Loader2 } from "lucide-react";
 import { useFeature } from "@/lib/feature-prefs";
 import { useHideSuspiciousActivity } from "@/lib/activity-prefs";
 import { filterSuspiciousActivity, suspiciousActivityReason, formatActivityAmount } from "@/lib/suspicious-activity";
@@ -1075,7 +1075,7 @@ function WalletHome() {
             <EvmActivity
               chainId={activeChain as EvmChainId}
               address={evmAddress}
-              onOpen={(t) => setDetail({ kind: "evm", chain: activeChain as EvmChainId, transfer: t })}
+              onOpen={(t, reason) => setDetail({ kind: "evm", chain: activeChain as EvmChainId, transfer: t, reason })}
             />
           )}
           {activeChain !== "txc" && activeChain !== "btc" && activeChain !== "isk" && activeChain !== "ltc" && activeChain !== "doge" && activeChain !== "tron" && activeChain !== "solana" && !(activeChain in EVM_CHAINS) && !activeWatch && !activeWif && (
@@ -2101,7 +2101,7 @@ function EvmActivity({
 }: {
   chainId: EvmChainId;
   address: string | null;
-  onOpen: (t: import("@/lib/chains/history.functions").EvmTransfer) => void;
+  onOpen: (t: import("@/lib/chains/history.functions").EvmTransfer, reason: string | null) => void;
 }) {
   const meta = EVM_CHAINS[chainId];
   const fetchHistory = useServerFn(getEvmHistory);
@@ -2163,9 +2163,13 @@ function EvmActivity({
   const [showSuspicious, setShowSuspicious] = useState(false);
   useEffect(() => setShowSuspicious(false), [chainId, address, hideSuspicious]);
   const visibleTransfers = useMemo(() => {
-    return filterSuspiciousActivity(transfersList, hideSuspicious && !showSuspicious);
-  }, [transfersList, hideSuspicious, showSuspicious]);
-  const suspiciousCount = transfersList.filter((t) => suspiciousActivityReason(t, transfersList)).length;
+    return filterSuspiciousActivity(transfersList, hideSuspicious && !showSuspicious, chainId);
+  }, [transfersList, hideSuspicious, showSuspicious, chainId]);
+  const reasons = useMemo(
+    () => new Map(transfersList.map((t) => [t, suspiciousActivityReason(t, transfersList, chainId)] as const)),
+    [transfersList, chainId],
+  );
+  const suspiciousCount = [...reasons.values()].filter(Boolean).length;
 
   // Locally-tracked sends: shown at the top until the indexer catches up.
   const indexedHashes = useMemo(
@@ -2360,25 +2364,33 @@ function EvmActivity({
           </Card>
         ) : (
           <ul className="space-y-2">
-            {visibleTransfers.map((t) => (
+            {visibleTransfers.map((t) => {
+              const reason = reasons.get(t) ?? null;
+              return (
               <li key={transferIdentity(t)}>
                 <button
                   type="button"
-                  onClick={() => onOpen(t)}
-                  className="w-full flex items-center gap-3 rounded-lg border border-border/60 bg-card/40 px-4 py-3 hover:bg-card transition-colors text-left"
+                  onClick={() => onOpen(t, reason)}
+                  className={`w-full flex items-center gap-3 rounded-lg border px-4 py-3 transition-colors text-left ${
+                    reason
+                      ? "border-destructive/50 bg-destructive/10 hover:bg-destructive/15"
+                      : "border-border/60 bg-card/40 hover:bg-card"
+                  }`}
                 >
                   <div
                     className={`w-9 h-9 rounded-full flex items-center justify-center ${
-                      t.outgoing ? "bg-rose-500/15 text-rose-400" : "bg-emerald-500/15 text-emerald-400"
+                      reason
+                        ? "bg-destructive/15 text-destructive"
+                        : t.outgoing ? "bg-rose-500/15 text-rose-400" : "bg-emerald-500/15 text-emerald-400"
                     }`}
                   >
-                    {t.outgoing ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+                    {reason ? <AlertTriangle className="h-4 w-4" aria-label="Suspicious" /> : t.outgoing ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">
                       {t.outgoing ? "Sent" : "Received"}
-                      {suspiciousActivityReason(t, transfersList) && (
-                        <span className="ml-2 text-[10px] uppercase tracking-wide text-muted-foreground" title={suspiciousActivityReason(t, transfersList) ?? undefined}>
+                      {reason && (
+                        <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-destructive">
                           suspicious
                         </span>
                       )}
@@ -2386,14 +2398,10 @@ function EvmActivity({
                     <p className="text-xs text-muted-foreground truncate">
                       {t.timestamp ? new Date(t.timestamp).toLocaleString() : `Block ${t.blockNum}`}
                     </p>
-                    {suspiciousActivityReason(t, transfersList) && (
-                      <p className="text-xs text-muted-foreground break-words">
-                        {suspiciousActivityReason(t, transfersList)}
-                      </p>
-                    )}
+                    {reason && <p className="text-xs font-medium text-destructive break-words">{reason}</p>}
                   </div>
                   <div className="text-right">
-                    <p className={`text-sm font-semibold ${t.outgoing ? "" : "text-emerald-400"}`}>
+                    <p className={`text-sm font-semibold ${reason ? "text-destructive line-through decoration-destructive/60" : t.outgoing ? "" : "text-emerald-400"}`}>
                       {t.outgoing ? "−" : "+"}
                       {formatActivityAmount(t.value)} {t.asset}
                     </p>
@@ -2401,7 +2409,8 @@ function EvmActivity({
                   <ChevronRight className="h-4 w-4 text-muted-foreground" />
                 </button>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
         {hideSuspicious && suspiciousCount > 0 && (

@@ -40,6 +40,7 @@ import { AlertTriangle } from "lucide-react";
 import { TxidCard } from "@/components/wallet/TxidCard";
 import { QrScanButton, parseWalletUri } from "@/components/wallet/QrScanButton";
 import { AddressBookButton } from "@/components/wallet/AddressBookButton";
+import { RecipientSafetyNotice, useRecipientSafety } from "@/components/wallet/RecipientSafety";
 import { hapticSuccess, hapticError } from "@/lib/native/ui";
 import { confirmWithBiometric } from "@/lib/native/biometric";
 import { rootFingerprintHex } from "@/lib/txc/fingerprint";
@@ -91,6 +92,7 @@ export function SendIskPage({ search = {}, backTo = "/wallet" }: { search?: { to
   });
 
   const [to, setTo] = useState(search.to ?? "");
+  const safety = useRecipientSafety({ family: "utxo", coin: "isk" }, to, isValidIskAddress(to.trim()));
   const [amount, setAmount] = useState(search.amount ?? "");
   // Re-sync when the top-bar scanner navigates here while already open.
   useEffect(() => {
@@ -126,6 +128,7 @@ export function SendIskPage({ search = {}, backTo = "/wallet" }: { search?: { to
       setError("That's not a valid IskanderCoin address.");
       return;
     }
+    if (safety.blocked) { setError("Check the lookalike-address warning before reviewing."); return; }
     if (!unlocked) return;
 
     const sorted = [...utxos].sort((a, b) => b.value - a.value);
@@ -261,6 +264,7 @@ export function SendIskPage({ search = {}, backTo = "/wallet" }: { search?: { to
                   <QrScanButton onScan={applyUri} />
                   <AddressBookButton chain="isk" onPick={(a) => setTo(a)} />
                 </div>
+                <div className="mt-2"><RecipientSafetyNotice safety={safety} /></div>
               </div>
               <div>
                 <div className="flex items-center justify-between">
@@ -320,7 +324,7 @@ export function SendIskPage({ search = {}, backTo = "/wallet" }: { search?: { to
               <Button
                 type="submit"
                 className="w-full"
-                disabled={!to || (!sendAll && !amount) || account.isLoading}
+                disabled={!to || (!sendAll && !amount) || account.isLoading || safety.blocked}
               >
                 Review
               </Button>

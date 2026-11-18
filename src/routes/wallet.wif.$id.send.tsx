@@ -41,6 +41,7 @@ import { AlertTriangle } from "lucide-react";
 import { TxidCard } from "@/components/wallet/TxidCard";
 import { QrScanButton, parseWalletUri } from "@/components/wallet/QrScanButton";
 import { AddressBookButton } from "@/components/wallet/AddressBookButton";
+import { RecipientSafetyNotice, useRecipientSafety } from "@/components/wallet/RecipientSafety";
 import { hapticSuccess, hapticError } from "@/lib/native/ui";
 import { confirmWithBiometric } from "@/lib/native/biometric";
 
@@ -136,6 +137,16 @@ function WifSendPage() {
   const [stage, setStage] = useState<Stage>({ kind: "form" });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const safetyValid = (() => {
+    try {
+      if (!network) return false;
+      addrLib.toOutputScript(to.trim(), network);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  const safety = useRecipientSafety({ family: "utxo", coin: entry?.chain === "isk" ? "isk" : "txc" }, to, safetyValid);
 
   if (!entry) {
     return (
@@ -180,6 +191,10 @@ function WifSendPage() {
     const cleanTo = to.trim();
     if (!isValidAddress(cleanTo)) {
       setError(`That's not a valid ${chainLabel} address.`);
+      return;
+    }
+    if (safety.blocked) {
+      setError("Check the lookalike-address warning before reviewing.");
       return;
     }
     const sorted = [...utxos].sort((a, b) => b.value - a.value);
@@ -390,6 +405,7 @@ function WifSendPage() {
                   <QrScanButton onScan={applyUri} />
                   <AddressBookButton chain={entry.chain} onPick={(a) => setTo(a)} />
                 </div>
+                <div className="mt-2"><RecipientSafetyNotice safety={safety} /></div>
               </div>
               <div>
                 <div className="flex items-center justify-between">
@@ -451,7 +467,7 @@ function WifSendPage() {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={!to || (!sendAll && !amount) || utxosQ.isLoading}
+                disabled={!to || (!sendAll && !amount) || utxosQ.isLoading || safety.blocked}
               >
                 Review
               </Button>

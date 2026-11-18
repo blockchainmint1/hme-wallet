@@ -24,6 +24,7 @@ import {
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { RecipientListSafetyNotice, useRecipientListSafety } from "@/components/wallet/RecipientSafety";
 
 type Step = BulkSavedStep;
 const VB: Record<string, number> = { bip84: 68, bip49: 91, bip44: 148 };
@@ -141,7 +142,8 @@ export function BulkSend() {
   const fundingUtxos = token && holder ? utxos.filter((u) => u.address === holder.a.address) : utxos;
   const fundingSats = fundingUtxos.reduce((s, u) => s + u.value, 0);
   if (parsed.rows.length && account.data && (!token || holder) && fundingSats < txcNeeded) problems.push(token ? `The ${token.symbol} address needs about ${formatTxc(txcNeeded)} for network fees and markers, but has ${formatTxc(fundingSats)}. Send some TXC to ${holder!.a.address} first.` : `Not enough TXC. Need about ${formatTxc(txcNeeded)}, have ${formatTxc(txcBalance)}.`);
-  const ready = regular && parsed.rows.length > 0 && problems.length === 0 && !busy && !!account.data;
+  const listSafety = useRecipientListSafety({ family: "utxo", coin: "txc" }, parsed.rows.map((r) => r.address));
+  const ready = regular && parsed.rows.length > 0 && problems.length === 0 && !listSafety.blocked && !busy && !!account.data;
 
   function setStep(log: Step[], i: number, p: Partial<Step>) { log[i] = { ...log[i], ...p }; setSteps([...log]); }
 
@@ -153,6 +155,7 @@ export function BulkSend() {
   async function run() {
     if (!ready || !root || !unlocked || !account.data) return;
     // The address lookup can restart (for example after a rescan) while the confirm box is open.
+    if (listSafety.blocked) { setConfirmOpen(false); setError("Check the lookalike-address warning first. Nothing was sent."); return; }
     if (token && !holder) { setConfirmOpen(false); setError(`Still checking which address holds your ${token.symbol}. Nothing was sent; try again in a moment.`); return; }
     const label = confirmLabel;
     setConfirmOpen(false);
@@ -253,6 +256,7 @@ export function BulkSend() {
         {token && <p className="mt-4 text-xs text-muted-foreground">Tokens go out in batches of {STM_BATCH_SIZE}, one transaction each, and each recipient also gets {formatTxc(BULK_DUST_SATS)} as a required marker. If a batch fails, earlier batches have already been sent and the rest stop.</p>}
         {parsed.duplicates.length > 0 && <p className="mt-3 text-xs text-muted-foreground">Listed more than once, amounts combined into one payment: {parsed.duplicates.join(", ")}</p>}
         {problems.length > 0 && <ul className="mt-3 space-y-1 text-xs text-destructive">{problems.slice(0, 8).map((p) => <li key={p}>{p}</li>)}</ul>}
+        <RecipientListSafetyNotice safety={listSafety} />
         <Button className="mt-5 w-full" disabled={!ready} onClick={() => setConfirmOpen(true)}>{busy ? "Sending…" : `Send to ${parsed.rows.length || ""} recipients`}</Button>
         {error && <p role="alert" className="mt-3 break-words text-xs text-destructive">{error}</p>}
         {steps.length > 0 && bulkRunSettled({ asset, steps, savedAt: 0 }) && !busy && <Button variant="outline" size="sm" className="mt-4" onClick={() => { setSteps([]); setError(""); }}>Clear results</Button>}

@@ -3,10 +3,13 @@
  * so it gets its own small set of components instead of reusing BtcForkTile
  * or EvmTile.
  */
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowDownLeft, ArrowUpRight, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowDownLeft, ArrowUpRight, Eye, RefreshCw } from "lucide-react";
+import { useHideSuspiciousActivity } from "@/lib/activity-prefs";
+import { tronSuspiciousReason, tronTrustedDestinations } from "@/lib/address-lookalike";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useHideBalances, maskAmount } from "@/lib/hide-balances";
 import { formatFiat } from "@/lib/txc/units";
@@ -162,7 +165,22 @@ export function TronActivity({ address }: { address: string | null }) {
     staleTime: 20_000,
   });
 
-  const rows = useMemo(() => history.data ?? null, [history.data]);
+  const all = useMemo(() => history.data ?? null, [history.data]);
+  const [hideSuspicious] = useHideSuspiciousActivity();
+  const [showSuspicious, setShowSuspicious] = useState(false);
+  const reasons = useMemo(() => {
+    const map = new Map<TronTransfer, string | null>();
+    if (!all || !address) return map;
+    const verified = new Set(TRC20_TOKENS.map((t) => t.contract));
+    const trusted = tronTrustedDestinations(all, address, verified);
+    for (const t of all) map.set(t, tronSuspiciousReason(t, address, trusted, verified));
+    return map;
+  }, [all, address]);
+  const suspiciousCount = [...reasons.values()].filter(Boolean).length;
+  const rows = useMemo(
+    () => (all && hideSuspicious && !showSuspicious ? all.filter((t) => !reasons.get(t)) : all),
+    [all, hideSuspicious, showSuspicious, reasons],
+  );
 
   return (
     <section className="mt-8 px-4">
@@ -190,21 +208,32 @@ export function TronActivity({ address }: { address: string | null }) {
       ) : (rows?.length ?? 0) === 0 ? (
         <Card>
           <CardContent className="pt-6 text-sm text-muted-foreground">
-            No Tron transactions yet.
+            {suspiciousCount > 0 ? "Hidden suspicious activity" : "No Tron transactions yet."}
           </CardContent>
         </Card>
       ) : (
         <ul className="space-y-2">
           {rows!.slice(0, 50).map((tx) => (
-            <TronRow key={`${tx.txid}-${tx.symbol}-${tx.value}`} tx={tx} address={address} />
+            <TronRow key={`${tx.txid}-${tx.symbol}-${tx.value}`} tx={tx} address={address} reason={reasons.get(tx) ?? null} />
           ))}
         </ul>
+      )}
+      {hideSuspicious && suspiciousCount > 0 && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+          <span className="text-xs text-muted-foreground">
+            {showSuspicious ? "Suspicious activity" : "Hidden suspicious activity"} ({suspiciousCount})
+          </span>
+          <Button variant="ghost" size="sm" onClick={() => setShowSuspicious((show) => !show)}>
+            <Eye className="mr-2 h-4 w-4" />
+            {showSuspicious ? "Hide suspicious" : "Show all"}
+          </Button>
+        </div>
       )}
     </section>
   );
 }
 
-function TronRow({ tx, address }: { tx: TronTransfer; address: string | null }) {
+function TronRow({ tx, address, reason }: { tx: TronTransfer; address: string | null; reason: string | null }) {
   const [hidden] = useHideBalances();
   const label = useSyncExternalStore(
     subscribeTronTxLabels,
@@ -223,22 +252,30 @@ function TronRow({ tx, address }: { tx: TronTransfer; address: string | null }) 
         href={explorerTxUrl(tx.txid)}
         target="_blank"
         rel="noreferrer"
-        className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/40 px-4 py-3"
+        className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-3 ${
+          reason ? "border-destructive/50 bg-destructive/10" : "border-border/60 bg-card/40"
+        }`}
       >
         <div className="flex items-center gap-3 min-w-0">
           <span
             className={`rounded-full p-2 ${
-              incoming ? "bg-emerald-500/15 text-emerald-500" : "bg-muted text-muted-foreground"
+              reason ? "bg-destructive/15 text-destructive" : incoming ? "bg-emerald-500/15 text-emerald-500" : "bg-muted text-muted-foreground"
             }`}
           >
-            {incoming ? (
+            {reason ? (
+              <AlertTriangle className="h-4 w-4" aria-label="Suspicious" />
+            ) : incoming ? (
               <ArrowDownLeft className="h-4 w-4" />
             ) : (
               <ArrowUpRight className="h-4 w-4" />
             )}
           </span>
           <div className="min-w-0">
-            <p className="text-sm font-medium">{title}</p>
+            <p className="text-sm font-medium">
+              {title}
+              {reason && <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-destructive">suspicious</span>}
+            </p>
+            {reason && <p className="text-xs font-medium text-destructive break-words">{reason}</p>}
             <p className="text-xs text-muted-foreground truncate">
               {label === "bridge-approval" ? "Permission only — no funds moved · " : ""}
               {when}

@@ -53,6 +53,7 @@ import {
 import { getKnownTokens, useTokensForChain } from "@/lib/token-prefs";
 import { AddressBookButton } from "@/components/wallet/AddressBookButton";
 import { QrScanButton } from "@/components/wallet/QrScanButton";
+import { RecipientSafetyNotice, useRecipientSafety } from "@/components/wallet/RecipientSafety";
 import { hapticSuccess, hapticError } from "@/lib/native/ui";
 import { confirmWithBiometric } from "@/lib/native/biometric";
 import { useFeature } from "@/lib/feature-prefs";
@@ -169,6 +170,7 @@ export function EvmSend({ chain, search = {}, backTo = "/wallet" }: { chain: Evm
   }, [search.to, search.amount]);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<`0x${string}` | null>(null);
+  const safety = useRecipientSafety({ family: "evm", self: address }, to, isAddress(to));
 
   // Native balance (always fetched — used for gas visibility and native sends).
   const nativeBal = useQuery({
@@ -224,6 +226,7 @@ export function EvmSend({ chain, search = {}, backTo = "/wallet" }: { chain: Evm
     mutationFn: async () => {
       if (!address) throw new Error(isVault ? "Pair this Vault's Ethereum address before sending." : "Wallet locked");
       if (!isAddress(to)) throw new Error("Invalid address");
+      if (safety.blocked) throw new Error("Check the lookalike-address warning above before sending.");
       if (confirmLast4Enabled) {
         const last4 = to.slice(-4).toLowerCase();
         if (confirmTail.toLowerCase() !== last4) {
@@ -424,6 +427,7 @@ export function EvmSend({ chain, search = {}, backTo = "/wallet" }: { chain: Evm
               <QrScanButton onScan={handleScan} />
               <AddressBookButton chain={chainId} onPick={setTo} />
             </div>
+            <div className="mt-2"><RecipientSafetyNotice safety={safety} /></div>
           </div>
 
           {isAddress(to) && confirmLast4Enabled && (
@@ -480,7 +484,7 @@ export function EvmSend({ chain, search = {}, backTo = "/wallet" }: { chain: Evm
             <AlertDialogTrigger asChild>
               <Button
                 onClick={() => setError(null)}
-                disabled={!address || !to || !amount || send.isPending}
+                disabled={!address || !to || !amount || safety.blocked || send.isPending}
                 className="w-full"
                 size="lg"
               >

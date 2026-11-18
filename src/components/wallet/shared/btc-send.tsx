@@ -22,6 +22,7 @@ import { AlertTriangle } from "lucide-react";
 import { TxidCard } from "@/components/wallet/TxidCard";
 import { QrScanButton, parseWalletUri } from "@/components/wallet/QrScanButton";
 import { AddressBookButton } from "@/components/wallet/AddressBookButton";
+import { RecipientSafetyNotice, useRecipientSafety } from "@/components/wallet/RecipientSafety";
 import { hapticSuccess, hapticError } from "@/lib/native/ui";
 import { confirmWithBiometric } from "@/lib/native/biometric";
 import { rootFingerprintHex } from "@/lib/txc/fingerprint";
@@ -67,6 +68,7 @@ export function SendBtcPage({ search = {}, backTo = "/wallet" }: { search?: { to
   });
 
   const [to, setTo] = useState(search.to ?? "");
+  const safety = useRecipientSafety({ family: "utxo", coin: "btc" }, to, isValidBtcAddress(to.trim()));
   const [amount, setAmount] = useState(search.amount ?? "");
   // Re-sync when the top-bar scanner navigates here while already open.
   useEffect(() => {
@@ -109,6 +111,7 @@ export function SendBtcPage({ search = {}, backTo = "/wallet" }: { search?: { to
       setStage({ kind: "review", vsize, feeSats, selected: nIn });
       return;
     }
+    if (safety.blocked) { setError("Check the lookalike-address warning before reviewing."); return; }
 
     if (amountSats <= 546) { setError("Amount is below dust limit."); return; }
 
@@ -196,6 +199,7 @@ export function SendBtcPage({ search = {}, backTo = "/wallet" }: { search?: { to
                   <QrScanButton onScan={applyUri} />
                   <AddressBookButton chain="btc" onPick={(a) => setTo(a)} />
                 </div>
+                <div className="mt-2"><RecipientSafetyNotice safety={safety} /></div>
               </div>
               <div>
                 <div className="flex items-center justify-between">
@@ -229,7 +233,7 @@ export function SendBtcPage({ search = {}, backTo = "/wallet" }: { search?: { to
                   <AlertTriangle className="h-4 w-4 mt-0.5" /> {error}
                 </div>
               )}
-              <Button type="submit" className="w-full" disabled={!to || (!sendAll && !amount) || account.isLoading}>Review</Button>
+              <Button type="submit" className="w-full" disabled={!to || (!sendAll && !amount) || account.isLoading || safety.blocked}>Review</Button>
             </form>
           </CardContent>
         </Card>

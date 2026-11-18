@@ -58,7 +58,7 @@ describe("recoverable suspicious transaction filtering", () => {
   it("flags native dust only when the sender impersonates a paid recipient", () => {
     const dust = transfer({ value: "0.00000001" });
     const paid = transfer({ outgoing: true, to: "0x1234" + "c".repeat(32) + "5678" });
-    expect(suspiciousActivityReason(dust, [paid, dust])).toBe("Tiny transfer from a lookalike address");
+    expect(suspiciousActivityReason(dust, [paid, dust])).toBe("Lookalike of an address you've paid — possible address poisoning");
   });
   it("does not label an exact previously paid address as a lookalike", () => {
     const dust = transfer({ value: "0.00000001" });
@@ -69,5 +69,37 @@ describe("recoverable suspicious transaction filtering", () => {
   });
   it("never rounds a tiny positive payment to zero", () => {
     expect(Number(formatActivityAmount("0.000000000000000001"))).toBe(1e-18);
+  });
+
+  describe("lookalikes on every transfer (member report, 15 Nov 2026)", () => {
+    const REAL = "0x704d88a6" + "1".repeat(28) + "fb47";
+    const LOOK_A = "0x704d11a4" + "2".repeat(28) + "fb47";
+    const LOOK_B = "0x7041be99" + "3".repeat(28) + "fb47";
+    const USDC = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48";
+    const paidUsdc = transfer({ outgoing: true, to: REAL, value: "700", asset: "USDC", category: "erc20", contractAddress: USDC });
+
+    it("flags a brand-new fake token from a lookalike even when no spam list knows it", () => {
+      const fake = transfer({ from: LOOK_A, value: "700", asset: "USDC", category: "erc20", contractAddress: "0x" + "d".repeat(40) });
+      expect(suspiciousActivityReason(fake, [paidUsdc, fake], "eth")).toMatch(/Lookalike/);
+      expect(filterSuspiciousActivity([paidUsdc, fake], true, "eth")).toEqual([paidUsdc]);
+    });
+    it("flags a fake 'you sent' event to a lookalike, three characters in front is enough", () => {
+      const claimed = transfer({ outgoing: true, to: LOOK_B, value: "900", asset: "USDC", category: "erc20", contractAddress: "0x" + "e".repeat(40) });
+      expect(suspiciousActivityReason(claimed, [paidUsdc, claimed], "eth")).toMatch(/Lookalike/);
+    });
+    it("only signed sends make an address trusted, never a token event claiming one", () => {
+      const fakeClaim = transfer({ outgoing: true, to: REAL, value: "700", category: "erc20", contractAddress: "0x" + "e".repeat(40) });
+      const fromLook = transfer({ from: LOOK_A, value: "1", asset: "ETH" });
+      expect(suspiciousActivityReason(fromLook, [fakeClaim, fromLook], "eth")).toBeNull();
+    });
+    it("keeps the genuine USDC payment and a real native send visible", () => {
+      const sentNative = transfer({ outgoing: true, to: LOOK_A, value: "1" });
+      expect(suspiciousActivityReason(paidUsdc, [paidUsdc, sentNative], "eth")).toBeNull();
+      expect(suspiciousActivityReason(sentNative, [paidUsdc, sentNative], "eth")).toBeNull();
+    });
+    it("leaves unrelated counterparties alone", () => {
+      const other = transfer({ from: "0x704d" + "9".repeat(32) + "0000", value: "5", category: "erc20", contractAddress: USDC });
+      expect(suspiciousActivityReason(other, [paidUsdc, other], "eth")).toBeNull();
+    });
   });
 });

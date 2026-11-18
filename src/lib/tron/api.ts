@@ -65,6 +65,8 @@ export interface TronTransfer {
   symbol: string;
   decimals: number;
   kind: "trx" | "trc20";
+  /** TRC-20 contract (base58) when the indexer reports it. */
+  contract?: string;
   confirmed: boolean;
 }
 
@@ -74,7 +76,7 @@ interface Trc20Row {
   from: string;
   to: string;
   value: string;
-  token_info?: { symbol?: string; decimals?: number };
+  token_info?: { symbol?: string; decimals?: number; address?: string };
 }
 
 /** Recent TRC-20 transfers for an address. */
@@ -91,6 +93,7 @@ export async function getTrc20Transfers(address: string, limit = 25): Promise<Tr
     symbol: r.token_info?.symbol ?? "TRC20",
     decimals: r.token_info?.decimals ?? 6,
     kind: "trc20" as const,
+    contract: r.token_info?.address,
     confirmed: true,
   }));
 }

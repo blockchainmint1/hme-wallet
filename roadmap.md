@@ -119,3 +119,6 @@
 - [ ] Auditor accepts on that basis + reviews derivations from the export before publish (waits on auditor)
 - [x] Seeds code review 18 Nov: wallet refuses updates that drop a coin; revoke uses an in-app dialog with a required tick when extra coins are shared
 - [ ] Publish wallet after Seeds-side conditions are live and auditor checks Seeds (waits on Seeds + auditor); then rebuild extension and APK
+- [x] Address-poisoning protection (member feedback): send-screen lookalike stop + recent-payment note on every send screen incl. Send to many and imported keys; red flagged rows phone+desktop; token lookalike rule (trusted = signed sends); explorer handoffs (TXC Tokens, TXC mempool)
+- [ ] Auditor review, then publish + extension + APK (waits on auditor/Bobby); test against the member's watch-only payout wallet (waits on member's address)
+- [ ] TXC Tokens + TXC mempool build their handoffs (open those projects)

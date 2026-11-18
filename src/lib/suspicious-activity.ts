@@ -1,8 +1,34 @@
-import type { EvmTransfer } from "@/lib/chains/history.functions";
+import type { EvmChainId, EvmTransfer } from "@/lib/chains/history.functions";
+import { getKnownTokens } from "@/lib/token-prefs";
+import { evmTrustedDestinations, isLookalike } from "@/lib/address-lookalike";
 import { zeroValueTokenReason } from "./chains/history-cache";
 
-/** Advisory only: never changes balances, stored history, or spending permissions. */
-export function suspiciousActivityReason(t: EvmTransfer, history: EvmTransfer[]): string | null {
+/** Verified contracts (built-in + the member's own custom tokens) per chain. */
+function verifiedContracts(chain?: EvmChainId): Set<string> {
+  if (!chain) return new Set();
+  try {
+    return new Set(getKnownTokens(chain).map((t) => t.address.toLowerCase()));
+  } catch {
+    return new Set();
+  }
+}
+
+const trustedCache = new WeakMap<EvmTransfer[], Map<string, Set<string>>>();
+function trustedFor(history: EvmTransfer[], chain?: EvmChainId): Set<string> {
+  let byChain = trustedCache.get(history);
+  if (!byChain) trustedCache.set(history, (byChain = new Map()));
+  const key = chain ?? "";
+  let set = byChain.get(key);
+  if (!set) byChain.set(key, (set = evmTrustedDestinations(history, verifiedContracts(chain))));
+  return set;
+}
+
+/**
+ * Advisory only: never changes balances, stored history, or spending permissions.
+ * `chain` lets sends of verified tokens count as real payments; without it only
+ * native sends do.
+ */
+export function suspiciousActivityReason(t: EvmTransfer, history: EvmTransfer[], chain?: EvmChainId): string | null {
   // A Transfer log's `from` is not a signature: counterfeit contracts can
   // claim any wallet sent their token. Contract-based token classification
   // therefore takes precedence over the outgoing display flag.
@@ -14,30 +40,28 @@ export function suspiciousActivityReason(t: EvmTransfer, history: EvmTransfer[])
   }
   const poisoning = zeroValueTokenReason(t);
   if (poisoning) return poisoning;
-  // Native sends and nonzero genuine ERC-20 movements stay visible.
+  // Native sends were signed by this key: always real, never hidden.
+  if (t.outgoing && t.category === "external") return null;
+  // Any other row whose counterparty mimics an address this wallet really
+  // paid — native or token, either direction, any amount, spam-listed or not.
+  const trusted = trustedFor(history, chain);
+  const counterparty = (t.outgoing ? t.to : t.from)?.toLowerCase();
+  if (counterparty && /^0x[0-9a-f]{40}$/.test(counterparty) && !trusted.has(counterparty)) {
+    for (const paid of trusted) {
+      if (isLookalike(paid, counterparty, "evm")) return "Lookalike of an address you've paid — possible address poisoning";
+    }
+  }
+  // Other outgoing and nonzero genuine ERC-20 movements stay visible.
   if (t.outgoing) return null;
   if (t.spam) return t.spamReason ?? "Suspicious token transfer";
   const amount = Number(t.value);
   if (!Number.isFinite(amount) || amount < 0) return null;
   if (amount === 0) return "Zero-value incoming transfer";
-  // Dust alone is not proof of phishing. Require a lookalike of a recipient
-  // the wallet has actually paid. Only native currency is covered here.
-  if (t.category !== "external" && t.category !== "internal") return null;
-  if (amount > 0.000001) return null;
-  const sender = t.from.toLowerCase();
-  if (!/^0x[0-9a-f]{40}$/.test(sender)) return null;
-  const lookalike = history.some((previous) => {
-    const recipient = previous.outgoing ? previous.to?.toLowerCase() : null;
-    return recipient && recipient !== sender &&
-      /^0x[0-9a-f]{40}$/.test(recipient) &&
-      recipient.slice(0, 6) === sender.slice(0, 6) &&
-      recipient.slice(-4) === sender.slice(-4);
-  });
-  return lookalike ? "Tiny transfer from a lookalike address" : null;
+  return null;
 }
 
-export function filterSuspiciousActivity(history: EvmTransfer[], hide: boolean): EvmTransfer[] {
-  return hide ? history.filter((t) => !suspiciousActivityReason(t, history)) : history;
+export function filterSuspiciousActivity(history: EvmTransfer[], hide: boolean, chain?: EvmChainId): EvmTransfer[] {
+  return hide ? history.filter((t) => !suspiciousActivityReason(t, history, chain)) : history;
 }
 
 /** Don't turn a nonzero payment into an apparent zero through rounding. */

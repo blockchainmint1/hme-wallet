@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { QrScanButton } from "@/components/wallet/QrScanButton";
 import { AddressBookButton } from "@/components/wallet/AddressBookButton";
+import { RecipientSafetyNotice, useRecipientSafety } from "@/components/wallet/RecipientSafety";
 import { useWallet } from "@/lib/txc/wallet-context";
 import { deriveTronAccount, isValidTronAddress } from "@/lib/tron/address";
 import { TRC20_TOKENS, explorerTxUrl } from "@/lib/tron/network";
@@ -89,6 +90,7 @@ export function TronSend({ search = {}, backTo = "/wallet" }: { search?: { to?: 
   const lowTrxForFees = needsEnergy && trxSun < 30_000_000; // ~30 TRX burn
 
   const validTo = isValidTronAddress(to);
+  const safety = useRecipientSafety({ family: "tron", self: address }, to, validTo);
   const parsedAmount = token
     ? parseTokenAmount(amount, token.decimals)
     : BigInt(trxToSun(amount));
@@ -98,7 +100,7 @@ export function TronSend({ search = {}, backTo = "/wallet" }: { search?: { to?: 
     : parsedAmount > BigInt(trxSun);
 
   async function submit() {
-    if (!account || !validTo || !hasAmount || overBalance) return;
+    if (!account || !validTo || !hasAmount || overBalance || safety.blocked) return;
     setSending(true);
     try {
       const id = token
@@ -194,6 +196,7 @@ export function TronSend({ search = {}, backTo = "/wallet" }: { search?: { to?: 
                 characters long.
               </p>
             )}
+            <RecipientSafetyNotice safety={safety} />
           </div>
 
           <div className="space-y-2">
@@ -230,7 +233,7 @@ export function TronSend({ search = {}, backTo = "/wallet" }: { search?: { to?: 
           <Button
             className="w-full"
             size="lg"
-            disabled={!account || !validTo || !hasAmount || overBalance || sending}
+            disabled={!account || !validTo || !hasAmount || overBalance || safety.blocked || sending}
             onClick={submit}
           >
             {sending ? (

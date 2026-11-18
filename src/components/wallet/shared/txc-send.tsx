@@ -44,6 +44,7 @@ import { TXC_NETWORK } from "@/lib/txc/network";
 import { address as addrLib, payments } from "bitcoinjs-lib";
 import { QrScanButton, parseWalletUri } from "@/components/wallet/QrScanButton";
 import { AddressBookButton } from "@/components/wallet/AddressBookButton";
+import { RecipientSafetyNotice, useRecipientSafety } from "@/components/wallet/RecipientSafety";
 import { hapticSuccess, hapticError } from "@/lib/native/ui";
 import { confirmWithBiometric } from "@/lib/native/biometric";
 import { rootFingerprintHex } from "@/lib/txc/fingerprint";
@@ -235,6 +236,8 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
     typeof asset === "number" ? (tokens.find((t) => t.id === asset) ?? null) : null;
   const isTokenSend = activeToken !== null;
   const [cashoutApiKey] = useCashoutApiKey();
+  // A TSD Bridge cash-out deposit address is checked against the bridge order itself.
+  const safety = useRecipientSafety({ family: "utxo", coin: "txc" }, to, !cashout && isValidTxcAddress(to.trim()));
   // The off-ramp only exists once the user has linked their TSD Swap account.
   const canCashOut =
     exchangeAllowed && !!cashoutApiKey && activeToken?.id === TSD_PROPERTY_ID;
@@ -438,6 +441,10 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
     const cleanTo = to.trim();
     if (!isValidTxcAddress(cleanTo)) {
       setError("That's not a valid TEXITcoin address.");
+      return;
+    }
+    if (!cashout && safety.blocked) {
+      setError("Check the lookalike-address warning before reviewing.");
       return;
     }
     if (!unlocked) return;
@@ -952,6 +959,7 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
                   <QrScanButton onScan={applyUri} />
                   <AddressBookButton chain="txc" onPick={(a) => setTo(a)} />
                 </div>
+                {!cashout && <div className="mt-2"><RecipientSafetyNotice safety={safety} /></div>}
                 {isTokenSend && (
                   <p className="mt-1.5 text-xs text-muted-foreground">
                     {activeToken?.symbol} rides the Omni layer, which can't read segwit — the
@@ -1110,7 +1118,7 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
               <Button
                 type="submit"
                 className="w-full"
-                disabled={!to || (!sendAll && !amount) || account.isLoading}
+                disabled={!to || (!sendAll && !amount) || account.isLoading || (!cashout && safety.blocked)}
               >
                 Review
               </Button>
