@@ -28,11 +28,24 @@ const CHAIN_LABEL: Record<string, string> = {
   EVM: "ETH / Base / BNB / Zero Chill",
 };
 
+/** Relay and site error codes, in plain words. Nothing is shared when these happen. */
+export function friendlyLinkError(code: string): string {
+  const known: Record<string, string> = {
+    invalid_protocol_body: "The wallet's safety check refused to send this link request. Nothing was shared.",
+    untrusted_url: "That link points somewhere the wallet won't connect to.",
+    upstream_unreachable: "Couldn't reach the site. Try again in a moment.",
+    expired: "This link code has expired. Make a fresh one on the site and try again.",
+    payload_too_large: "This link request is too large to send. Nothing was shared.",
+  };
+  return known[code] ?? code;
+}
+
 export function DelegateLinkCard({ manifestUrl, onDone }: { manifestUrl: string; onDone?: () => void }) {
   const { unlocked, activeProfileId } = useWallet();
   const allowed = useExchangeFeaturesAllowed();
   const [manifest, setManifest] = useState<DelegateManifest | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [mode, setMode] = useState<DelegateMode | null>(null);
   const [ack, setAck] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -41,17 +54,17 @@ export function DelegateLinkCard({ manifestUrl, onDone }: { manifestUrl: string;
 
   useEffect(() => {
     let live = true;
-    setError(null);
+    setLoadError(null);
     fetchDelegateManifest(manifestUrl)
       .then((m) => live && setManifest(m))
-      .catch((e: Error) => live && setError(e.message));
+      .catch((e: Error) => live && setLoadError(friendlyLinkError(e.message)));
     return () => {
       live = false;
     };
   }, [manifestUrl]);
 
   if (!allowed) return <p className="text-xs text-muted-foreground">Trading links aren't available in this version of the app.</p>;
-  if (error) return <p className="text-xs text-destructive">{error}</p>;
+  if (loadError) return <p className="text-xs text-destructive">{loadError}</p>;
   if (done) return <p className="text-sm text-emerald-500">{done}</p>;
   if (!manifest)
     return (
@@ -84,7 +97,7 @@ export function DelegateLinkCard({ manifestUrl, onDone }: { manifestUrl: string;
       );
       onDone?.();
     } catch (e) {
-      setError((e as Error).message);
+      setError(friendlyLinkError((e as Error).message));
     } finally {
       setBusy(false);
     }
