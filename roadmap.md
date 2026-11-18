@@ -9,7 +9,8 @@
 - [x] Seeds lists all 11 with formats and confirmed Cardano + Monero (built in their preview)
 - [x] Seeds built "Add new coins", never-drop-a-coin and different-pocket refusal (in their preview); live Seeds sends `format` for all 11
 - [x] Seeds reminder: revoking an older record can't retire the live pocket — covered by test (one record per site + pocket)
-- [ ] Bobby publishes Seeds, then the wallet (web, extension, phone app) — waits on Bobby's publish/audit call
+- [x] Bobby chose to publish the wallet ahead of Seeds withdraw-all (Nov 18): web published, extension 0.5.4 rebuilt with Monero handoff
+- [ ] Phone app build carrying the Monero handoff (Bobby runs GitHub Actions)
 - [ ] Joint test with Seeds once the wallet update is live: 5 → 16 coins on 1106, old-build re-link refused
 - [ ] Auditor review of the Monero addition, then publish + extension + APK (waits on auditor)
 
