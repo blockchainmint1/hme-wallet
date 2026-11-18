@@ -32,7 +32,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const { validateDelegate, submitDelegate, onePerSitePocket } = await import("./delegate");
+const { validateDelegate, submitDelegate, onePerSitePocket, saveDelegateLink, listDelegateLinks, removeDelegateLink, currentBranchBook } = await import("./delegate");
 const { EXTRA_FORMAT } = await import("./delegate-keys");
 const { setEcosystemSites } = await import("@/lib/web-login-hosts");
 const bip32 = BIP32Factory(ecc);
@@ -203,5 +203,25 @@ describe("Seeds extra coins in a trading link", () => {
       { ...base, linkId: "new", linkedAt: "2026-11-18T00:00:00Z" },
     ]);
     expect(list.map((l) => l.linkId)).toEqual(["new", "chat"]);
+  });
+
+  it("after a re-link, the older record can't be revoked, so it can never retire the live pocket", () => {
+    const base = { host: "seeds.honest.money", appName: "Seeds", mode: "access" as const, account: 1106, chains: [] as never, revokeUrl: "", origin: "", identity: "" };
+    saveDelegateLink({ ...base, linkId: "old", linkedAt: "2026-11-17T00:00:00Z" });
+    saveDelegateLink({ ...base, linkId: "new", linkedAt: "2026-11-18T00:00:00Z" });
+    // Only the live link is listed, so it's the only one Revoke can be pressed on.
+    expect(listDelegateLinks().map((l) => l.linkId)).toEqual(["new"]);
+    expect(currentBranchBook()["1106"]).toEqual({ host: "seeds.honest.money", retired: false });
+
+    // An older build left both records in storage: the stale one is still hidden,
+    // and removing it by id leaves the live link (and its pocket) alone.
+    store.set("hme:delegate-links", JSON.stringify([
+      { ...base, linkId: "old", linkedAt: "2026-11-17T00:00:00Z" },
+      { ...base, linkId: "new", linkedAt: "2026-11-18T00:00:00Z" },
+    ]));
+    expect(listDelegateLinks().map((l) => l.linkId)).toEqual(["new"]);
+    removeDelegateLink("old");
+    expect(listDelegateLinks().map((l) => l.linkId)).toEqual(["new"]);
+    expect(currentBranchBook()["1106"]?.retired).toBe(false);
   });
 });

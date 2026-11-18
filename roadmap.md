@@ -7,8 +7,10 @@
 - [x] Bobby's rule: no automatic/generic chains; each chain is built and tested on purpose here before its keys go to Seeds (generic option dropped)
 - [x] Seeds' reply: Monero fixed to Trezor's exact method (Trezor + Seeds test addresses), exact `format` check, relink updates one link (691 tests, browser-checked)
 - [x] Seeds lists all 11 with formats and confirmed Cardano + Monero (built in their preview)
-- [ ] Bobby publishes Seeds; Seeds adds an "Add new coins" relink button for linked members (waits on Seeds)
-- [ ] Seeds: refuse a different pocket while linked + never drop a coin on replace (handoff v2; waits on Seeds)
+- [x] Seeds built "Add new coins", never-drop-a-coin and different-pocket refusal (in their preview); live Seeds sends `format` for all 11
+- [x] Seeds reminder: revoking an older record can't retire the live pocket — covered by test (one record per site + pocket)
+- [ ] Bobby publishes Seeds, then the wallet (web, extension, phone app) — waits on Bobby's publish/audit call
+- [ ] Joint test with Seeds once the wallet update is live: 5 → 16 coins on 1106, old-build re-link refused
 - [ ] Auditor review of the Monero addition, then publish + extension + APK (waits on auditor)
 
 ## Full swap history on desktop Swap (Nov 15)
