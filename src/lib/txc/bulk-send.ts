@@ -150,6 +150,16 @@ export function estimateVsize(inputs: number, outputs: number, opReturnBytes = 0
 }
 
 /** Saved send-to-many progress, kept on this device until every batch settles. */
+/**
+ * A token send can only start once the wallet knows, from a finished lookup for the
+ * current address list, which address holds the token. Returns the reason to wait, or null.
+ */
+export function tokenSourceProblem(p: { symbol: string; lookup: "loading" | "failed" | "done"; holderFound: boolean }): string | null {
+  if (p.lookup === "loading") return `Checking which address holds your ${p.symbol}…`;
+  if (p.lookup === "failed") return `Couldn't check which address holds your ${p.symbol}. Try again in a moment.`;
+  return p.holderFound ? null : `No ${p.symbol} found in this wallet.`;
+}
+
 export type BulkStepStatus = "pending" | "ok" | "failed" | "waiting";
 export type BulkDelivery = "checking" | "delivered" | "rejected";
 export interface BulkSavedStep { label: string; status: BulkStepStatus; txid?: string; error?: string; delivery?: BulkDelivery; reason?: string }

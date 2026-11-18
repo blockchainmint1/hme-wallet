@@ -19,7 +19,7 @@ import { friendlyBroadcastError } from "@/lib/broadcast-error";
 import { confirmWithBiometric } from "@/lib/native/biometric";
 import {
   BULK_DUST_SATS, STM_ACTIVATION_HEIGHT, STM_BATCH_SIZE, buildSendToManyPayload, chunk, estimateVsize, parseBulkCsv,
-  bulkProgressKey, bulkRunSettled, parseSavedRun, type BulkSavedStep,
+  bulkProgressKey, bulkRunSettled, parseSavedRun, tokenSourceProblem, type BulkSavedStep,
 } from "@/lib/txc/bulk-send";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
@@ -133,10 +133,14 @@ export function BulkSend() {
   if (feeRate >= TXC_MAX_FEE_RATE) problems.push(`The TXC network fee is unusually high right now (${feeRate.toLocaleString()} sats per byte). Try again later.`);
   if (steps.length && !bulkRunSettled({ asset, steps, savedAt: 0 })) problems.push("Wait until the previous run's transactions are confirmed.");
   if (token && holder && holder.units < parsed.total) problems.push(`Your ${token.symbol} address holds ${formatTokenAmount(holder.units, token.divisible)} ${token.symbol}, less than the ${formatTokenAmount(parsed.total, token.divisible)} total. Use Consolidate in Phone view if it's spread across addresses.`);
-  if (token && perAddr.data && !holder) problems.push(`No ${token.symbol} found in this wallet.`);
+  if (token) {
+    const lookup = perAddr.data ? "done" : perAddr.isError ? "failed" : "loading";
+    const p = tokenSourceProblem({ symbol: token.symbol, lookup, holderFound: !!holder });
+    if (p) problems.push(p);
+  }
   const fundingUtxos = token && holder ? utxos.filter((u) => u.address === holder.a.address) : utxos;
   const fundingSats = fundingUtxos.reduce((s, u) => s + u.value, 0);
-  if (parsed.rows.length && account.data && fundingSats < txcNeeded) problems.push(token ? `The ${token.symbol} address needs about ${formatTxc(txcNeeded)} TXC for network fees and markers, but has ${formatTxc(fundingSats)}. Send some TXC to ${holder?.a.address} first.` : `Not enough TXC. Need about ${formatTxc(txcNeeded)}, have ${formatTxc(txcBalance)}.`);
+  if (parsed.rows.length && account.data && (!token || holder) && fundingSats < txcNeeded) problems.push(token ? `The ${token.symbol} address needs about ${formatTxc(txcNeeded)} for network fees and markers, but has ${formatTxc(fundingSats)}. Send some TXC to ${holder!.a.address} first.` : `Not enough TXC. Need about ${formatTxc(txcNeeded)}, have ${formatTxc(txcBalance)}.`);
   const ready = regular && parsed.rows.length > 0 && problems.length === 0 && !busy && !!account.data;
 
   function setStep(log: Step[], i: number, p: Partial<Step>) { log[i] = { ...log[i], ...p }; setSteps([...log]); }
@@ -145,9 +149,11 @@ export function BulkSend() {
     return scriptKindOf(u.kind ?? unlocked!.kind) === "bip44" && !u.nonWitnessUtxoHex ? { ...u, nonWitnessUtxoHex: await getTxHex(u.txid) } : u;
   }
 
-  const confirmLabel = token ? `${formatTokenAmount(parsed.total, token.divisible)} ${token.symbol}` : `${formatTxc(Number(parsed.total))} TXC`;
+  const confirmLabel = token ? `${formatTokenAmount(parsed.total, token.divisible)} ${token.symbol}` : formatTxc(Number(parsed.total));
   async function run() {
     if (!ready || !root || !unlocked || !account.data) return;
+    // The address lookup can restart (for example after a rescan) while the confirm box is open.
+    if (token && !holder) { setConfirmOpen(false); setError(`Still checking which address holds your ${token.symbol}. Nothing was sent; try again in a moment.`); return; }
     const label = confirmLabel;
     setConfirmOpen(false);
     if (!(await confirmWithBiometric(`Send to many: ${label}`))) return;
@@ -175,7 +181,7 @@ export function BulkSend() {
       } else {
         const tip = Number(await (await fetch(`${MEMPOOL_API}/blocks/tip/height`)).text());
         if (!(tip >= STM_ACTIVATION_HEIGHT)) throw new Error("TEXITcoin's send-to-many feature isn't active yet, so nothing was sent.");
-        const h = holder!.a;
+        const h = holder!.a; // checked at the start of run()
         const script = scriptHexFor(h.pubkey, h.kind);
         let pool: UtxoInput[] = await Promise.all([...fundingUtxos].sort((a, b) => b.value - a.value).map(withHex));
         for (let i = 0; i < batches.length; i++) {
@@ -220,7 +226,7 @@ export function BulkSend() {
 
   if (!regular) return <><h1 className="text-3xl font-semibold">Send to many</h1><p className="mt-4 text-sm text-muted-foreground">Bulk sending is available for regular wallets. Cold Storage and watch-only wallets aren't supported yet.</p></>;
 
-  const fmt = (u: bigint) => token ? `${formatTokenAmount(u, token.divisible)} ${token.symbol}` : `${formatTxc(Number(u))} TXC`;
+  const fmt = (u: bigint) => token ? `${formatTokenAmount(u, token.divisible)} ${token.symbol}` : formatTxc(Number(u));
   return <>
     <h1 className="text-3xl font-semibold">Send to many</h1>
     <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Pay up to 100 people at once on TEXITcoin. Paste or upload a list with one <code>address,amount</code> per line.</p>
@@ -241,10 +247,10 @@ export function BulkSend() {
           <div className="flex justify-between"><dt className="text-muted-foreground">Recipients</dt><dd>{parsed.rows.length}</dd></div>
           <div className="flex justify-between"><dt className="text-muted-foreground">Total</dt><dd className="tabular-nums">{fmt(parsed.total)}</dd></div>
           <div className="flex justify-between"><dt className="text-muted-foreground">Transactions</dt><dd>{batches.length}</dd></div>
-          <div className="flex justify-between"><dt className="text-muted-foreground">Est. network cost</dt><dd className="tabular-nums">~{formatTxc(token ? BULK_DUST_SATS * parsed.rows.length + estFee : estFee)} TXC</dd></div>
+          <div className="flex justify-between"><dt className="text-muted-foreground">Est. network cost</dt><dd className="tabular-nums">~{formatTxc(token ? BULK_DUST_SATS * parsed.rows.length + estFee : estFee)}</dd></div>
           {token && holder && <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Sending from</dt><dd className="truncate font-mono text-xs">{holder.a.address}</dd></div>}
         </dl>
-        {token && <p className="mt-4 text-xs text-muted-foreground">Tokens go out in batches of {STM_BATCH_SIZE}, one transaction each, and each recipient also gets {formatTxc(BULK_DUST_SATS)} TXC as a required marker. If a batch fails, earlier batches have already been sent and the rest stop.</p>}
+        {token && <p className="mt-4 text-xs text-muted-foreground">Tokens go out in batches of {STM_BATCH_SIZE}, one transaction each, and each recipient also gets {formatTxc(BULK_DUST_SATS)} as a required marker. If a batch fails, earlier batches have already been sent and the rest stop.</p>}
         {parsed.duplicates.length > 0 && <p className="mt-3 text-xs text-muted-foreground">Listed more than once, amounts combined into one payment: {parsed.duplicates.join(", ")}</p>}
         {problems.length > 0 && <ul className="mt-3 space-y-1 text-xs text-destructive">{problems.slice(0, 8).map((p) => <li key={p}>{p}</li>)}</ul>}
         <Button className="mt-5 w-full" disabled={!ready} onClick={() => setConfirmOpen(true)}>{busy ? "Sending…" : `Send to ${parsed.rows.length || ""} recipients`}</Button>
@@ -258,7 +264,7 @@ export function BulkSend() {
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Send {confirmLabel}?</AlertDialogTitle>
-          <AlertDialogDescription>To {parsed.rows.length} recipients in {batches.length} transaction{batches.length > 1 ? "s" : ""}, about {formatTxc(token ? BULK_DUST_SATS * parsed.rows.length + estFee : estFee)} TXC in network cost. This can't be undone.</AlertDialogDescription>
+          <AlertDialogDescription>To {parsed.rows.length} recipients in {batches.length} transaction{batches.length > 1 ? "s" : ""}, about {formatTxc(token ? BULK_DUST_SATS * parsed.rows.length + estFee : estFee)} in network cost. This can't be undone.</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSendToManyPayload, chunk, parseBulkCsv, STM_BATCH_SIZE } from "./bulk-send";
+import { buildSendToManyPayload, chunk, parseBulkCsv, STM_BATCH_SIZE, tokenSourceProblem } from "./bulk-send";
 import { decodeOmniSend } from "./omni-decode";
 import type { MempoolTx } from "./mempool";
 
@@ -63,5 +63,11 @@ describe("bulk send audit fixes", () => {
     expect(bulkRunSettled(run!)).toBe(false); // T1 still awaiting token verdict
     run!.steps[0].delivery = "delivered";
     expect(bulkRunSettled(run!)).toBe(true);
+  });
+  it("a token send waits until the holding address is known (no send while the lookup is loading or failed)", () => {
+    expect(tokenSourceProblem({ symbol: "TSD", lookup: "loading", holderFound: false })).toBe("Checking which address holds your TSD…");
+    expect(tokenSourceProblem({ symbol: "TSD", lookup: "failed", holderFound: false })).toMatch(/^Couldn't check/);
+    expect(tokenSourceProblem({ symbol: "TSD", lookup: "done", holderFound: false })).toBe("No TSD found in this wallet.");
+    expect(tokenSourceProblem({ symbol: "TSD", lookup: "done", holderFound: true })).toBeNull();
   });
 });
