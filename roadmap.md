@@ -8,6 +8,7 @@
 - [x] Seeds' reply: Monero fixed to Trezor's exact method (Trezor + Seeds test addresses), exact `format` check, relink updates one link (691 tests, browser-checked)
 - [x] Seeds lists all 11 with formats and confirmed Cardano + Monero (built in their preview)
 - [ ] Bobby publishes Seeds; Seeds adds an "Add new coins" relink button for linked members (waits on Seeds)
+- [ ] Seeds: refuse a different pocket while linked + never drop a coin on replace (handoff v2; waits on Seeds)
 - [ ] Auditor review of the Monero addition, then publish + extension + APK (waits on auditor)
 
 ## Full swap history on desktop Swap (Nov 15)
