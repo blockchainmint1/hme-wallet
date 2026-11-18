@@ -1,5 +1,12 @@
 # Roadmap
 
+## Seeds coin list + Monero (Nov 18)
+- [x] Wallet already reads Seeds' coin list right before linking; hands over every listed coin it can make keys for, skips the rest
+- [x] Checked Bobby's 17-chain list: all covered except Maya (uses the same key as RUNE, no change needed)
+- [x] Monero (XMR) keys added (Trezor method, independent reference values); 38 link tests pass
+- [ ] Seeds adds DASH/ATOM/RUNE/ADA/XMR to its link + submit, confirms Cardano and Monero methods (waits on Seeds)
+- [ ] Auditor review of the Monero addition, then publish + extension + APK (waits on auditor)
+
 ## Full swap history on desktop Swap (Nov 15)
 - [x] One "Swap history" list under the Swap page: THORChain, SideShift/FixedFloat, TSD buys, TSD cash-outs (670 tests pass, browser-checked with sample records)
 - [x] TSD cash-outs now saved per wallet after sending (web, APK, extension share the Send screen)

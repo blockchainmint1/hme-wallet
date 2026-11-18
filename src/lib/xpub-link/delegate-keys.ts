@@ -13,6 +13,10 @@
  *   private = hex 32 bytes.
  * - ADA: CIP-1852 Icarus (CIP-3) master key, account m/1852'/1815'/N';
  *   public = hex(A 32 ‖ chain code 32), private = hex(kL ‖ kR ‖ chain code).
+ * - XMR: SLIP-0010 ed25519 at m/44'/128'/N' (Trezor's method); private spend
+ *   key = sc_reduce32(keccak256(slip10 key)), view key = sc_reduce32(keccak256(spend)).
+ *   public = standard primary address (starts with 4), private = hex spend key;
+ *   any Monero wallet rebuilds the same view key from the spend key.
  */
 import * as ecc from "@bitcoinerlab/secp256k1";
 import { BIP32Factory } from "bip32";
@@ -20,6 +24,7 @@ import { ed25519 } from "@noble/curves/ed25519";
 import { hmac } from "@noble/hashes/hmac.js";
 import { pbkdf2 } from "@noble/hashes/pbkdf2.js";
 import { sha512 } from "@noble/hashes/sha2.js";
+import { keccak_256 } from "@noble/hashes/sha3.js";
 import { base58 } from "@scure/base";
 import { mnemonicToEntropy } from "@scure/bip39";
 import { wordlist as englishWordlist } from "@scure/bip39/wordlists/english.js";
@@ -28,7 +33,7 @@ import { normalizeMnemonic } from "@/lib/txc/wallet";
 const bip32 = BIP32Factory(ecc);
 const H = 0x80000000;
 
-export const EXTRA_CHAINS = ["DOGE", "BCH", "DASH", "TRX", "SOL", "ZEC", "XRP", "ATOM", "RUNE", "ADA"] as const;
+export const EXTRA_CHAINS = ["DOGE", "BCH", "DASH", "TRX", "SOL", "ZEC", "XRP", "ATOM", "RUNE", "ADA", "XMR"] as const;
 export type ExtraChain = (typeof EXTRA_CHAINS)[number];
 
 export function isExtraChain(c: string): c is ExtraChain {
@@ -36,7 +41,7 @@ export function isExtraChain(c: string): c is ExtraChain {
 }
 
 /** purpose / coin type for the plain secp256k1 extras. */
-const SECP: Record<Exclude<ExtraChain, "SOL" | "ADA">, [number, number]> = {
+const SECP: Record<Exclude<ExtraChain, "SOL" | "ADA" | "XMR">, [number, number]> = {
   DOGE: [44, 3],
   BCH: [44, 145],
   DASH: [44, 5],
@@ -58,11 +63,13 @@ export const EXTRA_CHAIN_LABEL: Record<ExtraChain, string> = {
   ATOM: "Cosmos",
   RUNE: "THORChain (RUNE)",
   ADA: "Cardano",
+  XMR: "Monero",
 };
 
 export function extraAccountPath(chain: ExtraChain, account: number): string {
   if (chain === "SOL") return `m/44'/501'/${account}'/0'`;
   if (chain === "ADA") return `m/1852'/1815'/${account}'`;
+  if (chain === "XMR") return `m/44'/128'/${account}'`;
   const [p, c] = SECP[chain];
   return `m/${p}'/${c}'/${account}'`;
 }
@@ -183,6 +190,55 @@ export function cardanoAccountKey(mnemonic: string, passphrase: string, account:
   return { pub, priv };
 }
 
+/* --------------------------------- Monero ---------------------------------- */
+
+function scReduce(b: Uint8Array): bigint {
+  return leToBig(b) % ed25519.CURVE.n;
+}
+
+/** Monero's base58: 8-byte blocks to 11 characters, short final block. */
+const XMR_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const XMR_BLOCK_CHARS = [0, 2, 3, 5, 6, 7, 9, 10, 11];
+function moneroBase58(bytes: Uint8Array): string {
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 8) {
+    const block = bytes.slice(i, i + 8);
+    let n = 0n;
+    for (const b of block) n = (n << 8n) | BigInt(b);
+    let chunk = "";
+    for (let j = 0; j < XMR_BLOCK_CHARS[block.length]!; j++) {
+      chunk = XMR_ALPHABET[Number(n % 58n)] + chunk;
+      n /= 58n;
+    }
+    out += chunk;
+  }
+  return out;
+}
+
+export function moneroAccountKey(seed: Uint8Array, account: number): { address: string; spend: string } {
+  const k = slip10Ed25519(seed, `m/44'/128'/${account}'`);
+  const h = keccak_256(k);
+  k.fill(0);
+  const spend = scReduce(h);
+  h.fill(0);
+  const spendBytes = bigToLe(spend, 32);
+  const vh = keccak_256(spendBytes);
+  const view = scReduce(vh);
+  vh.fill(0);
+  if (spend === 0n || view === 0n) throw new Error("Couldn't make the Monero key.");
+  const G = ed25519.ExtendedPoint.BASE;
+  const body = new Uint8Array(65);
+  body[0] = 0x12; // mainnet standard address
+  body.set(G.multiply(spend).toRawBytes(), 1);
+  body.set(G.multiply(view).toRawBytes(), 33);
+  const full = new Uint8Array(69);
+  full.set(body, 0);
+  full.set(keccak_256(body).slice(0, 4), 65);
+  const out = { address: moneroBase58(full), spend: hex(spendBytes) };
+  spendBytes.fill(0);
+  return out;
+}
+
 /* -------------------------------- dispatcher ------------------------------- */
 
 /**
@@ -205,6 +261,10 @@ export function deriveExtraKey(args: {
     if (withPrivate) out.priv = hex(k);
     k.fill(0);
     return out;
+  }
+  if (chain === "XMR") {
+    const k = moneroAccountKey(seed, account);
+    return withPrivate ? { path, pub: k.address, priv: k.spend } : { path, pub: k.address };
   }
   if (chain === "ADA") {
     let k: { pub: string; priv: string };

@@ -23,6 +23,7 @@ const REF: Record<ExtraChain, { path: string; pub: string; priv: string; addr?: 
   ATOM: { path: "m/44'/118'/1106'", pub: "xpub6DGzViq8bmhBxaVfiupQe5DB1Yc9rr5NmjzqqtK4PoAPZQvqCo4XjUaXnrnWzLvEMxdaEst16D9VmA2fyaiMqmj7HFaPrJKuB5HdVTRvXdQ", priv: "xprv9zHe6DJEmQ8tk6RCctHQGwGSTWmfTPMXQX5F3VuSqTdQgcbgfFkHBgG3wbGnV3k98W87gQ11y477hVruTt6UfXKH9dydgreLi3i5ukniFJi", addr: "cosmos1wqmetx3wwm7tqwj990kf8xjpg8gwp9gcsly57y" },
   RUNE: { path: "m/44'/931'/1106'", pub: "xpub6CNbXkRDJeMg8BAp4HD8ZUd6RE3jpBbwMtovvKEQqbDvNzUutoECUP2Q1favP9peqwYn9z7uDgAzmdkexgqfpqNnHPbr5jDArd4KCNYMZCY", priv: "xprv9yPF8EtKUGoNuh6LxFg8CLgMsCDFQit5zftL7vpoHFgwWC9mMFuwvahvAQTvCubrMgURL9EQSW1teUpXfQKsgkkwXJ1kmAr2LxPRRGSrP1o", addr: "thor176rxh2dcfpfjfxmrdatl5057e3satvr8dzj5sw" },
   SOL: { path: "m/44'/501'/1106'/0'", pub: "DXTivYcF78Vznitg6f8JGXouZwsm3xioik1LGWj2H1jV", priv: "23e8f7620c4c073e1df02d77f6d7f4d1be7c00667d413f8cc113b69e2a70dcd4" },
+  XMR: { path: "m/44'/128'/1106'", pub: "4BFkVXcwWqBafjVY3977Dbj9gwLMG63gGZcp5PoTefWfEa95GzdAoKPgSJwF2wNayB1zdzi1GHhXE2k6hRTNtuvfJ2j6YGp", priv: "f4f6b286d6e3260502bb783436ef08846d3211aaebbfe180afd332249ddbe101" },
   ADA: { path: "m/1852'/1815'/1106'", pub: "44c508747d1f92f49b06019d1f92fbaff0f1a1b08eb8815d77e50fb790f09c0a2e995b349397df051d6674f12c7732907d995ac8baf74ac0ad837aa26ec1a598", priv: "302f52a2aa7654cf7f25e40c862a49949f9cc36a196629436fe3fd686d0e6f5336bc9b30df6ebc2a6e0f21796be17b50d59ec7d6988c1ba7531b3522eabd807e2e995b349397df051d6674f12c7732907d995ac8baf74ac0ad837aa26ec1a598" },
 };
 
@@ -70,5 +71,16 @@ describe("trading-link keys for coins the wallet doesn't show", () => {
     expect(extraAccountOf("DOGE", "m/44'/145'/1106'")).toBeNull();
     expect(extraAccountOf("SOL", "m/44'/501'/1106'")).toBeNull();
     expect(extraAccountOf("BTC" as ExtraChain, "m/84'/0'/1106'")).toBeNull();
+    expect(extraAccountPath("XMR", 1106)).toBe("m/44'/128'/1106'");
+    expect(extraAccountOf("XMR", "m/44'/128'/1106'")).toBe(1106);
+    expect(extraAccountOf("XMR", "m/44'/128'/1106'/0/0")).toBeNull();
+  });
+
+  it("makes standard Monero addresses (independent reference, Trezor method)", async () => {
+    const seed = await seedFromMnemonic(WORDS, "");
+    const k = deriveExtraKey({ chain: "XMR", account: 0, seed, mnemonic: WORDS, passphrase: "", withPrivate: true });
+    expect(k.pub).toBe("47tzKY2Vh8CYBZCKnXqScTdvYad5xYtrg9asoJwP8di3AAmjRTeGHCgJ2vqwDeccNGMSseokR36gwjgHJJjy3HAHKmTUhpb");
+    expect(k.priv).toBe("315abd9339b25e9b4fbd7831c522b76cb72ffddaf6246e59eb96ca4b15813305");
+    expect(k.pub).toHaveLength(95);
   });
 });

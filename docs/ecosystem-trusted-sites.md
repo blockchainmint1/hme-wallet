@@ -66,7 +66,7 @@ public-key registry endpoint exists in the current Honest Money source.
 
 A trading link may add `request_optional: [{ chain, path }]` next to `request`.
 The wallet can make trading-branch keys for DOGE, BCH, DASH, TRX, SOL, ZEC,
-XRP, ATOM, RUNE and ADA (src/lib/xpub-link/delegate-keys.ts), on top of the
+XRP, ATOM, RUNE, ADA and XMR (src/lib/xpub-link/delegate-keys.ts), on top of the
 five it supports itself (TXC, ISK, BTC, LTC, EVM).
 
 - Same branch for every coin; any other branch, account 0 or a deeper path refuses the whole link.
@@ -75,6 +75,13 @@ five it supports itself (TXC, ISK, BTC, LTC, EVM).
   sends only the five supported coins, and a link that *requires* an extra coin is offered "access" only.
 - Formats: secp256k1 = account xpub/xprv with standard version bytes; SOL = base58 public key /
   hex 32-byte SLIP-0010 private key at `m/44'/501'/N'/0'`; ADA = CIP-1852 Icarus account key at
-  `m/1852'/1815'/N'`, hex public (key ‖ chain code) / hex private (kL ‖ kR ‖ chain code).
+  `m/1852'/1815'/N'`, hex public (key ‖ chain code) / hex private (kL ‖ kR ‖ chain code);
+  XMR (added Nov 18 2026) = Trezor method, SLIP-0010 ed25519 at `m/44'/128'/N'`, private spend key =
+  sc_reduce32(keccak256(slip10 key)), view key = sc_reduce32(keccak256(spend)); public = primary
+  address (starts with 4), private = hex spend key.
+- Maya Protocol (CACAO) uses THORChain's coin type 931, so the RUNE key at `m/44'/931'/N'` is also
+  the Maya key (same key, `maya` address prefix). No separate entry is sent.
+- The coin list is fixed in wallet code. A coin with a new key type needs a wallet release; the site's
+  list can only pick from what the wallet already knows.
 - The wallet never shows balances for, sends from, or sweeps the extra coins; revoking warns the
   member to move them out on the site first.

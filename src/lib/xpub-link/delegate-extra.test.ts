@@ -55,6 +55,7 @@ const EXTRA: Record<string, string> = {
   ATOM: "m/44'/118'/1106'",
   RUNE: "m/44'/931'/1106'",
   ADA: "m/1852'/1815'/1106'",
+  XMR: "m/44'/128'/1106'",
 };
 
 function seedsManifest(recipientPriv: Uint8Array, optional: Record<string, string> = EXTRA) {
@@ -106,7 +107,7 @@ describe("Seeds extra coins in a trading link", () => {
     const m = seedsManifest(x25519.utils.randomPrivateKey());
     const v = validateDelegate(m.raw, m.url, {});
     expect(v.chains).toEqual(["TXC", "ISK", "BTC", "LTC", "EVM"]);
-    expect(v.extraChains).toEqual(["DOGE", "BCH", "DASH", "TRX", "SOL", "ZEC", "XRP", "ATOM", "RUNE", "ADA"]);
+    expect(v.extraChains).toEqual(["DOGE", "BCH", "DASH", "TRX", "SOL", "ZEC", "XRP", "ATOM", "RUNE", "ADA", "XMR"]);
     expect(v.modes).toEqual(["approve", "access"]);
   });
 
@@ -125,7 +126,7 @@ describe("Seeds extra coins in a trading link", () => {
     expect(validateDelegate(m.raw, m.url, {}).modes).toEqual(["access"]);
   });
 
-  it("spend access sends all 15 keys at branch 1106, signed and sealed, each private half matching", async () => {
+  it("spend access sends all 16 keys at branch 1106, signed and sealed, each private half matching", async () => {
     setEcosystemSites([SEEDS], true);
     const priv = x25519.utils.randomPrivateKey();
     const m = seedsManifest(priv);
@@ -148,6 +149,8 @@ describe("Seeds extra coins in a trading link", () => {
     expect(xpubs.SOL).toBe("DXTivYcF78Vznitg6f8JGXouZwsm3xioik1LGWj2H1jV");
     expect(xprvs.ADA).toHaveLength(192);
     expect(xpubs.ADA!.slice(64)).toBe(xprvs.ADA!.slice(128));
+    expect(xpubs.XMR).toBe("4BFkVXcwWqBafjVY3977Dbj9gwLMG63gGZcp5PoTefWfEa95GzdAoKPgSJwF2wNayB1zdzi1GHhXE2k6hRTNtuvfJ2j6YGp");
+    expect(xprvs.XMR).toBe("f4f6b286d6e3260502bb783436ef08846d3211aaebbfe180afd332249ddbe101");
     expect(rec.extraChains).toEqual(Object.keys(EXTRA));
   });
 
