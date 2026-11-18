@@ -101,3 +101,6 @@
 - [x] Auditor note: Honest-Money-Seeds-Extra-Coin-Keys-Audit-2026-11-17.md
 - [ ] Auditor review, then publish + extension rebuild + next APK (waits on auditor/Bobby)
 - [ ] Seeds lists + accepts DASH, ATOM, RUNE, ADA; confirms Cardano Icarus method (waits on Seeds)
+- [x] Auditor opinion (Nov 18): Bobby declined wallet-side balances/key export/sweep/registry coin list; Seeds covers the exit. Reply: Honest-Money-Seeds-Extra-Coins-Reply-2026-11-18.md
+- [ ] Seeds builds withdraw-all, balances and per-coin notes (waits on Seeds)
+- [ ] Auditor accepts on that basis + reviews derivations from the export before publish (waits on auditor)
