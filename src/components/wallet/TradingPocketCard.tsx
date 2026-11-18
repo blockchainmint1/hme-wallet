@@ -7,6 +7,7 @@
  */
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { ArrowDownToLine, Check, Copy, Loader2 } from "lucide-react";
 import { formatEther } from "viem";
 import { Button } from "@/components/ui/button";
@@ -187,9 +188,12 @@ export function TradingSitePanel({ link }: { link: DelegateLinkRecord }) {
       if (!listDelegateLinks().some((l) => l.linkId !== link.linkId && l.mode === "access" && l.account === link.account))
         retireBranch(link.account, link.host);
     }
-    removeDelegateLink(link.linkId);
-    setResult(`Revoked ${link.appName}. ${sweepNote}${serverNote} Tokens (TSD, USDC) stay put — send them from the shared wallet address manually if needed.`.trim());
+    const done = `Revoked ${link.appName}. ${sweepNote}${serverNote} Tokens (TSD, USDC) stay put — send them from the shared wallet address manually if needed.`.trim();
+    // Removing the link unmounts this panel, so the outcome is also shown as a notice.
+    toast.success(done, { duration: 15000 });
+    setResult(done);
     setBusy(null);
+    removeDelegateLink(link.linkId);
   }
 
   return (
