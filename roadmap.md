@@ -118,6 +118,10 @@
 - [ ] Seeds builds withdraw-all, balances and per-coin notes (waits on Seeds)
 - [ ] Auditor accepts on that basis + reviews derivations from the export before publish (waits on auditor)
 - [x] Seeds code review 18 Nov: wallet refuses updates that drop a coin; revoke uses an in-app dialog with a required tick when extra coins are shared
+- [x] Auditor sign-off on the wallet side (18 Nov, relay-shapes sign-off): relay fix + every relay shape tested end-to-end; wallet approved on export hme-wallet-export-2026-11-18d
+- [x] Checked Seeds' own code (their commit 65bbdc0a): refuses a different pocket while a link is active, refuses a link that drops a coin, submit accepts all 16 coins, Cardano = CIP-1852 Icarus and Monero = Trezor method written in their docs + tests, balances readable for 10 of 11 extra coins
+- [x] Checked Seeds' live site build: all 16 coin definitions published, deposit screen carries the "HME Wallet can't hold this coin" notes, "Add new coins" button present
+- [ ] Seeds still owes: a withdraw-all / send-out button per extra coin (live withdraw page only sends PulseChain out for the member), and Monero balances (needs a view-key scan server)
 - [ ] Publish wallet after Seeds-side conditions are live and auditor checks Seeds (waits on Seeds + auditor); then rebuild extension and APK
 - [x] Address-poisoning protection (member feedback): send-screen lookalike stop + recent-payment note on every send screen incl. Send to many and imported keys; red flagged rows phone+desktop; token lookalike rule (trusted = signed sends); explorer handoffs (TXC Tokens, TXC mempool)
 - [ ] Auditor review, then publish + extension + APK (waits on auditor/Bobby); test against the member's watch-only payout wallet (waits on member's address)
