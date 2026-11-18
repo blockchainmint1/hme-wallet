@@ -77,7 +77,7 @@ export function DelegateLinkCard({ manifestUrl, onDone }: { manifestUrl: string;
       const rec = await submitDelegate({ manifest, mode, mnemonic: unlocked.mnemonic, passphrase: unlocked.passphrase ?? "" });
       setDone(
         update
-          ? `Updated. ${rec.appName}'s link on Trading pocket ${rec.account} now covers the coins above. Same pocket and addresses, so no coins moved.`
+          ? `Updated. ${rec.appName}'s link on Trading pocket ${rec.account} now covers ${added ? `${added} as well` : "the same coins"}. Same pocket and addresses, so no coins moved.`
           : mode === "access"
           ? `Linked. ${rec.appName} can now trade from your Trading pocket. Revoke it any time from the Trading pocket card.`
           : `Linked. ${rec.appName} will send each trade to your wallet for approval.`,
