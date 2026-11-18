@@ -5,3 +5,4 @@
 - One link record per site + pocket; relinking replaces it, and a pocket that gave access can't be relinked as approve-only. Why: stale duplicates let revoke sweep a live pocket, and a site that saw the keys keeps them.
 - An update to an access link must keep every coin the replaced record holds (core and extra); fewer coins or a changed key label refuses the update. Why: the record drives Revoke's sweep and warnings, so a dropped coin's key would stay with the site unseen.
 - Revoke uses the in-app dialog; when extra coins were shared it needs a ticked "moved them out" acknowledgement. Why: it's the member's last cheap moment to rescue coins the wallet can't move.
+- Trading links refresh honest.money's signed list right before reading and before sharing; an unreachable list stops with "couldn't reach honest.money" and never replaces the last good grants. Why: an outage must not read as "not approved" or wipe or grant spending access.

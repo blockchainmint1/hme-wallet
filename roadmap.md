@@ -1,5 +1,9 @@
 # Roadmap
 
+## Seeds re-link error (Nov 18 evening)
+- [x] "hasn't approved Seeds" was a slow honest.money answer (timed out 20:32 BA), not the existing link; wallet now retries and says "couldn't reach honest.money" (5 tests, 726 total, browser-checked phone + desktop)
+- [ ] Publish the fix (web + extension; next phone build for the message) — waits on Bobby / auditor
+
 ## Seeds coin list + Monero (Nov 18)
 - [x] Wallet already reads Seeds' coin list right before linking; hands over every listed coin it can make keys for, skips the rest
 - [x] Checked Bobby's 17-chain list: all covered except Maya (uses the same key as RUNE, no change needed)

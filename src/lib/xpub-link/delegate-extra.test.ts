@@ -14,7 +14,7 @@ import * as ecc from "@bitcoinerlab/secp256k1";
 import { BIP32Factory } from "bip32";
 
 const SEEDS = { host: "seeds.honest.money", label: "SEEDS", delegate: true, delegate_modes: ["approve", "access"] as ("approve" | "access")[], delegate_branches: [1106] };
-vi.mock("@/lib/ecosystem-sites.functions", () => ({ getEcosystemSites: async () => ({ sites: [SEEDS] }) }));
+vi.mock("@/lib/ecosystem-sites.functions", () => ({ getEcosystemSites: async () => ({ sites: [SEEDS], verified: true }) }));
 
 const store = new Map<string, string>();
 beforeEach(() => {

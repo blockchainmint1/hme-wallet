@@ -21,7 +21,9 @@ export function useEcosystemSites(): void {
       /* ignore */
     }
     getEcosystemSites()
-      .then(({ sites }) => {
+      .then(({ sites, verified }) => {
+        // An outage keeps the names we already have instead of wiping them.
+        if (verified !== true) return;
         setEcosystemSites(sites, true);
         try {
           localStorage.setItem(KEY, JSON.stringify({ at: Date.now(), sites }));

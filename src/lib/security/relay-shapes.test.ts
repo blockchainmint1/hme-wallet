@@ -10,7 +10,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Psbt, Transaction, payments } from "bitcoinjs-lib";
 
-vi.mock("@/lib/ecosystem-sites.functions", () => ({ getEcosystemSites: async () => ({ sites: [] }) }));
+vi.mock("@/lib/ecosystem-sites.functions", () => ({ getEcosystemSites: async () => ({ sites: [], verified: true }) }));
 
 const { validateRelayPost } = await import("./relay-policy");
 const { signInToNectar } = await import("@/lib/nectar/auth");

@@ -275,8 +275,7 @@ export async function submitDelegate(args: {
   passphrase?: string;
 }): Promise<DelegateLinkRecord> {
   const { manifest, mode, mnemonic, passphrase = "" } = args;
-  const registry = await getEcosystemSites();
-  setEcosystemSites(registry.sites, true);
+  await refreshSpendingList();
   const grant = spendingGrant(manifest.host);
   if (!grant) throw new Error("This site is no longer on the verified spending list.");
   if (!grant.modes.includes(mode)) throw new Error("honest.money no longer allows this kind of link for this site.");
@@ -448,9 +447,22 @@ export function removeDelegateLink(linkId: string) {
   write(listDelegateLinks().filter((l) => l.linkId !== linkId));
 }
 
-export async function fetchDelegateManifest(manifestUrl: string): Promise<DelegateManifest> {
-  const registry = await getEcosystemSites();
+export const REGISTRY_UNREACHABLE =
+  "Couldn't reach honest.money to check which sites may trade. Nothing was shared — try again in a moment.";
+
+/**
+ * Load honest.money's signed site list right now. If it can't be fetched, stop
+ * with a plain "couldn't reach" message — an outage must never read as
+ * "honest.money hasn't approved this site", and must never grant anything.
+ */
+async function refreshSpendingList(): Promise<void> {
+  const registry = await getEcosystemSites().catch(() => null);
+  if (!registry || registry.verified !== true) throw new Error(REGISTRY_UNREACHABLE);
   setEcosystemSites(registry.sites, true);
+}
+
+export async function fetchDelegateManifest(manifestUrl: string): Promise<DelegateManifest> {
+  await refreshSpendingList();
   const res = await fetch(`${PROXY}?url=${encodeURIComponent(manifestUrl)}`, { headers: { Accept: "application/json" } });
   const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
   if (!res.ok || !body) throw new Error((body?.["error"] as string) ?? "Could not read the link");

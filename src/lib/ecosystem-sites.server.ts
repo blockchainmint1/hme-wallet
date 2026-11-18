@@ -24,16 +24,36 @@ const DEFAULT_URL = "https://honest.money/api/public/v1/trusted-sites";
 let cache: { at: number; sites: EcosystemSite[] } | null = null;
 const TTL_MS = 5 * 60 * 1000;
 
+/**
+ * honest.money usually answers in under a second but occasionally stalls past
+ * the timeout. Try twice (8s each) on timeouts, network errors and 5xx; any
+ * other answer is final. The response is still signature-checked by the caller.
+ */
+async function fetchRegistry(url: string, secret: string, site: string): Promise<Response> {
+  let last: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: { accept: "application/json", Authorization: `Bearer ${secret}`, "X-HME-Site": site },
+        redirect: "manual",
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.ok) return res;
+      if (res.status < 500) throw Object.assign(new Error(`registry ${res.status}`), { final: true });
+      last = new Error(`registry ${res.status}`);
+    } catch (e) {
+      if ((e as { final?: boolean }).final) throw e;
+      last = e;
+    }
+  }
+  throw last instanceof Error ? last : new Error("registry unavailable");
+}
+
 export async function loadEcosystemSites(): Promise<EcosystemSite[]> {
   if (cache && Date.now() - cache.at < TTL_MS) return cache.sites;
   // HME_ECOSYSTEM now contains the newly issued wallet-only site key.
   const { apiKey: secret, site } = ecosystemCredential();
-  const res = await fetch(process.env["ECOSYSTEM_SITES_URL"] || DEFAULT_URL, {
-    headers: { accept: "application/json", Authorization: `Bearer ${secret}`, "X-HME-Site": site },
-    redirect: "manual",
-    signal: AbortSignal.timeout(5000),
-  });
-  if (!res.ok) throw new Error(`registry ${res.status}`);
+  const res = await fetchRegistry(process.env["ECOSYSTEM_SITES_URL"] || DEFAULT_URL, secret, site);
   const { readBoundedText } = await import("./security/json-proxy.server");
   const body = await readBoundedText(res, 128 * 1024);
   const ts = res.headers.get("x-hme-timestamp") ?? "";
