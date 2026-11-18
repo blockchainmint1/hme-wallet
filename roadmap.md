@@ -4,6 +4,7 @@
 - [x] Wallet already reads Seeds' coin list right before linking; hands over every listed coin it can make keys for, skips the rest
 - [x] Checked Bobby's 17-chain list: all covered except Maya (uses the same key as RUNE, no change needed)
 - [x] Monero (XMR) keys added (Trezor method, independent reference values); 38 link tests pass
+- [x] Bobby's rule: no automatic/generic chains; each chain is built and tested on purpose here before its keys go to Seeds (generic option dropped)
 - [ ] Seeds adds DASH/ATOM/RUNE/ADA/XMR to its link + submit, confirms Cardano and Monero methods (waits on Seeds)
 - [ ] Auditor review of the Monero addition, then publish + extension + APK (waits on auditor)
 
