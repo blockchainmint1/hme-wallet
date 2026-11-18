@@ -32,7 +32,7 @@ import { isEcosystemSite, loginSiteName, setEcosystemSites, spendingGrant } from
 import { getEcosystemSites } from "@/lib/ecosystem-sites.functions";
 import { accountPath, chainRoot, legacyPocketAccount, POCKET_CHAINS, type PocketChain } from "@/lib/seeds/pocket";
 import { chooseDelegateBranch, claimBranch, loadBranchBook, type BranchBook } from "./branches";
-import { deriveExtraKey, EXTRA_FORMAT, extraAccountOf, isExtraChain, type ExtraChain } from "./delegate-keys";
+import { deriveExtraKey, EXTRA_CHAIN_LABEL, EXTRA_FORMAT, extraAccountOf, isExtraChain, type ExtraChain } from "./delegate-keys";
 
 const PROXY = "/api/nectar/link";
 
@@ -151,6 +151,19 @@ export function validateDelegate(
   const account = (choice as { account: number }).account;
   // Linking again to the same site on the same pocket updates that link.
   const prior = existing.find((l) => l.host === host && l.account === account);
+  // An update must never drop a coin the site already holds keys for: the
+  // replaced record is what Revoke sweeps and warns about, so a dropped coin
+  // would leave its key with the site and vanish from the member's view.
+  if (prior?.mode === "access") {
+    const droppedCore = prior.chains.filter((c) => !chains.includes(c));
+    const droppedExtra = (prior.extraChains ?? []).filter((c) => !extraChains.includes(c));
+    const dropped = [...droppedCore, ...droppedExtra.map((c) => EXTRA_CHAIN_LABEL[c] ?? c)];
+    if (dropped.length)
+      fail(
+        `This update would drop ${dropped.join(", ")} from your ${loginSiteName(host)} link. Nothing was changed. ` +
+          `Ask ${loginSiteName(host)} to include every coin you already share, or revoke and link again.`,
+      );
+  }
   const app = (raw["app"] ?? {}) as Record<string, unknown>;
   return {
     host,

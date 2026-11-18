@@ -3,3 +3,5 @@
 - The extra-coin list is fixed in wallet code; sites only choose from it, and unknown optional coins are skipped. Why: a new key type needs reviewed derivation code and an audited release.
 - Extra coins need the site's exact `format` string to match the wallet's method; otherwise skipped. Why: a changed method must never produce a key the site doesn't expect.
 - One link record per site + pocket; relinking replaces it, and a pocket that gave access can't be relinked as approve-only. Why: stale duplicates let revoke sweep a live pocket, and a site that saw the keys keeps them.
+- An update to an access link must keep every coin the replaced record holds (core and extra); fewer coins or a changed key label refuses the update. Why: the record drives Revoke's sweep and warnings, so a dropped coin's key would stay with the site unseen.
+- Revoke uses the in-app dialog; when extra coins were shared it needs a ticked "moved them out" acknowledgement. Why: it's the member's last cheap moment to rescue coins the wallet can't move.

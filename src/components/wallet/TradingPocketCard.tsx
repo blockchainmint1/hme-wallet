@@ -10,6 +10,17 @@ import { Link } from "@tanstack/react-router";
 import { ArrowDownToLine, Check, Copy, Loader2 } from "lucide-react";
 import { formatEther } from "viem";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useWallet } from "@/lib/txc/wallet-context";
 import { seedFromMnemonic } from "@/lib/txc/wallet";
@@ -145,6 +156,8 @@ export function TradingSitePanel({ link }: { link: DelegateLinkRecord }) {
   const { unlocked } = useWallet();
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [movedExtras, setMovedExtras] = useState(false);
 
   async function moveBack(): Promise<SweepResult[]> {
     const seed = await seedFromMnemonic(unlocked!.mnemonic!, unlocked!.passphrase ?? "");
@@ -158,10 +171,7 @@ export function TradingSitePanel({ link }: { link: DelegateLinkRecord }) {
   const extras = (link.extraChains ?? []).map((c) => EXTRA_CHAIN_LABEL[c] ?? c).join(", ");
 
   async function revoke() {
-    const extraWarning = extras
-      ? ` Honest Money can't move ${extras} back — move those out on ${link.appName} first.`
-      : "";
-    if (!confirm(`Revoke ${link.appName}'s access? Coins in this shared wallet will be moved back to your main wallet.${extraWarning}`)) return;
+    setAsking(false);
     setBusy(link.linkId);
     setResult(null);
     let serverNote = "";
@@ -205,7 +215,15 @@ export function TradingSitePanel({ link }: { link: DelegateLinkRecord }) {
             {busy === link.linkId + ":move" && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
             Move back
           </Button>
-          <Button size="sm" variant="destructive" disabled={!!busy} onClick={() => revoke()}>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={!!busy}
+            onClick={() => {
+              setMovedExtras(false);
+              setAsking(true);
+            }}
+          >
             {busy === link.linkId && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
             Revoke
           </Button>
@@ -219,6 +237,51 @@ export function TradingSitePanel({ link }: { link: DelegateLinkRecord }) {
       )}
       {link.mode === "approve" && <SeedsTradesList link={link} />}
       {result && <p className="text-xs text-muted-foreground">{result}</p>}
+      <AlertDialog open={asking} onOpenChange={setAsking}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revoke {link.appName}'s access?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {link.mode === "access"
+                ? "Coins in this shared wallet will be moved back to your main wallet."
+                : `${link.appName} will no longer be able to propose trades.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {extras && (
+            <div className="space-y-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
+              <p>
+                Honest Money can't move {extras} back. Move those out on {link.appName} before you revoke — once
+                you revoke, {link.appName} can't move them for you.
+              </p>
+              <label className="flex items-start gap-2">
+                <Checkbox
+                  className="mt-0.5"
+                  checked={movedExtras}
+                  onCheckedChange={(v) => setMovedExtras(v === true)}
+                  aria-label={`I've moved ${extras} out on ${link.appName}`}
+                />
+                <span>
+                  I've moved {extras} out on {link.appName}, or I'm fine leaving them there.
+                </span>
+              </label>
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!!extras && !movedExtras}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                if (extras && !movedExtras) return;
+                void revoke();
+              }}
+            >
+              Revoke
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

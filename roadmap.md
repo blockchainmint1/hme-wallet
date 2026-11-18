@@ -27,7 +27,7 @@
 ## Post-sign-off follow-ups (Nov 15 night)
 - [x] Cash-out key conflict case: legacy key deleted + one-time notice, 3 tests (677 pass) — awaiting auditor review, not published
 - [x] Branch-book design note (seed-keyed ledger + claim-time chain check) — awaiting auditor + Bobby's privacy choice
-- [ ] .env rename: recommended skip (platform-owned file, dev preview reads only .env); offered allowlist test instead (waits on Bobby)
+- [x] .env rename: skipped (platform-owned file); allowlist test added instead (src/lib/env-allowlist.test.ts)
 
 ## TSD Bridge routes on desktop Swap (Nov 15)
 - [x] Buy TSD with USDC/USDT/PYUSD on Ethereum and USDC/USDT on Base (TSD Bridge mint orders), verified + re-polled + exact-transfer guard; 27 tests; 646 total pass
@@ -117,3 +117,5 @@
 - [x] Auditor opinion (Nov 18): Bobby declined wallet-side balances/key export/sweep/registry coin list; Seeds covers the exit. Reply: Honest-Money-Seeds-Extra-Coins-Reply-2026-11-18.md
 - [ ] Seeds builds withdraw-all, balances and per-coin notes (waits on Seeds)
 - [ ] Auditor accepts on that basis + reviews derivations from the export before publish (waits on auditor)
+- [x] Seeds code review 18 Nov: wallet refuses updates that drop a coin; revoke uses an in-app dialog with a required tick when extra coins are shared
+- [ ] Publish wallet after Seeds-side conditions are live and auditor checks Seeds (waits on Seeds + auditor); then rebuild extension and APK

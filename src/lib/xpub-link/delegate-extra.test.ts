@@ -195,6 +195,30 @@ describe("Seeds extra coins in a trading link", () => {
     expect(validateDelegate(m.raw, m.url, {}, [{ ...prior, host: "chat.honest.money", account: 1108 }]).replaces).toBeUndefined();
   });
 
+  it("refuses an update that would drop a coin the site already holds keys for", () => {
+    setEcosystemSites([SEEDS], true);
+    const prior = {
+      linkId: "old-link", host: "seeds.honest.money", appName: "Seeds", mode: "access" as const, account: 1106,
+      chains: ["TXC", "ISK", "BTC", "LTC", "EVM"] as never, extraChains: ["DOGE", "SOL", "XMR"] as never,
+      revokeUrl: "", origin: "", identity: "", linkedAt: "2026-11-17T00:00:00Z",
+    };
+    const book = { "1106": { host: "seeds.honest.money", retired: false } };
+    // Seeds lists DOGE and SOL but no longer Monero.
+    const fewer = seedsManifest(x25519.utils.randomPrivateKey(), { DOGE: EXTRA.DOGE!, SOL: EXTRA.SOL! });
+    expect(() => validateDelegate(fewer.raw, fewer.url, book, [prior])).toThrow(/would drop Monero/);
+    // A changed key-method label counts as dropping that coin too.
+    const relabeled = seedsManifest(x25519.utils.randomPrivateKey(), { DOGE: EXTRA.DOGE!, SOL: EXTRA.SOL!, XMR: EXTRA.XMR! });
+    (relabeled.raw.request_optional as Record<string, unknown>[])[2]!.format = "other-method";
+    expect(() => validateDelegate(relabeled.raw, relabeled.url, book, [prior])).toThrow(/would drop Monero/);
+    // Dropping a core chain is refused as well.
+    const noLtc = seedsManifest(x25519.utils.randomPrivateKey(), { DOGE: EXTRA.DOGE!, SOL: EXTRA.SOL!, XMR: EXTRA.XMR! });
+    noLtc.raw.request = (noLtc.raw.request as { chain: string }[]).filter((r) => r.chain !== "LTC");
+    expect(() => validateDelegate(noLtc.raw, noLtc.url, book, [prior])).toThrow(/would drop LTC/);
+    // Same coins (or more) is a normal update.
+    const more = seedsManifest(x25519.utils.randomPrivateKey(), { DOGE: EXTRA.DOGE!, SOL: EXTRA.SOL!, XMR: EXTRA.XMR!, ADA: EXTRA.ADA! });
+    expect(validateDelegate(more.raw, more.url, book, [prior]).replaces?.addedExtraChains).toEqual(["ADA"]);
+  });
+
   it("keeps only the newest link per site and pocket (older builds kept both)", () => {
     const base = { host: "seeds.honest.money", appName: "Seeds", mode: "access" as const, account: 1106, chains: [] as never, revokeUrl: "", origin: "", identity: "" };
     const list = onePerSitePocket([
