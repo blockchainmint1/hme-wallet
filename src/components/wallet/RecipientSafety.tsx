@@ -228,7 +228,7 @@ export function useRecipientListSafety(target: RecipientTarget, addresses: strin
   return { family: target.family, warnings, acknowledged, setAcknowledged, blocked: warnings.length > 0 && !acknowledged };
 }
 
-export function RecipientListSafetyNotice({ safety }: { safety: RecipientListSafety }) {
+export function RecipientListSafetyNotice({ safety, linesFor }: { safety: RecipientListSafety; linesFor?: (address: string) => number[] }) {
   if (safety.warnings.length === 0) return null;
   return (
     <div role="alert" className="mt-3 space-y-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-xs">
@@ -239,6 +239,9 @@ export function RecipientListSafetyNotice({ safety }: { safety: RecipientListSaf
       <ul className="space-y-2">
         {safety.warnings.map(({ address, verdict }) => (
           <li key={address} className="space-y-1">
+            {linesFor && linesFor(address).length > 0 && (
+              <p className="font-semibold">{linesFor(address).length === 1 ? "Line" : "Lines"} {linesFor(address).join(", ")}</p>
+            )}
             {verdict.kind === "lookalike" ? (
               <>
                 <p>Lookalike of {short(verdict.match)}, which you've used before, but the middle is different:</p>

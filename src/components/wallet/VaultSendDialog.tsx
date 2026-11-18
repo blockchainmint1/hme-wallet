@@ -36,6 +36,7 @@ import { getTxcTokenBalance, getTxcTokenProperties } from "@/lib/txc/tokens.func
 import { getAddressUtxos, getOutspend } from "@/lib/txc/mempool";
 import { buildVaultTsdPsbt, selectVaultTsdInputs, vaultTsdHolder, verifyVaultTsdSigned, type VaultTsdIntent } from "@/lib/vault-link/tsd-send";
 import { loadPairing } from "@/lib/vault-link/pairing";
+import { RecipientSafetyNotice, useRecipientSafety } from "@/components/wallet/RecipientSafety";
 import { getActiveProfileId } from "@/lib/txc/storage";
 import { loadSession } from "@/lib/txc/session-cache";
 
@@ -102,6 +103,11 @@ export function VaultSendDialog({
   }
 
   const isEvm = chain === "evm";
+  const safety = useRecipientSafety(
+    isEvm ? { family: "evm", self: pairing.evm?.address ?? null } : { family: "utxo", coin: chain as VaultUtxoChain },
+    to,
+    isEvm ? /^0x[0-9a-fA-F]{40}$/.test(to.trim()) : /^[A-Za-z0-9]{25,90}$/.test(to.trim()),
+  );
   const meta = !isEvm ? VAULT_CHAIN_META[chain] : null;
   const chainScans = useMemo(() => scans.filter((s) => s.chain === chain), [scans, chain]);
   const [purpose, setPurpose] = useState<44 | 49 | 84 | null>(null);
@@ -182,6 +188,7 @@ export function VaultSendDialog({
     setBusy(true);
     setError(null);
     try {
+      if (safety.blocked) throw new Error("Check the lookalike-address warning before preparing the Vault payment.");
       if (tsd) await buildTsd();
       else if (isEvm) await buildEvm();
       else await buildUtxo();
@@ -309,13 +316,14 @@ export function VaultSendDialog({
                 <Input id="vault-send-to" value={to} onChange={(e) => setTo(e.target.value)} placeholder={isEvm ? "0x…" : "Address"} className="font-mono text-xs" />
                 <QrScanButton onScan={(t) => setTo(t.replace(/^[a-z]+:/i, "").split("?")[0])} />
               </div>
+              <RecipientSafetyNotice safety={safety} />
             </div>
             <div className="space-y-1">
               <Label htmlFor="vault-send-amount">Amount ({unit})</Label>
               <Input id="vault-send-amount" value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="0.0" />
             </div>
             {error && <p className="text-xs text-destructive">{error}</p>}
-            <Button onClick={build} disabled={busy} className="w-full">
+            <Button onClick={build} disabled={busy || safety.blocked} className="w-full">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Prepare for Vault signing"}
             </Button>
           </div>
