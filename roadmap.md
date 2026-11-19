@@ -132,3 +132,4 @@
 - [ ] Auditor review, then publish + extension + APK (waits on auditor/Bobby); test against the member's watch-only payout wallet (waits on member's address)
 - [ ] TXC Tokens + TXC mempool build their handoffs (open those projects)
 - [ ] Seeds Pocket view for desktop Cold Storage (Vault) wallets — Bobby: not needed for now (19 Nov). Regular-wallet desktop Seeds Pocket page stays (commit 257cfdf), unpublished
+- [x] Desktop finds a Seeds pocket linked on another device (activity on registry-reserved branch 1106) and shows Seeds Pocket view + Move back; Revoke needs relinking from desktop — unpublished

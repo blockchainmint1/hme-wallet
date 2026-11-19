@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -13,13 +13,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useWallet } from "@/lib/txc/wallet-context";
 import { seedFromMnemonic } from "@/lib/txc/wallet";
-import { DELEGATE_LINKS_EVENT, listDelegateLinks, type DelegateLinkRecord } from "@/lib/xpub-link/delegate";
+import type { DelegateLinkRecord } from "@/lib/xpub-link/delegate";
+import { useSeedsPocket } from "@/components/desktop/useSeedsPocket";
 import { EXTRA_CHAIN_LABEL } from "@/lib/xpub-link/delegate-keys";
 import {
   evmPocketAccount, evmPocketBalances, mainReceiveAddress, pocketAddresses, pocketXpub, sweepPocket,
-  utxoPocketAddressBalances, type PocketChain, type UtxoChain,
+  utxoPocketAddressBalances, POCKET_CHAINS, type PocketChain, type UtxoChain,
 } from "@/lib/seeds/pocket";
-import { evmExplorerUrl, moveBackBlockReason, seedsLinks, utxoExplorerUrl } from "@/lib/seeds/pocket-view";
+import { evmExplorerUrl, moveBackBlockReason, utxoExplorerUrl } from "@/lib/seeds/pocket-view";
 import { getTxcTokenBalancesForAddresses } from "@/lib/txc/tokens.functions";
 import { TSD_PROPERTY_ID } from "@/lib/cashout/tsd";
 import { EVM_CHAINS, type EvmChainId } from "@/lib/chains/evm";
@@ -53,25 +54,28 @@ function CopyBtn({ text, label }: { text: string; label: string }) {
 function Page() {
   const d = useDesktopData();
   const { unlocked } = useWallet();
-  const [links, setLinks] = useState<DelegateLinkRecord[]>([]);
-  useEffect(() => {
-    const h = () => setLinks(seedsLinks(listDelegateLinks()));
-    h(); window.addEventListener(DELEGATE_LINKS_EVENT, h);
-    return () => window.removeEventListener(DELEGATE_LINKS_EVENT, h);
-  }, [unlocked]);
+  const { links, found } = useSeedsPocket();
+  const pockets: Pocket[] = [
+    ...links.map((l) => ({ account: l.account, chains: l.chains, record: l })),
+    ...found.map((a) => ({ account: a, chains: POCKET_CHAINS, record: null })),
+  ];
 
   return <>
     <h1 className="flex items-center gap-3 text-3xl font-semibold"><Sprout className="h-7 w-7 text-primary" />Seeds Pocket</h1>
     <p className="mt-2 max-w-3xl text-sm text-muted-foreground">Read straight from the blockchain by your wallet — not from Seeds. Compare these with your Seeds balance, or open any address on a public explorer.</p>
     {d.isVault || !unlocked?.mnemonic
       ? <p className="mt-8 text-sm text-muted-foreground">Cold Storage wallets don't link to Seeds.</p>
-      : links.length === 0
+      : pockets.length === 0
         ? <p className="mt-8 text-sm text-muted-foreground">This wallet isn't linked to Seeds. Link it from Apps &amp; links.</p>
-        : links.map((l) => <PocketView key={l.linkId} link={l} />)}
+        : pockets.map((p) => <PocketView key={p.record?.linkId ?? `found-${p.account}`} pocket={p} />)}
   </>;
 }
 
-function PocketView({ link }: { link: DelegateLinkRecord }) {
+/** A recorded link, or a pocket found on the blockchain at Seeds' reserved branch (record = null). */
+interface Pocket { account: number; chains: PocketChain[]; record: DelegateLinkRecord | null }
+
+function PocketView({ pocket }: { pocket: Pocket }) {
+  const link = pocket.record;
   const { unlocked } = useWallet();
   const fetchTokens = useServerFn(getTxcTokenBalancesForAddresses);
   const [views, setViews] = useState<ChainView[] | null>(null);
@@ -87,15 +91,15 @@ function PocketView({ link }: { link: DelegateLinkRecord }) {
       setViews(null); setTsd(undefined);
       const seed = await seedFromMnemonic(unlocked!.mnemonic!, unlocked!.passphrase ?? "");
       try {
-        const base: ChainView[] = link.chains.map((c) => ({
-          chain: c, xpub: pocketXpub(seed, c, link.account), main: mainReceiveAddress(seed, c),
-          addresses: c === "EVM" ? [] : pocketAddresses(seed, c, link.account).map((a) => ({ address: a.address, path: a.path, sats: null })),
-          evm: c === "EVM" ? { address: evmPocketAccount(seed, link.account).address, balances: {} } : undefined,
+        const base: ChainView[] = pocket.chains.map((c) => ({
+          chain: c, xpub: pocketXpub(seed, c, pocket.account), main: mainReceiveAddress(seed, c),
+          addresses: c === "EVM" ? [] : pocketAddresses(seed, c, pocket.account).map((a) => ({ address: a.address, path: a.path, sats: null })),
+          evm: c === "EVM" ? { address: evmPocketAccount(seed, pocket.account).address, balances: {} } : undefined,
         }));
         if (live) setViews(base);
         const filled = await Promise.all(base.map(async (v) => v.chain === "EVM"
-          ? { ...v, evm: { address: v.evm!.address, balances: await evmPocketBalances(seed, link.account) } }
-          : { ...v, addresses: await utxoPocketAddressBalances(seed, v.chain as UtxoChain, link.account) }));
+          ? { ...v, evm: { address: v.evm!.address, balances: await evmPocketBalances(seed, pocket.account) } }
+          : { ...v, addresses: await utxoPocketAddressBalances(seed, v.chain as UtxoChain, pocket.account) }));
         if (live) setViews(filled);
         const txc = base.find((v) => v.chain === "TXC");
         if (txc) {
@@ -107,17 +111,17 @@ function PocketView({ link }: { link: DelegateLinkRecord }) {
       } finally { seed.fill(0); }
     })();
     return () => { live = false; };
-  }, [link, unlocked, tick, fetchTokens]);
+  }, [pocket.account, pocket.chains, unlocked, tick, fetchTokens]);
 
-  const extras = (link.extraChains ?? []).map((c) => EXTRA_CHAIN_LABEL[c] ?? c);
+  const extras = (link?.extraChains ?? []).map((c) => EXTRA_CHAIN_LABEL[c] ?? c);
   const tsdKnown = tsd === undefined ? null : tsd;
-  const movable = (link.chains).filter((c) => !moveBackBlockReason(c, tsdKnown));
+  const movable = pocket.chains.filter((c) => !moveBackBlockReason(c, tsdKnown));
 
   async function moveBack(chains: PocketChain[]) {
     setConfirm(null); setBusy(chains.join(",")); setResult(null);
     const seed = await seedFromMnemonic(unlocked!.mnemonic!, unlocked!.passphrase ?? "");
     try {
-      const msg = describe(await sweepPocket(seed, link.account, chains).catch(() => []));
+      const msg = describe(await sweepPocket(seed, pocket.account, chains).catch(() => []));
       setResult(msg); toast.success(msg, { duration: 12000 });
     } finally { seed.fill(0); setBusy(null); setTick((t) => t + 1); }
   }
@@ -125,14 +129,16 @@ function PocketView({ link }: { link: DelegateLinkRecord }) {
   return <section className="mt-8 space-y-6">
     <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-card p-5">
       <div>
-        <p className="text-lg font-semibold">Pocket #{link.account}</p>
-        <p className="text-sm text-muted-foreground">Linked {new Date(link.linkedAt).toLocaleDateString()} · {link.mode === "access" ? "Seeds can trade instantly (it holds spending keys)" : "You approve each trade"}</p>
+        <p className="text-lg font-semibold">Pocket #{pocket.account}</p>
+        {link
+          ? <p className="text-sm text-muted-foreground">Linked {new Date(link.linkedAt).toLocaleDateString()} · {link.mode === "access" ? "Seeds can trade instantly (it holds spending keys)" : "You approve each trade"}</p>
+          : <p className="max-w-xl text-sm text-muted-foreground">Found on the blockchain — this is the pocket honest.money reserves for Seeds, and it has activity. This wallet was linked on another device, so this computer can't revoke it. To manage the link here, link again from <Link to="/desktop/apps" className="text-primary underline">Apps &amp; links</Link> (same pocket, nothing moves), or revoke on the device that linked it.</p>}
       </div>
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" onClick={() => setTick((t) => t + 1)} disabled={!!busy}>Refresh</Button>
         <Button variant="outline" disabled={!!busy || movable.length === 0} onClick={() => setConfirm(movable)}>
           {busy && busy.includes(",") && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}Move everything back</Button>
-        <RevokeLinkControl link={link} disabled={!!busy} />
+        {link && <RevokeLinkControl link={link} disabled={!!busy} />}
       </div>
     </div>
     {result && <p className="text-sm text-muted-foreground">{result}</p>}
@@ -181,6 +187,7 @@ function PocketView({ link }: { link: DelegateLinkRecord }) {
       {!views && <p className="p-5 text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Reading the pocket…</p>}
     </div>
 
+    {!link && <p className="text-sm text-muted-foreground">Seeds may also hold keys for other coins in this pocket. Honest Money doesn't read or move those — check or withdraw them on Seeds.</p>}
     {extras.length > 0 && <p className="text-sm text-muted-foreground">Also shared with Seeds: {extras.join(", ")}. Honest Money doesn't read or move these — check or withdraw them on Seeds.</p>}
 
     <AlertDialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
