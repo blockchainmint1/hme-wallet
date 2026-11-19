@@ -311,11 +311,6 @@ export async function sweepPocket(seed: Uint8Array, account: number, chains: Poc
 
 /* ---------------------------- public viewing ---------------------------- */
 
-/** Account-level public key (xpub) for one pocket chain. Public only — no private key leaves. */
-export function pocketXpub(seed: Uint8Array, chain: PocketChain, account: number): string {
-  return chainRoot(seed, chain).derivePath(accountPath(chain, account)).neutered().toBase58();
-}
-
 /** Every scanned pocket address with its own balance (sats). Failed lookups come back as null. */
 export async function utxoPocketAddressBalances(
   seed: Uint8Array,

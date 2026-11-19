@@ -17,7 +17,7 @@ import type { DelegateLinkRecord } from "@/lib/xpub-link/delegate";
 import { useSeedsPocket } from "@/components/desktop/useSeedsPocket";
 import { EXTRA_CHAIN_LABEL } from "@/lib/xpub-link/delegate-keys";
 import {
-  evmPocketAccount, evmPocketBalances, mainReceiveAddress, pocketAddresses, pocketXpub, sweepPocket,
+  evmPocketAccount, evmPocketBalances, mainReceiveAddress, pocketAddresses, sweepPocket,
   utxoPocketAddressBalances, POCKET_CHAINS, type PocketChain, type UtxoChain,
 } from "@/lib/seeds/pocket";
 import { evmExplorerUrl, moveBackBlockReason, utxoExplorerUrl } from "@/lib/seeds/pocket-view";
@@ -38,7 +38,6 @@ function fmt8(v: bigint): string {
 
 interface ChainView {
   chain: PocketChain;
-  xpub: string;
   main: string;
   addresses: { address: string; path: string; sats: bigint | null }[];
   evm?: { address: string; balances: Partial<Record<EvmChainId, bigint>> };
@@ -92,7 +91,7 @@ function PocketView({ pocket }: { pocket: Pocket }) {
       const seed = await seedFromMnemonic(unlocked!.mnemonic!, unlocked!.passphrase ?? "");
       try {
         const base: ChainView[] = pocket.chains.map((c) => ({
-          chain: c, xpub: pocketXpub(seed, c, pocket.account), main: mainReceiveAddress(seed, c),
+          chain: c, main: mainReceiveAddress(seed, c),
           addresses: c === "EVM" ? [] : pocketAddresses(seed, c, pocket.account).map((a) => ({ address: a.address, path: a.path, sats: null })),
           evm: c === "EVM" ? { address: evmPocketAccount(seed, pocket.account).address, balances: {} } : undefined,
         }));
@@ -159,9 +158,8 @@ function PocketView({ pocket }: { pocket: Pocket }) {
               {busy === v.chain && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}Move back</Button>
           </div>
           {block && <p className="text-xs text-muted-foreground">{block}</p>}
-          <div className="flex items-center gap-2 text-xs"><span className="w-20 shrink-0 text-muted-foreground">Public key</span><span className="min-w-0 flex-1 truncate font-mono">{v.xpub}</span><CopyBtn text={v.xpub} label={`Copy ${v.chain} public key`} /></div>
           {v.evm ? <>
-            <div className="flex items-center gap-2 text-xs"><span className="w-20 shrink-0 text-muted-foreground">Address</span><span className="min-w-0 flex-1 truncate font-mono">{v.evm.address}</span><CopyBtn text={v.evm.address} label="Copy pocket address" /></div>
+            <div className="flex items-center gap-2 text-xs"><span className="w-24 shrink-0 text-muted-foreground">Address #0</span><span className="min-w-0 flex-1 truncate font-mono">{v.evm.address}</span><CopyBtn text={v.evm.address} label="Copy pocket address" /></div>
             <ul className="grid gap-2 sm:grid-cols-2">
               {(["eth", "base", "bsc", "zcu"] as EvmChainId[]).map((id) => { const b = v.evm!.balances[id]; const url = evmExplorerUrl(id, v.evm!.address);
                 return <li key={id} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
@@ -171,17 +169,19 @@ function PocketView({ pocket }: { pocket: Pocket }) {
                 </li>; })}
             </ul>
             <p className="text-xs text-muted-foreground">Tokens like USDC show on the explorer. Move back moves the network coins only.</p>
-          </> : <details className="text-xs">
-            <summary className="cursor-pointer text-muted-foreground">All {v.addresses.length} pocket addresses</summary>
-            <ul className="mt-2 divide-y divide-border">
-              {v.addresses.map((a) => <li key={a.address} className="flex items-center gap-2 py-1.5">
-                <span className="min-w-0 flex-1 truncate font-mono">{a.address}</span>
-                <span className="tabular-nums">{a.sats === null ? "—" : fmt8(a.sats)}</span>
-                <CopyBtn text={a.address} label="Copy address" />
-                <a href={utxoExplorerUrl(v.chain as UtxoChain, a.address)} target="_blank" rel="noopener noreferrer" aria-label="View on explorer" className="text-primary"><ExternalLink className="h-3.5 w-3.5" /></a>
-              </li>)}
-            </ul>
-          </details>}
+          </> : (() => {
+            const first = v.addresses[0]!;
+            const others = first && total !== null && first.sats !== null ? total - first.sats : 0n;
+            return <>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="w-24 shrink-0 text-muted-foreground">Address #0</span>
+                <span className="min-w-0 flex-1 truncate font-mono">{first.address}</span>
+                <CopyBtn text={first.address} label={`Copy ${v.chain} pocket address`} />
+                <a href={utxoExplorerUrl(v.chain as UtxoChain, first.address)} target="_blank" rel="noopener noreferrer" aria-label={`View ${v.chain} pocket address on explorer`} className="text-primary"><ExternalLink className="h-3.5 w-3.5" /></a>
+              </div>
+              {others > 0n && <p className="text-xs text-muted-foreground">{fmt8(others)} {v.chain} of this sits on other pocket addresses (Seeds' change). Move back collects it all.</p>}
+            </>;
+          })()}
         </div>;
       })}
       {!views && <p className="p-5 text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Reading the pocket…</p>}
