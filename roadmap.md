@@ -131,3 +131,4 @@
 - [x] Address-poisoning protection (member feedback): send-screen lookalike stop + recent-payment note on every send screen incl. Send to many and imported keys; red flagged rows phone+desktop; token lookalike rule (trusted = signed sends); explorer handoffs (TXC Tokens, TXC mempool)
 - [ ] Auditor review, then publish + extension + APK (waits on auditor/Bobby); test against the member's watch-only payout wallet (waits on member's address)
 - [ ] TXC Tokens + TXC mempool build their handoffs (open those projects)
+- [ ] Seeds Pocket view on a desktop Cold Storage wallet (pocket view code from the linked phone, view-only) — Bobby skipped it for now (19 Nov); nothing built
