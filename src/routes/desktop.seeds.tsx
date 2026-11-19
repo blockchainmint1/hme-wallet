@@ -15,7 +15,9 @@ import { useWallet } from "@/lib/txc/wallet-context";
 import { seedFromMnemonic } from "@/lib/txc/wallet";
 import type { DelegateLinkRecord } from "@/lib/xpub-link/delegate";
 import { useSeedsPocket } from "@/components/desktop/useSeedsPocket";
-import { EXTRA_CHAIN_LABEL } from "@/lib/xpub-link/delegate-keys";
+import { EXTRA_CHAIN_LABEL, EXTRA_CHAINS, isExtraChain, type ExtraChain } from "@/lib/xpub-link/delegate-keys";
+import { EXTRA_DECIMALS, extraExplorerUrl, extraPocketAddress } from "@/lib/seeds/extra-addresses";
+import { getExtraPocketBalances } from "@/lib/seeds/extra-balances.functions";
 import {
   evmPocketAccount, evmPocketBalances, mainReceiveAddress, pocketAddresses, sweepPocket,
   utxoPocketAddressBalances, POCKET_CHAINS, type PocketChain, type UtxoChain,
@@ -112,7 +114,7 @@ function PocketView({ pocket }: { pocket: Pocket }) {
     return () => { live = false; };
   }, [pocket.account, pocket.chains, unlocked, tick, fetchTokens]);
 
-  const extras = (link?.extraChains ?? []).map((c) => EXTRA_CHAIN_LABEL[c] ?? c);
+  const extraChains: ExtraChain[] = link ? (link.extraChains ?? []).filter(isExtraChain) : [...EXTRA_CHAINS];
   const tsdKnown = tsd === undefined ? null : tsd;
   const movable = pocket.chains.filter((c) => !moveBackBlockReason(c, tsdKnown));
 
@@ -187,8 +189,7 @@ function PocketView({ pocket }: { pocket: Pocket }) {
       {!views && <p className="p-5 text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Reading the pocket…</p>}
     </div>
 
-    {!link && <p className="text-sm text-muted-foreground">Seeds may also hold keys for other coins in this pocket. Honest Money doesn't read or move those — check or withdraw them on Seeds.</p>}
-    {extras.length > 0 && <p className="text-sm text-muted-foreground">Also shared with Seeds: {extras.join(", ")}. Honest Money doesn't read or move these — check or withdraw them on Seeds.</p>}
+    {extraChains.length > 0 && <ExtraCoins account={pocket.account} chains={extraChains} found={!link} tick={tick} />}
 
     <AlertDialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
       <AlertDialogContent>
@@ -203,5 +204,68 @@ function PocketView({ pocket }: { pocket: Pocket }) {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  </section>;
+}
+
+function fmtUnits(v: bigint, decimals: number): string {
+  const d = 10n ** BigInt(decimals), w = v / d, f = (v % d).toString().padStart(decimals, "0").replace(/0+$/, "");
+  return `${w.toLocaleString()}${f ? "." + f : ""}`;
+}
+
+/** Seeds' extra coins: address, chain-read balance and explorer link only. Never keys, never sending. */
+function ExtraCoins({ account, chains, found, tick }: { account: number; chains: ExtraChain[]; found: boolean; tick: number }) {
+  const { unlocked } = useWallet();
+  const fetchBalances = useServerFn(getExtraPocketBalances);
+  const [rows, setRows] = useState<{ chain: ExtraChain; address: string }[] | null>(null);
+  const [bal, setBal] = useState<Partial<Record<ExtraChain, string | null>> | null>(null);
+  const key = chains.join(",");
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      setBal(null);
+      const seed = await seedFromMnemonic(unlocked!.mnemonic!, unlocked!.passphrase ?? "");
+      let list: { chain: ExtraChain; address: string }[] = [];
+      try {
+        list = chains.flatMap((chain) => {
+          try { return [{ chain, address: extraPocketAddress({ chain, account, seed, mnemonic: unlocked!.mnemonic!, passphrase: unlocked!.passphrase ?? "" }) }]; }
+          catch { return []; }
+        });
+      } finally { seed.fill(0); }
+      if (!live) return;
+      setRows(list);
+      const items = list.filter((r) => r.chain !== "XMR");
+      const r = items.length ? await fetchBalances({ data: { items } }).catch(() => ({})) : {};
+      if (live) setBal(r);
+    })();
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account, key, unlocked, tick, fetchBalances]);
+
+  return <section className="space-y-3">
+    <div>
+      <h2 className="text-lg font-semibold">More coins on Seeds</h2>
+      <p className="text-sm text-muted-foreground">{found ? "Seeds may hold keys for these coins in this pocket. " : "Shared with Seeds. "}View only — Honest Money doesn't send or move these. Withdraw them on Seeds.</p>
+    </div>
+    <ul className="divide-y divide-border rounded-lg border border-border bg-card">
+      {(rows ?? []).map(({ chain, address }) => {
+        const raw = bal?.[chain];
+        const url = extraExplorerUrl(chain, address);
+        const amount = chain === "XMR" ? "Private — check on Seeds"
+          : bal === null ? <Loader2 className="inline h-3 w-3 animate-spin" />
+          : raw == null ? "Couldn't check" : `${fmtUnits(BigInt(raw), EXTRA_DECIMALS[chain])} ${chain}`;
+        return <li key={chain} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3">
+          <span className="w-36 shrink-0 font-medium">{EXTRA_CHAIN_LABEL[chain]}</span>
+          <span className="w-44 shrink-0 text-sm tabular-nums">{amount}</span>
+          <span className="flex min-w-0 flex-1 items-center gap-2 text-xs">
+            <span className="text-muted-foreground">Address #0</span>
+            <span className="min-w-0 flex-1 truncate font-mono">{address}</span>
+            <CopyBtn text={address} label={`Copy ${EXTRA_CHAIN_LABEL[chain]} pocket address`} />
+            {url && <a href={url} target="_blank" rel="noopener noreferrer" aria-label={`View ${EXTRA_CHAIN_LABEL[chain]} pocket address on explorer`} className="text-primary"><ExternalLink className="h-3.5 w-3.5" /></a>}
+          </span>
+        </li>;
+      })}
+      {!rows && <li className="p-5 text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Working out addresses…</li>}
+    </ul>
   </section>;
 }
