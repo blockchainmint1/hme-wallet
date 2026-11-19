@@ -133,3 +133,4 @@
 - [ ] TXC Tokens + TXC mempool build their handoffs (open those projects)
 - [ ] Seeds Pocket view for desktop Cold Storage (Vault) wallets — Bobby: not needed for now (19 Nov). Regular-wallet desktop Seeds Pocket page stays (commit 257cfdf), unpublished
 - [x] Desktop finds a Seeds pocket linked on another device (activity on registry-reserved branch 1106) and shows Seeds Pocket view + Move back; Revoke needs relinking from desktop — unpublished
+- [ ] Seeds Pocket (desktop): show address #0, balance and explorer link for Seeds' extra coins (view only; no keys, no sending) — Bobby 19 Nov
