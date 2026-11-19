@@ -308,3 +308,33 @@ export async function sweepPocket(seed: Uint8Array, account: number, chains: Poc
   }
   return out;
 }
+
+/* ---------------------------- public viewing ---------------------------- */
+
+/** Account-level public key (xpub) for one pocket chain. Public only — no private key leaves. */
+export function pocketXpub(seed: Uint8Array, chain: PocketChain, account: number): string {
+  return chainRoot(seed, chain).derivePath(accountPath(chain, account)).neutered().toBase58();
+}
+
+/** Every scanned pocket address with its own balance (sats). Failed lookups come back as null. */
+export async function utxoPocketAddressBalances(
+  seed: Uint8Array,
+  chain: UtxoChain,
+  account: number,
+): Promise<{ address: string; path: string; sats: bigint | null }[]> {
+  const api = UTXO_META[chain].api;
+  const addrs = pocketAddresses(seed, chain, account);
+  return Promise.all(
+    addrs.map(async (a) => {
+      try {
+        const s = await api.getAddressStats(a.address);
+        const sats = BigInt(
+          s.chain_stats.funded_txo_sum - s.chain_stats.spent_txo_sum + s.mempool_stats.funded_txo_sum - s.mempool_stats.spent_txo_sum,
+        );
+        return { address: a.address, path: a.path, sats };
+      } catch {
+        return { address: a.address, path: a.path, sats: null };
+      }
+    }),
+  );
+}

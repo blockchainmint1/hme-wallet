@@ -141,7 +141,7 @@ function PocketRows({ link }: { link: DelegateLinkRecord }) {
   );
 }
 
-function describe(rs: SweepResult[]): string {
+export function describe(rs: SweepResult[]): string {
   const sent = rs.filter((r) => r.txid).map((r) => r.chain);
   const skipped = rs.filter((r) => r.skipped && r.skipped !== "empty").map((r) => `${r.chain} (${r.skipped})`);
   return [
@@ -152,29 +152,21 @@ function describe(rs: SweepResult[]): string {
     .join(" ");
 }
 
-/** One linked trading site: pocket addresses, balances, Move back and Revoke. */
-export function TradingSitePanel({ link }: { link: DelegateLinkRecord }) {
+/**
+ * Revoke button + confirmation dialog for one trading link. Shared by the phone
+ * panel below and the desktop Seeds Pocket page so the warning (and the ticked
+ * acknowledgement for coins Honest Money can't move) stays identical.
+ */
+export function RevokeLinkControl({ link, disabled }: { link: DelegateLinkRecord; disabled?: boolean }) {
   const { unlocked } = useWallet();
-  const [busy, setBusy] = useState<string | null>(null);
-  const [result, setResult] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [asking, setAsking] = useState(false);
   const [movedExtras, setMovedExtras] = useState(false);
-
-  async function moveBack(): Promise<SweepResult[]> {
-    const seed = await seedFromMnemonic(unlocked!.mnemonic!, unlocked!.passphrase ?? "");
-    try {
-      return await sweepPocket(seed, link.account, link.chains);
-    } finally {
-      seed.fill(0);
-    }
-  }
-
   const extras = (link.extraChains ?? []).map((c) => EXTRA_CHAIN_LABEL[c] ?? c).join(", ");
 
   async function revoke() {
     setAsking(false);
-    setBusy(link.linkId);
-    setResult(null);
+    setBusy(true);
     let serverNote = "";
     try {
       await revokeDelegate({ record: link, mnemonic: unlocked!.mnemonic!, passphrase: unlocked!.passphrase ?? "" });
@@ -183,71 +175,44 @@ export function TradingSitePanel({ link }: { link: DelegateLinkRecord }) {
     }
     let sweepNote = "";
     if (link.mode === "access") {
-      sweepNote = describe(await moveBack().catch(() => []));
+      const seed = await seedFromMnemonic(unlocked!.mnemonic!, unlocked!.passphrase ?? "");
+      try {
+        sweepNote = describe(await sweepPocket(seed, link.account, link.chains).catch(() => []));
+      } finally {
+        seed.fill(0);
+      }
       // An old spending key must never control new deposits.
       if (!listDelegateLinks().some((l) => l.linkId !== link.linkId && l.mode === "access" && l.account === link.account))
         retireBranch(link.account, link.host);
     }
     const done = `Revoked ${link.appName}. ${sweepNote}${serverNote} Tokens (TSD, USDC) stay put — send them from the shared wallet address manually if needed.`.trim();
-    // Removing the link unmounts this panel, so the outcome is also shown as a notice.
+    // Removing the link unmounts this control, so the outcome is shown as a notice.
     toast.success(done, { duration: 15000 });
-    setResult(done);
-    setBusy(null);
+    setBusy(false);
     removeDelegateLink(link.linkId);
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="min-w-0 text-sm">
-          <span className="font-medium">{link.appName}</span>{" "}
-          <span className="text-xs text-muted-foreground">
-            · {link.mode === "access" ? "has access (instant trades)" : "you approve each trade"} · branch {link.account}
-          </span>
-        </p>
-        <div className="flex gap-1">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!!busy}
-            onClick={async () => {
-              setBusy(link.linkId + ":move");
-              setResult(describe(await moveBack().catch(() => [])));
-              setBusy(null);
-            }}
-          >
-            {busy === link.linkId + ":move" && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-            Move back
-          </Button>
-          <Button
-            size="sm"
-            variant="destructive"
-            disabled={!!busy}
-            onClick={() => {
-              setMovedExtras(false);
-              setAsking(true);
-            }}
-          >
-            {busy === link.linkId && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-            Revoke
-          </Button>
-        </div>
-      </div>
-      <PocketRows link={link} />
-      {extras && (
-        <p className="text-xs text-muted-foreground">
-          Also shared with {link.appName}: {extras}. Honest Money doesn't show these; see and move them on {link.appName}.
-        </p>
-      )}
-      {link.mode === "approve" && <SeedsTradesList link={link} />}
-      {result && <p className="text-xs text-muted-foreground">{result}</p>}
+    <>
+      <Button
+        size="sm"
+        variant="destructive"
+        disabled={busy || disabled}
+        onClick={() => {
+          setMovedExtras(false);
+          setAsking(true);
+        }}
+      >
+        {busy && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+        Revoke
+      </Button>
       <AlertDialog open={asking} onOpenChange={setAsking}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Revoke {link.appName}'s access?</AlertDialogTitle>
             <AlertDialogDescription>
               {link.mode === "access"
-                ? "Coins in this shared wallet will be moved back to your main wallet."
+                ? `Coins in this shared wallet will be moved back to your main wallet. Revoking stops new access, but it can't take back keys ${link.appName} already has — move coins out first.`
                 : `${link.appName} will no longer be able to propose trades.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -286,6 +251,61 @@ export function TradingSitePanel({ link }: { link: DelegateLinkRecord }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </>
+  );
+}
+
+/** One linked trading site: pocket addresses, balances, Move back and Revoke. */
+export function TradingSitePanel({ link }: { link: DelegateLinkRecord }) {
+  const { unlocked } = useWallet();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+
+  async function moveBack(): Promise<SweepResult[]> {
+    const seed = await seedFromMnemonic(unlocked!.mnemonic!, unlocked!.passphrase ?? "");
+    try {
+      return await sweepPocket(seed, link.account, link.chains);
+    } finally {
+      seed.fill(0);
+    }
+  }
+
+  const extras = (link.extraChains ?? []).map((c) => EXTRA_CHAIN_LABEL[c] ?? c).join(", ");
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="min-w-0 text-sm">
+          <span className="font-medium">{link.appName}</span>{" "}
+          <span className="text-xs text-muted-foreground">
+            · {link.mode === "access" ? "has access (instant trades)" : "you approve each trade"} · branch {link.account}
+          </span>
+        </p>
+        <div className="flex gap-1">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!!busy}
+            onClick={async () => {
+              setBusy(link.linkId + ":move");
+              setResult(describe(await moveBack().catch(() => [])));
+              setBusy(null);
+            }}
+          >
+            {busy === link.linkId + ":move" && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+            Move back
+          </Button>
+          <RevokeLinkControl link={link} disabled={!!busy} />
+        </div>
+      </div>
+      <PocketRows link={link} />
+      {extras && (
+        <p className="text-xs text-muted-foreground">
+          Also shared with {link.appName}: {extras}. Honest Money doesn't show these; see and move them on {link.appName}.
+        </p>
+      )}
+      {link.mode === "approve" && <SeedsTradesList link={link} />}
+      {result && <p className="text-xs text-muted-foreground">{result}</p>}
     </div>
   );
 }

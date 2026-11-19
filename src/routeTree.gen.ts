@@ -30,6 +30,7 @@ import { Route as DesktopEarnRouteImport } from './routes/desktop.earn'
 import { Route as DesktopImportRouteImport } from './routes/desktop.import'
 import { Route as DesktopPrivateKeyRouteImport } from './routes/desktop.private-key'
 import { Route as DesktopReceiveRouteImport } from './routes/desktop.receive'
+import { Route as DesktopSeedsRouteImport } from './routes/desktop.seeds'
 import { Route as DesktopSendRouteImport } from './routes/desktop.send'
 import { Route as DesktopSettingsRouteImport } from './routes/desktop.settings'
 import { Route as DesktopSharedRouteImport } from './routes/desktop.shared'
@@ -193,6 +194,11 @@ const DesktopPrivateKeyRoute = DesktopPrivateKeyRouteImport.update({
 const DesktopReceiveRoute = DesktopReceiveRouteImport.update({
   id: '/receive',
   path: '/receive',
+  getParentRoute: () => DesktopRoute,
+} as any)
+const DesktopSeedsRoute = DesktopSeedsRouteImport.update({
+  id: '/seeds',
+  path: '/seeds',
   getParentRoute: () => DesktopRoute,
 } as any)
 const DesktopSendRoute = DesktopSendRouteImport.update({
@@ -513,6 +519,7 @@ export interface FileRoutesByFullPath {
   '/desktop/import': typeof DesktopImportRoute
   '/desktop/private-key': typeof DesktopPrivateKeyRoute
   '/desktop/receive': typeof DesktopReceiveRoute
+  '/desktop/seeds': typeof DesktopSeedsRoute
   '/desktop/send': typeof DesktopSendRoute
   '/desktop/settings': typeof DesktopSettingsRoute
   '/desktop/shared': typeof DesktopSharedRoute
@@ -593,6 +600,7 @@ export interface FileRoutesByTo {
   '/desktop/import': typeof DesktopImportRoute
   '/desktop/private-key': typeof DesktopPrivateKeyRoute
   '/desktop/receive': typeof DesktopReceiveRoute
+  '/desktop/seeds': typeof DesktopSeedsRoute
   '/desktop/send': typeof DesktopSendRoute
   '/desktop/settings': typeof DesktopSettingsRoute
   '/desktop/shared': typeof DesktopSharedRoute
@@ -676,6 +684,7 @@ export interface FileRoutesById {
   '/desktop/import': typeof DesktopImportRoute
   '/desktop/private-key': typeof DesktopPrivateKeyRoute
   '/desktop/receive': typeof DesktopReceiveRoute
+  '/desktop/seeds': typeof DesktopSeedsRoute
   '/desktop/send': typeof DesktopSendRoute
   '/desktop/settings': typeof DesktopSettingsRoute
   '/desktop/shared': typeof DesktopSharedRoute
@@ -760,6 +769,7 @@ export interface FileRouteTypes {
     | '/desktop/import'
     | '/desktop/private-key'
     | '/desktop/receive'
+    | '/desktop/seeds'
     | '/desktop/send'
     | '/desktop/settings'
     | '/desktop/shared'
@@ -840,6 +850,7 @@ export interface FileRouteTypes {
     | '/desktop/import'
     | '/desktop/private-key'
     | '/desktop/receive'
+    | '/desktop/seeds'
     | '/desktop/send'
     | '/desktop/settings'
     | '/desktop/shared'
@@ -922,6 +933,7 @@ export interface FileRouteTypes {
     | '/desktop/import'
     | '/desktop/private-key'
     | '/desktop/receive'
+    | '/desktop/seeds'
     | '/desktop/send'
     | '/desktop/settings'
     | '/desktop/shared'
@@ -1160,6 +1172,13 @@ declare module '@tanstack/react-router' {
       path: '/receive'
       fullPath: '/desktop/receive'
       preLoaderRoute: typeof DesktopReceiveRouteImport
+      parentRoute: typeof DesktopRoute
+    }
+    '/desktop/seeds': {
+      id: '/desktop/seeds'
+      path: '/seeds'
+      fullPath: '/desktop/seeds'
+      preLoaderRoute: typeof DesktopSeedsRouteImport
       parentRoute: typeof DesktopRoute
     }
     '/desktop/send': {
@@ -1587,6 +1606,7 @@ interface DesktopRouteChildren {
   DesktopImportRoute: typeof DesktopImportRoute
   DesktopPrivateKeyRoute: typeof DesktopPrivateKeyRoute
   DesktopReceiveRoute: typeof DesktopReceiveRoute
+  DesktopSeedsRoute: typeof DesktopSeedsRoute
   DesktopSendRoute: typeof DesktopSendRoute
   DesktopSettingsRoute: typeof DesktopSettingsRoute
   DesktopSharedRoute: typeof DesktopSharedRoute
@@ -1610,6 +1630,7 @@ const DesktopRouteChildren: DesktopRouteChildren = {
   DesktopImportRoute: DesktopImportRoute,
   DesktopPrivateKeyRoute: DesktopPrivateKeyRoute,
   DesktopReceiveRoute: DesktopReceiveRoute,
+  DesktopSeedsRoute: DesktopSeedsRoute,
   DesktopSendRoute: DesktopSendRoute,
   DesktopSettingsRoute: DesktopSettingsRoute,
   DesktopSharedRoute: DesktopSharedRoute,
