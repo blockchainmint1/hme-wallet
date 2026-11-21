@@ -22,6 +22,8 @@ import { ALL_DERIVATION_KINDS, type DerivationKind } from "@/lib/txc/network";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { QrScanButton } from "@/components/wallet/QrScanButton";
 import { toast } from "sonner";
+import { PassphraseConfirm, PassphraseField } from "@/components/wallet/PassphraseField";
+import { passphraseNeedsConfirm, passphraseWarning } from "@/lib/txc/passphrase-guard";
 
 
 
@@ -184,6 +186,8 @@ export function ImportWalletForm({ desktop = false, add = false }: { desktop?: b
   const [phrase, setPhrase] = useState("");
   const [name, setName] = useState("");
   const [passphrase, setPassphrase] = useState("");
+  const [ppConfirmed, setPpConfirmed] = useState<string | null>(null);
+  const ppWarning = passphraseWarning(passphrase);
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
   const [busy, setBusy] = useState(false);
@@ -199,6 +203,10 @@ export function ImportWalletForm({ desktop = false, add = false }: { desktop?: b
    * only used to reassure the user / drive the migrate sweep.
    */
   async function finish(_detected: DerivationKind) {
+    if (passphraseNeedsConfirm(passphrase, ppConfirmed)) {
+      setError("Confirm or clear the extra passphrase first.");
+      return;
+    }
     const m = normalizeMnemonic(phrase);
     setBusy(true);
     setStatus("Saving wallet…");
@@ -237,6 +245,10 @@ export function ImportWalletForm({ desktop = false, add = false }: { desktop?: b
     if (busy) return;
     setError(null);
     setCandidates(null);
+    if (passphraseNeedsConfirm(passphrase, ppConfirmed)) {
+      setError("The extra passphrase field isn't empty. Clear it, or confirm you set this passphrase, then press Import again.");
+      return;
+    }
     try { managedSeedPassword(addingProfile, Boolean(unlocked), password); }
     catch (err) { setError(err instanceof Error ? err.message : "Unlock your wallet again."); return; }
 
@@ -503,7 +515,7 @@ export function ImportWalletForm({ desktop = false, add = false }: { desktop?: b
               </>
             )}
 
-            <details className="rounded-md border border-border bg-muted/30 p-3 text-sm">
+            <details open={passphrase.length > 0 || undefined} className="rounded-md border border-border bg-muted/30 p-3 text-sm">
               <summary className="cursor-pointer font-medium text-foreground">
                 Advanced seed options
               </summary>
@@ -511,22 +523,22 @@ export function ImportWalletForm({ desktop = false, add = false }: { desktop?: b
                 <Label htmlFor="bip39pp" className="text-xs">
                   BIP39 passphrase (25th word)
                 </Label>
-                <Input
-                  id="bip39pp"
-                  type="password"
-                  value={passphrase}
-                  onChange={(e) => setPassphrase(e.target.value)}
-                  placeholder="Leave blank if you didn't set one"
-                  autoComplete="off"
-                  disabled={busy}
-                  className="mt-1"
-                />
+                <PassphraseField id="bip39pp" value={passphrase} onChange={setPassphrase} disabled={busy} className="mt-1" />
                 <p className="mt-1 text-xs text-muted-foreground">
                   Only fill this in if you explicitly set a passphrase when you first created your
                   wallet. Almost nobody does.
                 </p>
               </div>
             </details>
+
+            {ppWarning && (
+              <PassphraseConfirm
+                warning={ppWarning}
+                confirmed={!passphraseNeedsConfirm(passphrase, ppConfirmed)}
+                onClear={() => { setPassphrase(""); setPpConfirmed(null); setError(null); }}
+                onConfirm={() => { setPpConfirmed(passphrase); setError(null); }}
+              />
+            )}
 
             {error && (
               <div

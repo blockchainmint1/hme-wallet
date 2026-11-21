@@ -28,6 +28,8 @@ import { generateMnemonic, normalizeMnemonic, validateMnemonic } from "@/lib/txc
 import { assessPassword } from "@/lib/security/password-strength";
 import { copyToClipboard } from "@/lib/clipboard";
 import { toast } from "sonner";
+import { PassphraseConfirm, PassphraseField } from "@/components/wallet/PassphraseField";
+import { passphraseNeedsConfirm, passphraseWarning } from "@/lib/txc/passphrase-guard";
 
 type Mode = "generate" | "import";
 
@@ -37,6 +39,7 @@ export function AddSeedCard({ compact }: { compact?: boolean }) {
   const [mode, setMode] = useState<Mode>("generate");
   const [mnemonic, setMnemonic] = useState("");
   const [passphrase, setPassphrase] = useState("");
+  const [ppConfirmed, setPpConfirmed] = useState<string | null>(null);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [confirmedBackup, setConfirmedBackup] = useState(false);
@@ -49,6 +52,7 @@ export function AddSeedCard({ compact }: { compact?: boolean }) {
     setMode("generate");
     setMnemonic("");
     setPassphrase("");
+    setPpConfirmed(null);
     setPassword("");
     setConfirm("");
     setConfirmedBackup(false);
@@ -80,6 +84,10 @@ export function AddSeedCard({ compact }: { compact?: boolean }) {
     }
     if (mode === "generate" && !confirmedBackup) {
       setError("Confirm you wrote down the seed phrase before continuing.");
+      return;
+    }
+    if (passphraseNeedsConfirm(passphrase, ppConfirmed)) {
+      setError("The extra passphrase field isn't empty. Clear it, or confirm you set this passphrase.");
       return;
     }
     const strength = assessPassword(password);
@@ -227,16 +235,16 @@ export function AddSeedCard({ compact }: { compact?: boolean }) {
                   </div>
                   <div>
                     <Label htmlFor="bip39pp">BIP39 passphrase (25th word)</Label>
-                    <Input
-                      id="bip39pp"
-                      type="password"
-                      value={passphrase}
-                      onChange={(e) => setPassphrase(e.target.value)}
-                      placeholder="Leave blank if you didn't set one"
-                      autoComplete="off"
-                      className="mt-1"
-                    />
+                    <PassphraseField id="bip39pp" value={passphrase} onChange={setPassphrase} className="mt-1" />
                   </div>
+                  {passphraseWarning(passphrase) && (
+                    <PassphraseConfirm
+                      warning={passphraseWarning(passphrase)!}
+                      confirmed={!passphraseNeedsConfirm(passphrase, ppConfirmed)}
+                      onClear={() => { setPassphrase(""); setPpConfirmed(null); setError(null); }}
+                      onConfirm={() => { setPpConfirmed(passphrase); setError(null); }}
+                    />
+                  )}
                 </div>
               )}
 

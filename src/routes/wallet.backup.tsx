@@ -17,6 +17,7 @@ function BackupPage() {
   const { unlocked } = useWallet();
   const [password, setPassword] = useState("");
   const [shown, setShown] = useState<string | null>(null);
+  const [extra, setExtra] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [reveal, setReveal] = useState(false);
 
@@ -25,6 +26,7 @@ function BackupPage() {
   useEffect(() => {
     return () => {
       setShown(null);
+      setExtra("");
       setReveal(false);
       setPassword("");
     };
@@ -66,6 +68,7 @@ function BackupPage() {
       return;
     }
     setShown(w.mnemonic);
+    setExtra(w.passphrase ?? "");
   }
 
   if (unlocked?.mode === "keyonly") {
@@ -185,6 +188,25 @@ function BackupPage() {
               </Button>
             </div>
 
+            <div className="mt-4 rounded-md border border-border/60 bg-background/40 p-3 text-sm">
+              {extra ? (
+                <>
+                  <p className="font-medium">This wallet also uses an extra passphrase (25th word).</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    You need it together with the words above to restore this wallet. Without it, the same words open a
+                    different wallet. It has {extra.length} character{extra.length === 1 ? "" : "s"}
+                    {extra.trim() !== extra ? ", including a space at the start or end" : ""}.
+                  </p>
+                  <p className="mt-2 break-all rounded border border-border/60 bg-background/60 px-3 py-2 font-mono">
+                    {reveal ? extra : "•".repeat(Math.min(extra.length, 24))}
+                  </p>
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  No extra passphrase. When you restore, leave the "BIP39 passphrase" field empty.
+                </p>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
