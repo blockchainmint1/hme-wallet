@@ -23,7 +23,9 @@ import {
   utxoPocketAddressBalances, POCKET_CHAINS, type PocketChain, type UtxoChain,
 } from "@/lib/seeds/pocket";
 import { evmExplorerUrl, moveBackBlockReason, utxoExplorerUrl } from "@/lib/seeds/pocket-view";
-import { getTxcTokenBalancesForAddresses } from "@/lib/txc/tokens.functions";
+import { getOmniTxValidity, getTxcTokenBalancesForAddresses, getTxcTokenBalancesPerAddress } from "@/lib/txc/tokens.functions";
+import { movePocketTsd } from "@/lib/seeds/pocket-tsd";
+import { explorerTxUrl } from "@/lib/txc/mempool";
 import { TSD_PROPERTY_ID } from "@/lib/cashout/tsd";
 import { EVM_CHAINS, type EvmChainId } from "@/lib/chains/evm";
 import { RevokeLinkControl, describe } from "@/components/wallet/TradingPocketCard";
@@ -79,6 +81,10 @@ function PocketView({ pocket }: { pocket: Pocket }) {
   const link = pocket.record;
   const { unlocked } = useWallet();
   const fetchTokens = useServerFn(getTxcTokenBalancesForAddresses);
+  const fetchPerAddress = useServerFn(getTxcTokenBalancesPerAddress);
+  const fetchValidity = useServerFn(getOmniTxValidity);
+  const [tsdConfirm, setTsdConfirm] = useState(false);
+  const [tsdSent, setTsdSent] = useState<{ txid: string; units: bigint; status: "pending" | "rejected"; reason?: string }[]>([]);
   const [views, setViews] = useState<ChainView[] | null>(null);
   const [tsd, setTsd] = useState<bigint | null | undefined>(undefined);
   const [tick, setTick] = useState(0);
@@ -113,6 +119,45 @@ function PocketView({ pocket }: { pocket: Pocket }) {
     })();
     return () => { live = false; };
   }, [pocket.account, pocket.chains, unlocked, tick, fetchTokens]);
+
+  // On each refresh, ask the TEXITcoin node whether the TSD moves we sent were accepted.
+  useEffect(() => {
+    const pending = tsdSent.filter((t) => t.status === "pending").map((t) => t.txid);
+    if (pending.length === 0) return;
+    let live = true;
+    fetchValidity({ data: { txids: pending } })
+      .then((r) => { if (live) setTsdSent((list) => list.map((t) => { const v = r[t.txid]; return v && v.valid === false && t.status === "pending" ? { ...t, status: "rejected", reason: v.reason } : t; })); })
+      .catch(() => {});
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick, fetchValidity]);
+
+  async function moveTsdBack() {
+    setTsdConfirm(false); setBusy("TSD"); setResult(null);
+    const seed = await seedFromMnemonic(unlocked!.mnemonic!, unlocked!.passphrase ?? "");
+    try {
+      const addrs = pocketAddresses(seed, "TXC", pocket.account).map((a) => a.address);
+      const per = await fetchPerAddress({ data: { addresses: addrs, propertyIds: [TSD_PROPERTY_ID] } });
+      const units: Record<string, bigint> = {};
+      for (const a of addrs) units[a] = BigInt(per[a]?.[TSD_PROPERTY_ID] ?? "0");
+      const res = await movePocketTsd(seed, pocket.account, units);
+      const ok = res.filter((r) => r.txid);
+      const failed = res.find((r) => r.error);
+      if (ok.length) setTsdSent((list) => [...list, ...ok.map((r) => ({ txid: r.txid!, units: r.units, status: "pending" as const }))]);
+      const sentUnits = ok.reduce((s, r) => s + r.units, 0n);
+      const msg = res.length === 0
+        ? "No TSD found on the pocket's addresses just now. Refresh and try again."
+        : `${ok.length ? `Sent ${fmt8(sentUnits)} TSD to your main wallet. The pocket's TXC that paid the fee went with it. It shows in your main wallet once the transfer confirms (usually a few minutes).` : ""}${failed ? ` ${failed.error}` : ""}`.trim();
+      setResult(msg);
+      if (failed && !ok.length) toast.error(msg, { duration: 12000 }); else toast.success(msg, { duration: 12000 });
+    } catch (e) {
+      const msg = `Couldn't move the TSD: ${(e as Error).message}. Nothing was sent.`;
+      setResult(msg); toast.error(msg, { duration: 12000 });
+    } finally { seed.fill(0); setBusy(null); setTick((t) => t + 1); }
+  }
+
+  // A TSD move already sent and not rejected: don't offer a second one until the balance updates.
+  const tsdInFlight = tsdSent.some((t) => t.status === "pending") && tsd !== 0n;
 
   const extraChains: ExtraChain[] = link ? (link.extraChains ?? []).filter(isExtraChain) : [...EXTRA_CHAINS];
   const tsdKnown = tsd === undefined ? null : tsd;
@@ -156,10 +201,23 @@ function PocketView({ pocket }: { pocket: Pocket }) {
               {v.chain !== "EVM" && <p className="text-sm tabular-nums">{loading ? <Loader2 className="inline h-3 w-3 animate-spin" /> : total === null ? "Some addresses couldn't be checked" : `${fmt8(total)} ${v.chain}`}</p>}
               {v.chain === "TXC" && <p className="text-sm tabular-nums">{tsd === undefined ? "Checking TSD…" : tsd === null ? "TSD: couldn't check" : `${fmt8(tsd)} TSD`}</p>}
             </div>
-            <Button size="sm" variant="outline" disabled={!!busy || !!block} title={block ?? undefined} onClick={() => setConfirm([v.chain])}>
-              {busy === v.chain && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}Move back</Button>
+            <div className="flex flex-wrap gap-2">
+              {v.chain === "TXC" && typeof tsd === "bigint" && tsd > 0n && (
+                <Button size="sm" variant="outline" disabled={!!busy || tsdInFlight} title={tsdInFlight ? "Waiting for the TSD you already sent to confirm. Press Refresh in a few minutes." : undefined} onClick={() => setTsdConfirm(true)}>
+                  {busy === "TSD" && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}Move TSD back</Button>
+              )}
+              <Button size="sm" variant="outline" disabled={!!busy || !!block} title={block ?? undefined} onClick={() => setConfirm([v.chain])}>
+                {busy === v.chain && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}Move back</Button>
+            </div>
           </div>
-          {block && <p className="text-xs text-muted-foreground">{block}</p>}
+          {v.chain === "TXC" && tsdSent.map((t) => (
+            <p key={t.txid} className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              {fmt8(t.units)} TSD sent to your main wallet —{" "}
+              {t.status === "rejected" ? `rejected by the network${t.reason ? ` (${t.reason})` : ""}; the TSD stayed in the pocket` : tsd === 0n ? "it has left the pocket" : "waiting for the network to confirm"}
+              <a href={explorerTxUrl(t.txid)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary">View<ExternalLink className="h-3 w-3" /></a>
+            </p>
+          ))}
+          {block && <p className="text-xs text-muted-foreground">{v.chain === "TXC" && typeof tsd === "bigint" && tsd > 0n ? "TSD is still in the pocket and needs this TXC to pay its fee. Use Move TSD back first (or withdraw the TSD on Seeds); then Move back the TXC that's left." : block}</p>}
           {v.evm ? <>
             <div className="flex items-center gap-2 text-xs"><span className="w-24 shrink-0 text-muted-foreground">Address #0</span><span className="min-w-0 flex-1 truncate font-mono">{v.evm.address}</span><CopyBtn text={v.evm.address} label="Copy pocket address" /></div>
             <ul className="grid gap-2 sm:grid-cols-2">
@@ -190,6 +248,22 @@ function PocketView({ pocket }: { pocket: Pocket }) {
     </div>
 
     {extraChains.length > 0 && <ExtraCoins account={pocket.account} chains={extraChains} found={!link} tick={tick} />}
+
+    <AlertDialog open={tsdConfirm} onOpenChange={(o) => !o && setTsdConfirm(false)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Move {typeof tsd === "bigint" ? fmt8(tsd) : ""} TSD back to your main wallet?</AlertDialogTitle>
+          <AlertDialogDescription>
+            The TSD goes to your main wallet's TSD address ({views?.find((v) => v.chain === "TXC")?.main ?? "address #0"}). The pocket's own TXC pays the network fee, and the TXC used comes home with it.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="flex gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />Cancel any open orders on Seeds first — moving coins out can make those trades fail.</div>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={(e) => { e.preventDefault(); void moveTsdBack(); }}>Move TSD back</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
     <AlertDialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
       <AlertDialogContent>
