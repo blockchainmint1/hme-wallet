@@ -57,6 +57,8 @@ export interface DelegateManifest {
   submitUrl: string;
   revokeUrl: string;
   manifestUrl: string;
+  /** The member revoked this site from this pocket before; linking again reuses it (access only). */
+  reusesRevoked?: boolean;
   /** This wallet already has a link to the same site on the same pocket; submitting replaces it. */
   replaces?: { linkId: string; mode: DelegateMode; addedExtraChains: ExtraChain[] };
 }
@@ -149,6 +151,7 @@ export function validateDelegate(
   const choice = chooseDelegateBranch({ host, siteName, requested: requested!, reserved: grant!.branches, book });
   if (!choice.ok) fail(`Refused key request: ${choice.reason}`);
   const account = (choice as { account: number }).account;
+  const reusesRevoked = (choice as { reusesRevoked?: boolean }).reusesRevoked === true;
   // Linking again to the same site on the same pocket updates that link.
   const prior = existing.find((l) => l.host === host && l.account === account);
   // An update must never drop a coin the site already holds keys for: the
@@ -164,6 +167,15 @@ export function validateDelegate(
           `Ask ${loginSiteName(host)} to include every coin you already share, or revoke and link again.`,
       );
   }
+  const modes = grant!.modes.filter(
+    (m) => m !== "approve" || (!requiredExtra && chains.length > 0 && prior?.mode !== "access" && !reusesRevoked),
+  );
+  if (modes.length === 0)
+    fail(
+      reusesRevoked
+        ? `Refused key request: you revoked ${siteName} from Trading pocket ${account} before. It still has that pocket's old keys, so it can only be linked again with "Give access", which honest.money doesn't allow for this site.`
+        : `Refused key request: honest.money doesn't allow ${siteName} either kind of link for these coins.`,
+    );
   const app = (raw["app"] ?? {}) as Record<string, unknown>;
   return {
     host,
@@ -179,9 +191,10 @@ export function validateDelegate(
     // that requires one, or has no supported coin, is offered "access" only.
     // A site that already holds this pocket's spending keys can't be "downgraded" to
     // approve-only on the same pocket: revoke (which retires it) and link again instead.
-    modes: grant!.modes.filter(
-      (m) => m !== "approve" || (!requiredExtra && chains.length > 0 && prior?.mode !== "access"),
-    ),
+    // The same holds after a revoke: the site kept the old keys, so re-linking a
+    // revoked pocket is "Give access" only.
+    modes,
+    ...(reusesRevoked ? { reusesRevoked: true } : {}),
     ...(prior
       ? {
           replaces: {
@@ -291,6 +304,8 @@ export async function submitDelegate(args: {
   });
   if (!choice.ok) throw new Error(choice.reason);
   if (choice.account !== manifest.account) throw new Error("The trading branch for this site changed. Open the link again.");
+  if (choice.reusesRevoked && mode !== "access")
+    throw new Error("This pocket was revoked from this site before and the site still has its old keys, so it can only be linked again with “Give access”.");
   const account = choice.account;
   // Record ownership before anything about this branch leaves the device.
   claimBranch(book, manifest.host, account);

@@ -7,8 +7,8 @@
  * - Balances: receive + change addresses 0..POCKET_SCAN-1 on each UTXO chain,
  *   plus the single EVM address (native coin only).
  * - Sweep: moves everything back to the main wallet's first receive address.
- * - Retire: the wallet never hands out a retired branch again
- *   (src/lib/xpub-link/branches.ts).
+ * - Retire: a revoked branch is never handed to another site; the same site
+ *   may link it again, access only (src/lib/xpub-link/branches.ts).
  */
 import * as ecc from "@bitcoinerlab/secp256k1";
 import { BIP32Factory, type BIP32Interface } from "bip32";

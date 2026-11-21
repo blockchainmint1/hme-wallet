@@ -8,8 +8,11 @@
  * - A branch belongs to the first site it was shared with, forever. It is never
  *   handed to a different site on this wallet, even after revoke, because that
  *   site has already seen its addresses (and maybe its key).
- * - A branch whose spending key was shared and then revoked is retired and is
- *   never handed out again, not even to the same site.
+ * - A branch whose spending key was shared and then revoked is retired: it is
+ *   never handed to any other site, but the same site may link it again (the
+ *   member's choice, so a revoke can be undone on the same path). That site
+ *   already holds the old keys, so a re-link of a retired branch is
+ *   "Give access" only and the member is told it reuses the revoked pocket.
  *
  * The book is profile-scoped. Older builds kept a single counter that moved up
  * on every spending revoke; every account below it is imported as retired, on
@@ -48,7 +51,9 @@ export function migrateBranchBook(
   return next;
 }
 
-export type BranchChoice = { ok: true; account: number } | { ok: false; reason: string };
+export type BranchChoice =
+  | { ok: true; account: number; /** Same site re-linking a pocket it was revoked from. */ reusesRevoked: boolean }
+  | { ok: false; reason: string };
 
 /**
  * Pick the branch to use for `host`. The site must ask for one of the branches
@@ -71,12 +76,14 @@ export function chooseDelegateBranch(args: {
       ok: false,
       reason: `${args.siteName} asked for trading branch ${args.requested}, but honest.money reserved ${reserved.join(", ")} for it.`,
     };
+  // Only a known owner may take a retired branch back; "" (retired by an old
+  // build's counter, owner unknown) is never handed out again.
   const usable = (a: number) => {
     const u = args.book[String(a)];
-    return !u || (u.host === host && !u.retired);
+    return !u || u.host === host;
   };
   for (const a of [args.requested, ...reserved.filter((b) => b !== args.requested)]) {
-    if (usable(a)) return { ok: true, account: a };
+    if (usable(a)) return { ok: true, account: a, reusesRevoked: args.book[String(a)]?.retired === true };
   }
   return {
     ok: false,
@@ -119,11 +126,11 @@ export function loadBranchBook(legacyActive: number | null, links: readonly { ho
 export function claimBranch(book: BranchBook, host: string, account: number): void {
   const k = String(account);
   const cur = book[k];
-  if (cur && (cur.host !== host.toLowerCase() || cur.retired)) throw new Error("That trading branch is no longer available on this wallet.");
+  if (cur && cur.host !== host.toLowerCase()) throw new Error("That trading branch is no longer available on this wallet.");
   write({ ...readRaw(), ...book, [k]: { host: host.toLowerCase(), retired: false } });
 }
 
-/** A spending key for `account` was revoked: never hand that branch out again. */
+/** A spending key for `account` was revoked: never hand that branch to another site, and only "Give access" to the same one. */
 export function retireBranch(account: number, host: string): void {
   const book = readRaw();
   const k = String(account);

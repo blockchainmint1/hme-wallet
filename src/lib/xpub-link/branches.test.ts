@@ -32,7 +32,7 @@ describe("choosing a trading branch", () => {
     chooseDelegateBranch({ host, siteName: "HME Chat", requested, reserved, book });
 
   it("uses the branch honest.money reserved when the site asks for it", () => {
-    expect(pick(1108, [1108])).toEqual({ ok: true, account: 1108 });
+    expect(pick(1108, [1108])).toEqual({ ok: true, account: 1108, reusesRevoked: false });
   });
   it("refuses a branch honest.money did not reserve for the site", () => {
     expect(pick(1108, [1106]).ok).toBe(false);
@@ -44,12 +44,16 @@ describe("choosing a trading branch", () => {
     expect(pick(1108, [1108], { "1108": { host: "seeds.honest.money", retired: false } }).ok).toBe(false);
     expect(pick(1108, [1108], { "1108": { host: "seeds.honest.money", retired: true } }).ok).toBe(false);
   });
-  it("never reuses a retired branch, moving to the site's next reserved branch", () => {
-    expect(pick(1108, [1108, 1109], { "1108": { host: "chat.honest.money", retired: true } })).toEqual({ ok: true, account: 1109 });
-    expect(pick(1108, [1108], { "1108": { host: "chat.honest.money", retired: true } }).ok).toBe(false);
+  it("lets the same site link its own revoked branch again on the same path", () => {
+    expect(pick(1108, [1108], { "1108": { host: "chat.honest.money", retired: true } })).toEqual({ ok: true, account: 1108, reusesRevoked: true });
+    expect(pick(1108, [1108, 1109], { "1108": { host: "chat.honest.money", retired: true } })).toEqual({ ok: true, account: 1108, reusesRevoked: true });
+  });
+  it("never reuses a branch an old build retired without recording which site had it", () => {
+    expect(pick(1108, [1108], { "1108": { host: "", retired: true } }).ok).toBe(false);
+    expect(pick(1108, [1108, 1109], { "1108": { host: "", retired: true } })).toEqual({ ok: true, account: 1109, reusesRevoked: false });
   });
   it("lets the same site re-link on its own live branch", () => {
-    expect(pick(1108, [1108], { "1108": { host: "chat.honest.money", retired: false } })).toEqual({ ok: true, account: 1108 });
+    expect(pick(1108, [1108], { "1108": { host: "chat.honest.money", retired: false } })).toEqual({ ok: true, account: 1108, reusesRevoked: false });
   });
   it("never hands out the card branch 1107 even if listed", () => {
     expect(pick(1107, [1107]).ok).toBe(false);
@@ -94,6 +98,19 @@ describe("trading link codes", () => {
     setEcosystemSites([SEEDS, CHAT], true);
     const m = manifest("seeds.honest.money", 1106);
     expect(validateDelegate(m.raw, m.url, {}).account).toBe(1106);
+  });
+  it("SEEDS re-linking pocket 1106 after a revoke gets 1106 again, Give access only", () => {
+    setEcosystemSites([SEEDS, CHAT], true);
+    const m = manifest("seeds.honest.money", 1106);
+    const v = validateDelegate(m.raw, m.url, { "1106": { host: "seeds.honest.money", retired: true } }, []);
+    expect(v.account).toBe(1106);
+    expect(v.reusesRevoked).toBe(true);
+    expect(v.modes).toEqual(["access"]);
+  });
+  it("a re-link of a revoked pocket is refused when the site may only ask for trade approval", () => {
+    setEcosystemSites([SEEDS, CHAT], true);
+    const m = manifest("chat.honest.money", 1108);
+    expect(() => validateDelegate(m.raw, m.url, { "1108": { host: "chat.honest.money", retired: true } }, [])).toThrow(/old keys/);
   });
   it("a site cannot ask for another site's branch", () => {
     setEcosystemSites([SEEDS, CHAT], true);

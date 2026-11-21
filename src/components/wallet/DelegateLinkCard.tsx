@@ -122,6 +122,12 @@ export function DelegateLinkCard({ manifestUrl, onDone }: { manifestUrl: string;
             Verified honest.money ecosystem site ({manifest.host}). Trades use a separate Trading pocket
             (branch {account}, reserved for this site by honest.money). Your main wallet is never shared.
           </p>
+          {manifest.reusesRevoked && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              You revoked {manifest.appName} from Trading pocket {account} before. Linking again uses that same pocket
+              and addresses. {manifest.appName} kept the old keys when you revoked, so only “Give access” is offered.
+            </p>
+          )}
           {account !== manifest.requestedAccount && (
             <p className="mt-1 text-xs text-muted-foreground">
               Branch {manifest.requestedAccount} was already used on this wallet, so the next branch honest.money
@@ -184,7 +190,7 @@ export function DelegateLinkCard({ manifestUrl, onDone }: { manifestUrl: string;
           <Checkbox checked={ack} onCheckedChange={(v) => setAck(v === true)} />
           <span>
             {mode === "access"
-              ? `I understand ${manifest.appName} can move the coins in my Trading pocket. Revoking moves them back and retires that pocket.${extras ? ` Honest Money can't move ${extras} back, so I'll move those out on ${manifest.appName} before revoking.` : ""}`
+              ? `I understand ${manifest.appName} can move the coins in my Trading pocket. Revoking moves them back, and only this site can ever link that pocket again.${extras ? ` Honest Money can't move ${extras} back, so I'll move those out on ${manifest.appName} before revoking.` : ""}`
               : `I'll approve or decline each ${manifest.appName} trade myself.`}
           </span>
         </label>

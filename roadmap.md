@@ -134,3 +134,4 @@
 - [ ] Seeds Pocket view for desktop Cold Storage (Vault) wallets — Bobby: not needed for now (19 Nov). Regular-wallet desktop Seeds Pocket page stays (commit 257cfdf), unpublished
 - [x] Desktop finds a Seeds pocket linked on another device (activity on registry-reserved branch 1106) and shows Seeds Pocket view + Move back; Revoke needs relinking from desktop — unpublished
 - [x] Seeds Pocket (desktop): show address #0, balance and explorer link for Seeds' extra coins (view only; no keys, no sending) — Bobby 19 Nov
+- [x] Re-link a revoked Trading pocket on the same branch (same site only, Give access only) — Bobby 21 Nov; unpublished, needs new APK after publish
