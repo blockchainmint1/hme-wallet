@@ -137,3 +137,4 @@
 - [x] Re-link a revoked Trading pocket on the same branch (same site only, Give access only) — Bobby 21 Nov; unpublished, needs new APK after publish
 - [x] Desktop Seeds Pocket: "Move TSD back" button (TSD + the TXC paying its fee go to main #0) — Bobby 21 Nov; unpublished
 - [x] Extra-passphrase safeguards: no autofill, confirm-or-clear on import/add-seed, backup page shows it — Bobby 21 Nov (Cory's different address); unpublished
+- [ ] Auditor bundle for 19–21 Nov changes (Seeds Pocket, extra-coin view, re-link revoked, Move TSD back, passphrase) sent 21 Nov — waits on auditor verdict per change, then publish + extension + APK
