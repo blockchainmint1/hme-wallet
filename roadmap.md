@@ -143,3 +143,6 @@
 - [ ] Auditor runs typecheck/tests/build on the 23 Nov export and reviews the fee change — waits on auditor; then publish + extension + APK
 - [ ] After publish: small real "Move TSD back" test (Bobby); real-phone password-manager tests for passphrase field (Bobby/Cory)
 - [x] honest.money reserving 2–3 Seeds pockets — Bobby: no, keep one pocket (23 Nov)
+- [x] Auditor 23 Nov: export 5ece8b8 approved for publishing; stale dust comment fixed
+- [ ] Publish web + rebuild extension and APK — waits on Bobby's go
+- [ ] Public GitHub repo: history scanned 23 Nov (2,075 commits, 16 hits all false positives: token contracts + storage names); old "Generate keystore" Actions runs must be deleted before any flip; choose clean public copy vs flipping; LICENSE + SECURITY.md (contact) — waits on Bobby

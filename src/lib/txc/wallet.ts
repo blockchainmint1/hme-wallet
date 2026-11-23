@@ -182,10 +182,10 @@ export function deriveAddresses(
 }
 
 /**
- * TXC dust threshold. The node's minimum relay fee sits 10x above Bitcoin's,
- * and its dust rule scales with it, so a 546-sat output that would be fine on
- * Bitcoin is rejected here. 10,000 sat is the value CryptoPOP uses for Omni
- * reference outputs and is comfortably above the node's limit.
+ * TXC dust threshold for every output we write. The node relays at 1 sat/vB
+ * like Bitcoin (see ./fees.ts), so this is not derived from the relay fee:
+ * 10,000 sat is the value CryptoPOP uses for Omni reference outputs, kept as
+ * one conservative minimum so no output we create is ever non-standard.
  */
 export const DUST_SATS = 10_000;
 
