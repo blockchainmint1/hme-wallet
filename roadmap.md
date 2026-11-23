@@ -137,20 +137,20 @@
 - [x] Re-link a revoked Trading pocket on the same branch (same site only, Give access only) — Bobby 21 Nov; unpublished, needs new APK after publish
 - [x] Desktop Seeds Pocket: "Move TSD back" button (TSD + the TXC paying its fee go to main #0) — Bobby 21 Nov; unpublished
 - [x] Extra-passphrase safeguards: no autofill, confirm-or-clear on import/add-seed, backup page shows it — Bobby 21 Nov (Cory's different address); unpublished
-- [ ] Auditor bundle for 19–21 Nov changes (Seeds Pocket, extra-coin view, re-link revoked, Move TSD back, passphrase) sent 21 Nov — waits on auditor verdict per change, then publish + extension + APK
+- [x] Auditor bundle for 19–21 Nov changes approved; published web, extension 0.5.6, APK 0.1.202611232135
 - [x] TXC fee follows live network rate (1 sat/vB today), 10 only when the estimate is unavailable — Bobby 23 Nov; unpublished
 - [x] Auditor review 23 Nov: all six approved. Done: fee cap on pocket Move back, 20/min limit on extra-coin balance lookup, full export hme-wallet-export-2026-11-23 (commit 5ece8b8, incl. fee change)
-- [ ] Auditor runs typecheck/tests/build on the 23 Nov export and reviews the fee change — waits on auditor; then publish + extension + APK
+- [x] Auditor ran the 23 Nov export (766 pass) and approved the fee change
 - [ ] After publish: small real "Move TSD back" test (Bobby); real-phone password-manager tests for passphrase field (Bobby/Cory)
 - [x] honest.money reserving 2–3 Seeds pockets — Bobby: no, keep one pocket (23 Nov)
 - [x] Auditor 23 Nov: export 5ece8b8 approved for publishing; stale dust comment fixed
-- [ ] Publish web + rebuild extension and APK — waits on Bobby's go
+- [x] Publish web + rebuild extension and APK (23 Nov)
 - [ ] Public GitHub repo: history scanned 23 Nov (2,075 commits, 16 hits all false positives: token contracts + storage names); old "Generate keystore" Actions runs must be deleted before any flip; choose clean public copy vs flipping; LICENSE + SECURITY.md (contact) — waits on Bobby
 
 ## Go live + public code (23 Nov)
 - [x] Publish website with audit-approved bundle (5ef93bf)
 - [x] Chrome extension 0.5.6 rebuilt
 - [x] MIT LICENSE, SECURITY.md (help@honest.money), README license note
-- [ ] New APK build (Bobby runs GitHub Actions → Android APK, sends the zip; then pin + release row)
+- [x] Phone app 0.1.202611232135 released to everyone (required update): same signing key, no new permissions, live download byte-identical (23 Nov)
 - [ ] Before flipping repo public: Bobby deletes old "Generate keystore" Actions runs and artifacts, then flips visibility on GitHub
 - [ ] Real-device tests after APK: small Move TSD back, password-manager passphrase checks (Bobby/Cory)
