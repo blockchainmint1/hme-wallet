@@ -25,6 +25,7 @@ import * as iskApi from "@/lib/isk/mempool";
 import * as btcApi from "@/lib/btc/mempool";
 import * as ltcApi from "@/lib/ltc/mempool";
 import { scopedKey } from "@/lib/profiles";
+import { TXC_MAX_FEE_RATE } from "@/lib/txc/wallet";
 
 const bip32 = BIP32Factory(ecc);
 
@@ -260,12 +261,29 @@ async function sweepUtxo(seed: Uint8Array, chain: UtxoChain, account: number): P
   const vbytes = 11 + inputs.length * (m.purpose === 84 ? 68 : 149) + 34;
   const total = inputs.reduce((s, u) => s + u.value, 0);
   const send = total - vbytes * rate;
+  const early = pocketSweepFeeProblem(vbytes * rate, vbytes);
+  if (early) return { chain, skipped: early };
   if (send < m.dust) return { chain, skipped: "too small to cover the fee" };
   psbt.addOutput({ address: to, value: BigInt(send) });
   inputs.forEach((u, i) => signPocketInput(psbt, i, u.a.node));
   psbt.finalizeAllInputs();
-  const txid = await m.api.broadcastTx(psbt.extractTransaction().toHex());
+  const signed = psbt.extractTransaction();
+  const late = pocketSweepFeeProblem(total - send, signed.virtualSize());
+  if (late) return { chain, skipped: late };
+  const txid = await m.api.broadcastTx(signed.toHex());
   return { chain, txid };
+}
+
+/**
+ * Fee sanity for a pocket Move back, checked on the rate before building and
+ * on the real signed size after: refuse at or above the 5,000 sat/vB ceiling
+ * every TXC payment shares, and below 1 sat/vB (the relay minimum).
+ */
+export function pocketSweepFeeProblem(feeSats: number, vsize: number): string | null {
+  if (!Number.isFinite(feeSats) || !Number.isFinite(vsize) || vsize <= 0) return "the network fee couldn't be worked out, so nothing was sent";
+  if (feeSats / vsize >= TXC_MAX_FEE_RATE) return "the network fee is unusually high right now, so nothing was sent";
+  if (feeSats < Math.ceil(vsize)) return "the network fee came out below the network minimum, so nothing was sent";
+  return null;
 }
 
 async function sweepEvm(seed: Uint8Array, account: number): Promise<SweepResult[]> {

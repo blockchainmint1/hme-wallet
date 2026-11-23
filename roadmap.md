@@ -138,3 +138,7 @@
 - [x] Desktop Seeds Pocket: "Move TSD back" button (TSD + the TXC paying its fee go to main #0) — Bobby 21 Nov; unpublished
 - [x] Extra-passphrase safeguards: no autofill, confirm-or-clear on import/add-seed, backup page shows it — Bobby 21 Nov (Cory's different address); unpublished
 - [ ] Auditor bundle for 19–21 Nov changes (Seeds Pocket, extra-coin view, re-link revoked, Move TSD back, passphrase) sent 21 Nov — waits on auditor verdict per change, then publish + extension + APK
+- [x] TXC fee follows live network rate (1 sat/vB today), 10 only when the estimate is unavailable — Bobby 23 Nov; unpublished
+- [ ] Auditor review 23 Nov: all six approved. Do: fee cap on pocket Move back, ~20/min limit on extra-coin balance lookup, full code copy for auditor (incl. fee change) — Bobby 23 Nov
+- [ ] After publish: small real "Move TSD back" test (Bobby); real-phone password-manager tests for passphrase field (Bobby/Cory)
+- [x] honest.money reserving 2–3 Seeds pockets — Bobby: no, keep one pocket (23 Nov)
