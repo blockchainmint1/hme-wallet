@@ -47,8 +47,8 @@ interface UtxoMeta {
 }
 
 export const UTXO_META: Record<UtxoChain, UtxoMeta> = {
-  TXC: { purpose: 44, coin: 696969, net: TXC_NETWORK, api: txcApi, minFeeRate: 10, dust: 10_000, ticker: "TXC" },
-  ISK: { purpose: 44, coin: 969696, net: ISK_NETWORK, api: iskApi, minFeeRate: 10, dust: 10_000, ticker: "ISK" },
+  TXC: { purpose: 44, coin: 696969, net: TXC_NETWORK, api: txcApi, minFeeRate: 1, dust: 10_000, ticker: "TXC" },
+  ISK: { purpose: 44, coin: 969696, net: ISK_NETWORK, api: iskApi, minFeeRate: 1, dust: 10_000, ticker: "ISK" },
   BTC: { purpose: 84, coin: 0, net: BTC_NETWORK, api: btcApi, minFeeRate: 1, dust: 546, ticker: "BTC" },
   LTC: { purpose: 44, coin: 2, net: LTC_NETWORK, api: ltcApi, minFeeRate: 1, dust: 5_460, ticker: "LTC" },
 };
@@ -256,8 +256,8 @@ async function sweepUtxo(seed: Uint8Array, chain: UtxoChain, account: number): P
     }
   }
   const fees = await m.api.getFeeEstimates().catch(() => null);
-  const rate = Math.max(m.minFeeRate, fees?.halfHourFee ?? m.minFeeRate);
-  const vbytes = 11 + inputs.length * (m.purpose === 84 ? 68 : 148) + 34;
+  const rate = fees ? Math.max(m.minFeeRate, Math.ceil(fees.halfHourFee), Math.ceil(fees.minimumFee ?? 0)) : Math.max(m.minFeeRate, m.ticker === "TXC" || m.ticker === "ISK" ? 10 : 1);
+  const vbytes = 11 + inputs.length * (m.purpose === 84 ? 68 : 149) + 34;
   const total = inputs.reduce((s, u) => s + u.value, 0);
   const send = total - vbytes * rate;
   if (send < m.dust) return { chain, skipped: "too small to cover the fee" };

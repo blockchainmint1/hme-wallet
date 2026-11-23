@@ -8,6 +8,7 @@ import * as ecc from "@bitcoinerlab/secp256k1";
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { payments, Psbt } from "bitcoinjs-lib";
 import { TXC_NETWORK, MEMPOOL_API } from "@/lib/txc/network";
+import { txcFeeRate, TXC_P2PKH_INPUT_VB } from "@/lib/txc/fees";
 import { buildSimpleSendPayload } from "@/lib/txc/tokens";
 import { verifyMessage } from "@/lib/txc/message-sign";
 import { TSD_PROPERTY_ID } from "@/lib/cashout/tsd";
@@ -16,7 +17,6 @@ import { validateCardAmount } from "./payment-policy";
 export const CARD_MAX_WRONG_PINS = 5;
 export const CARD_APPROVAL_TTL_MS = 15 * 60 * 1000;
 const DUST = 10_000;
-const MIN_FEE_RATE = 10;
 
 /* ------------------------------- secrets -------------------------------- */
 
@@ -130,10 +130,10 @@ async function txHex(txid: string): Promise<string> {
 async function feeRate(): Promise<number> {
   try {
     const r = await fetch(`${MEMPOOL_API}/v1/fees/recommended`);
-    const j = (await r.json()) as { halfHourFee?: number };
-    return Math.max(MIN_FEE_RATE, j.halfHourFee ?? MIN_FEE_RATE);
+    if (!r.ok) return txcFeeRate(null);
+    return txcFeeRate((await r.json()) as { halfHourFee?: number; minimumFee?: number });
   } catch {
-    return MIN_FEE_RATE;
+    return txcFeeRate(null);
   }
 }
 
@@ -194,7 +194,7 @@ export async function sendFromPocket(encKey: string, to: string, units: bigint, 
     const total = list.reduce((s, u) => s + u.value, 0);
     const withToken = units > 0n;
     const outs = sweepAll ? 1 : 2;
-    const vbytes = 11 + list.length * 148 + outs * 34 + (withToken ? 32 : 0);
+    const vbytes = 11 + list.length * TXC_P2PKH_INPUT_VB + outs * 34 + (withToken ? 32 : 0);
     const fee = vbytes * (await feeRate());
     if (sweepAll) {
       const value = total - fee;

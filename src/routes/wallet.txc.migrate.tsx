@@ -20,6 +20,7 @@ import { ArrowLeft, ArrowRightLeft, Check, Copy, ExternalLink, Pickaxe } from "l
 import { useWallet } from "@/lib/txc/wallet-context";
 import { scanAccount, type AccountUtxo } from "@/lib/txc/scan";
 import { buildAndSignTx, deriveAddress } from "@/lib/txc/wallet";
+import { txcFeeRate, TXC_P2PKH_INPUT_VB } from "@/lib/txc/fees";
 import { reserveOutpoints } from "@/lib/txc/spent-outpoints";
 import {
   DERIVATION_PATHS,
@@ -68,7 +69,7 @@ const DUST_SATS = 10_000;
 const VBYTES = {
   bip84: { input: 68, output: 31, overhead: 11 },
   bip49: { input: 91, output: 32, overhead: 11 },
-  bip44: { input: 148, output: 34, overhead: 10 },
+  bip44: { input: TXC_P2PKH_INPUT_VB, output: 34, overhead: 10 },
 } as const;
 
 const BRANCH_LABEL: Record<DerivationKind, string> = {
@@ -126,7 +127,7 @@ function MigratePage() {
     queryFn: getFeeEstimates,
     staleTime: 60_000,
   });
-  const feeRate = Math.max(fees.data?.halfHourFee ?? 10, Math.max(fees.data?.minimumFee ?? 10, 10));
+  const feeRate = txcFeeRate(fees.data);
 
   const destination = useMemo(
     () => (root ? deriveAddress(root, TARGET_KIND, 0, 0).address : null),

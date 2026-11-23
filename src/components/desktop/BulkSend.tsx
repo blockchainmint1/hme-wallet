@@ -9,6 +9,7 @@ import { scanAccount, type AccountUtxo } from "@/lib/txc/scan";
 import { buildAndSignTx, TXC_MAX_FEE_RATE, type UtxoInput } from "@/lib/txc/wallet";
 import { DERIVATION_PATHS, TXC_NETWORK, MEMPOOL_API, scriptKindOf, type DerivationKind } from "@/lib/txc/network";
 import { broadcastTx, explorerTxUrl, getFeeEstimates, getTxHex } from "@/lib/txc/mempool";
+import { txcFeeRate, TXC_P2PKH_INPUT_VB } from "@/lib/txc/fees";
 import { reserveOutpoints } from "@/lib/txc/spent-outpoints";
 import { formatTxc } from "@/lib/txc/units";
 import { rootFingerprintHex } from "@/lib/txc/fingerprint";
@@ -27,7 +28,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { RecipientListSafetyNotice, useRecipientListSafety } from "@/components/wallet/RecipientSafety";
 
 type Step = BulkSavedStep;
-const VB: Record<string, number> = { bip84: 68, bip49: 91, bip44: 148 };
+const VB: Record<string, number> = { bip84: 68, bip49: 91, bip44: TXC_P2PKH_INPUT_VB };
 
 function kindFromPath(path: string): DerivationKind | null {
   for (const [kind, prefix] of Object.entries(DERIVATION_PATHS)) if (path.startsWith(prefix + "/")) return kind as DerivationKind;
@@ -103,7 +104,7 @@ export function BulkSend() {
     staleTime: 30_000,
   });
   const fees = useQuery({ queryKey: ["fees"], queryFn: getFeeEstimates, staleTime: 60_000 });
-  const feeRate = Math.max(fees.data?.halfHourFee ?? 10, fees.data?.minimumFee ?? 10, 10);
+  const feeRate = txcFeeRate(fees.data);
 
   const addrs = useMemo(() => [...(account.data?.external ?? []), ...(account.data?.internal ?? [])]
     .map((d) => ({ ...d, kind: kindFromPath(d.path) }))

@@ -7,6 +7,7 @@
  *
  * All crypto runs locally in the browser. Seed material never leaves the device.
  */
+import { TXC_MIN_RELAY_SAT_VB } from "./fees";
 import * as ecc from "@bitcoinerlab/secp256k1";
 import {
   entropyToMnemonic,
@@ -289,9 +290,14 @@ export function buildAndSignTx(args: {
   psbt.finalizeAllInputs();
   const tx = psbt.extractTransaction();
   // Safety ceiling for every TXC payment (send, send-to-many, consolidate,
-  // migrate, top-up, extension). Normal fees are ~10 sat/vB.
+  // migrate, top-up, extension). Normal fees are ~1 sat/vB.
   if (feeSats / tx.virtualSize() >= TXC_MAX_FEE_RATE) {
     throw new Error(`The TXC network fee is unusually high (${TXC_MAX_FEE_RATE.toLocaleString()} sats per byte or more), so nothing was sent.`);
+  }
+  // Floor: the node rejects anything under 1 sat per vbyte of the real signed
+  // size. Refuse locally rather than broadcast a payment that can't relay.
+  if (feeSats < Math.ceil(tx.virtualSize() * TXC_MIN_RELAY_SAT_VB)) {
+    throw new Error("The TXC network fee came out below the network minimum, so nothing was sent. Please try again.");
   }
   return {
     hex: tx.toHex(),

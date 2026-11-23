@@ -397,7 +397,7 @@ function Send({ snap, root, kind, onSent }: { snap: AccountSnapshot | null; root
       const fees = await getFeeEstimates();
       const rate = Math.max(fees.halfHourFee, fees.minimumFee, 1);
       // Conservative size estimate: legacy inputs are the heaviest we support.
-      const estVbytes = snap.utxos.length * 148 + 2 * 34 + 10;
+      const estVbytes = snap.utxos.length * 149 + 2 * 34 + 10;
       const feeSats = Math.max(Math.ceil(estVbytes * rate), 10_000);
       const total = sats + feeSats;
       const available = snap.balanceSats;

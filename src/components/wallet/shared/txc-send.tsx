@@ -6,6 +6,7 @@ import { z } from "zod";
 import { useWallet } from "@/lib/txc/wallet-context";
 import { scanAccount } from "@/lib/txc/scan";
 import { buildAndSignTx, DUST_SATS, type UtxoInput } from "@/lib/txc/wallet";
+import { txcFeeRate, TXC_P2PKH_INPUT_VB } from "@/lib/txc/fees";
 import { filterReserved, reserveOutpoints } from "@/lib/txc/spent-outpoints";
 import { scriptKindOf, DERIVATION_PATHS, type DerivationKind } from "@/lib/txc/network";
 import {
@@ -104,7 +105,7 @@ function isValidTxcAddress(addr: string): boolean {
 const VBYTES = {
   bip84: { input: 68, output: 31, overhead: 11 },
   bip49: { input: 91, output: 32, overhead: 11 },
-  bip44: { input: 148, output: 34, overhead: 10 },
+  bip44: { input: TXC_P2PKH_INPUT_VB, output: 34, overhead: 10 },
 } as const;
 
 // OP_RETURN with Omni payload (20 bytes data) ≈ 30 vbytes on the wire.
@@ -428,12 +429,9 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
     ? BigInt(tokenBalances.data?.[activeToken.id] ?? "0")
     : null;
 
-  // TXC's min relay fee sits well above Bitcoin's 1 sat/vB — floor every tier
-  // at the node's reported `minimumFee` (and never below 10) so a stale/low
-  // estimate can't produce a "min relay fee not met" broadcast rejection.
-  const rawFeeRate = fees.data?.[feeTier] ?? 10;
-  const minFloor = Math.max(fees.data?.minimumFee ?? 10, 10);
-  const feeRate = Math.max(rawFeeRate, minFloor);
+  // Follow the live estimate down to the node's minimum (1 sat/vB); 10 only
+  // when the estimate is unavailable. See src/lib/txc/fees.ts.
+  const feeRate = txcFeeRate(fees.data, feeTier);
 
   function review(e: React.FormEvent) {
     e.preventDefault();
@@ -1092,7 +1090,7 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
                         {t === "fastestFee" ? "Fast" : t === "halfHourFee" ? "Medium" : "Slow"}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {fees.data ? Math.max(fees.data[t], minFloor) : "—"} sat/vB
+                        {fees.data ? txcFeeRate(fees.data, t) : "—"} sat/vB
                       </div>
                     </button>
                   ))}

@@ -60,7 +60,7 @@ function isValidIskAddress(addr: string): boolean {
 const VBYTES = {
   bip84: { input: 68, output: 31, overhead: 11 },
   bip49: { input: 91, output: 32, overhead: 11 },
-  bip44: { input: 148, output: 34, overhead: 10 },
+  bip44: { input: 149, output: 34, overhead: 10 },
 } as const;
 
 function estimateVsize(kind: keyof typeof VBYTES, nIn: number, nOut: number): number {

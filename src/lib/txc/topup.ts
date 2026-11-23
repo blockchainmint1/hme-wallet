@@ -17,6 +17,7 @@ import { useServerFn } from "@tanstack/react-start";
 import type { BIP32Interface } from "bip32";
 import type { AccountSnapshot } from "./scan";
 import { buildAndSignTx, DUST_SATS } from "./wallet";
+import { txcFeeRate, TXC_P2PKH_INPUT_VB } from "./fees";
 import { broadcastTx, getFeeEstimates } from "./mempool";
 import { scriptKindOf, DERIVATION_PATHS, type DerivationKind } from "./network";
 import { filterReserved, reserveOutpoints } from "./spent-outpoints";
@@ -30,7 +31,7 @@ const OMNI_DUST_SATS = DUST_SATS;
 const OMNI_VBYTES: Record<"bip84" | "bip49" | "bip44", number> = {
   bip84: 11 + 68 + 31 * 2 + 31,
   bip49: 11 + 91 + 32 * 2 + 31,
-  bip44: 10 + 148 + 34 * 2 + 31,
+  bip44: 10 + TXC_P2PKH_INPUT_VB + 34 * 2 + 31,
 };
 /** Extra headroom so a fee bump between top-up and payment can't strand it. */
 const HEADROOM = 2;
@@ -134,7 +135,7 @@ export async function topUpTokenHolders(params: TopUpParams): Promise<string | n
 
   const needed = outputs.reduce((s, o) => s + o.valueSats, 0);
   const base = scriptKindOf(walletKind);
-  const perInput = { bip84: 68, bip49: 91, bip44: 148 }[base];
+  const perInput = { bip84: 68, bip49: 91, bip44: TXC_P2PKH_INPUT_VB }[base];
   const perOutput = { bip84: 31, bip49: 32, bip44: 34 }[base];
   const inputs: typeof spendable = [];
   let acc = 0;
@@ -224,7 +225,7 @@ export function useTokenHolderTopUp({
   useEffect(() => {
     if (!enabled || !root || !walletKind || !snapshot || holders.length === 0) return;
     if (running.current) return;
-    const feeRate = Math.max(fees.data?.halfHourFee ?? 10, fees.data?.minimumFee ?? 10, 10);
+    const feeRate = txcFeeRate(fees.data);
     running.current = true;
     void topUpTokenHolders({
       root,

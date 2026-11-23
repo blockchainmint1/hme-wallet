@@ -145,7 +145,7 @@ export function buildSendToManyPayload(
 }
 
 /** Estimated vsize. Inputs priced as legacy (worst case) unless told otherwise. */
-export function estimateVsize(inputs: number, outputs: number, opReturnBytes = 0, inputVbytes = 148): number {
+export function estimateVsize(inputs: number, outputs: number, opReturnBytes = 0, inputVbytes = 149): number {
   return 10 + inputs * inputVbytes + outputs * 34 + (opReturnBytes ? 11 + opReturnBytes : 0);
 }
 

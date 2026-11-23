@@ -18,6 +18,7 @@ import * as ecc from "@bitcoinerlab/secp256k1";
 import { TXC_NETWORK } from "@/lib/txc/network";
 import { buildSimpleSendPayload } from "@/lib/txc/tokens";
 import { TXC_MAX_FEE_RATE } from "@/lib/txc/wallet";
+import { txcFeeRate, TXC_MIN_RELAY_SAT_VB } from "@/lib/txc/fees";
 import * as txcApi from "@/lib/txc/mempool";
 import { mainReceiveAddress, pocketAddresses, type PocketAddress } from "./pocket";
 
@@ -106,6 +107,7 @@ export function buildPocketTsdMove(req: {
   psbt.finalizeAllInputs();
   const tx = psbt.extractTransaction();
   if (feeSats / tx.virtualSize() >= TXC_MAX_FEE_RATE) throw new Error("The TXC network fee is unusually high, so nothing was sent.");
+  if (feeSats < Math.ceil(tx.virtualSize() * TXC_MIN_RELAY_SAT_VB)) throw new Error("The TXC network fee came out below the network minimum, so nothing was sent.");
   return { hex: tx.toHex(), txid: tx.getId(), feeSats, txcSats };
 }
 
@@ -123,7 +125,7 @@ export async function movePocketTsd(seed: Uint8Array, account: number, perAddres
   if (holders.length === 0) return [];
   const holderSet = new Set(holders.map((h) => h.address));
   const fees = await txcApi.getFeeEstimates().catch(() => null);
-  const feeRate = Math.max(10, Math.ceil(fees?.halfHourFee ?? 10));
+  const feeRate = txcFeeRate(fees);
   const used = new Set<string>();
   const results: PocketTsdResult[] = [];
   for (const holder of holders) {
