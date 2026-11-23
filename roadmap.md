@@ -146,3 +146,11 @@
 - [x] Auditor 23 Nov: export 5ece8b8 approved for publishing; stale dust comment fixed
 - [ ] Publish web + rebuild extension and APK — waits on Bobby's go
 - [ ] Public GitHub repo: history scanned 23 Nov (2,075 commits, 16 hits all false positives: token contracts + storage names); old "Generate keystore" Actions runs must be deleted before any flip; choose clean public copy vs flipping; LICENSE + SECURITY.md (contact) — waits on Bobby
+
+## Go live + public code (23 Nov)
+- [x] Publish website with audit-approved bundle (5ef93bf)
+- [x] Chrome extension 0.5.6 rebuilt
+- [x] MIT LICENSE, SECURITY.md (help@honest.money), README license note
+- [ ] New APK build (Bobby runs GitHub Actions → Android APK, sends the zip; then pin + release row)
+- [ ] Before flipping repo public: Bobby deletes old "Generate keystore" Actions runs and artifacts, then flips visibility on GitHub
+- [ ] Real-device tests after APK: small Move TSD back, password-manager passphrase checks (Bobby/Cory)

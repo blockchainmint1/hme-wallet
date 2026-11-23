@@ -105,7 +105,11 @@ Useful bug reports, clear UX feedback and well-tested improvements are welcome. 
 
 Changes to shared wallet behavior need consideration across web, Android and extension builds. Changes involving signing, permissions or money movement require extra care and independent review before release.
 
-For a suspected security vulnerability, do not publish exploit details or sensitive data in a public issue; arrange a private channel with the maintainers first.
+For a suspected security vulnerability, email **help@honest.money** instead of opening a public issue. See [SECURITY.md](SECURITY.md).
+
+### License
+
+Released under the [MIT License](LICENSE): anyone may copy, change and use this code, even commercially, as long as the copyright notice stays with it.
 
 ---
 
