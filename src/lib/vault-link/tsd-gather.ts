@@ -18,7 +18,10 @@ import type { VaultUtxo } from "./scan";
 import { vaultBytesToBase64, verifySignedAgainstPsbt } from "./psbt-build";
 import { TSD_REFERENCE_SATS, tsdBalanceUnits, vaultTsdHolder } from "./tsd-send";
 
-export const TSD_GATHER_MAX_INDEX = 30;
+/** Highest receive index gathered (store sale addresses run past #30; Vault signs any index). */
+export const TSD_GATHER_MAX_INDEX = 999;
+/** The scan stops after this many never-used addresses in a row. */
+export const TSD_GATHER_GAP = 20;
 const MAX_FEE_RATE = 5_000;
 const IN_VB = 149;
 const equal = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((v, i) => v === b[i]);

@@ -9,7 +9,14 @@ import type { EvmIntent } from "@/lib/vault-link/evm-intent";
 import { evmClient, type EvmChainId } from "@/lib/chains/evm";
 import type { Hex } from "viem";
 
-export function VaultEvmSigning({ payload, chain, onSent, onBack }: { payload: string; chain: EvmChainId; onSent: (hash: Hex) => void; onBack: () => void }) {
+export function VaultEvmSigning({ payload, chain, onSent, onBack, beforeBroadcast }: {
+  payload: string;
+  chain: EvmChainId;
+  onSent: (hash: Hex) => void;
+  onBack: () => void;
+  /** Last checks after the signature is verified and before it is broadcast; throw to stop. */
+  beforeBroadcast?: () => Promise<void>;
+}) {
   const collector = useRef(new PartCollector());
   const processing = useRef(false);
   const [busy, setBusy] = useState(false);
@@ -41,6 +48,7 @@ export function VaultEvmSigning({ payload, chain, onSent, onBack }: { payload: s
       setError(null);
       const raw = full.trim() as Hex;
       await verifyVaultEvmSend(raw, JSON.parse(payload) as EvmIntent);
+      if (beforeBroadcast) await beforeBroadcast();
       const hash = await evmClient(chain).sendRawTransaction({ serializedTransaction: raw });
       onSent(hash);
     } catch (e) {

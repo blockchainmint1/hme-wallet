@@ -154,3 +154,8 @@
 - [x] Phone app 0.1.202611232135 released to everyone (required update): same signing key, no new permissions, live download byte-identical (23 Nov)
 - [ ] Before flipping repo public: Bobby deletes old "Generate keystore" Actions runs and artifacts, then flips visibility on GitHub
 - [ ] Real-device tests after APK: small Move TSD back, password-manager passphrase checks (Bobby/Cory)
+
+## Vault Buy TSD (23 Nov)
+- [x] Desktop Vault round-up built: deep scan of Vault Ethereum/Base addresses (incl. NectarPay sale addresses), fee top-up, Vault batch sweep to #0, Buy TSD from #0; TXC TSD gather scan widened past #30 (preview only)
+- [ ] Auditor review of the round-up before publishing
+- [ ] Bobby: re-pair Vault (needs HME Vault with batch sweep) and run one tiny real round-up

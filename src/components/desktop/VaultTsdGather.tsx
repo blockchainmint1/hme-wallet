@@ -16,12 +16,12 @@ import { chainIo } from "@/lib/vault-link/scan";
 import { loadPairing, type VaultPairing } from "@/lib/vault-link/pairing";
 import { getActiveProfileId } from "@/lib/txc/storage";
 import { loadSession } from "@/lib/txc/session-cache";
-import { getAddressUtxos, getFeeEstimates, getOutspend } from "@/lib/txc/mempool";
+import { getAddressStats, getAddressUtxos, getFeeEstimates, getOutspend } from "@/lib/txc/mempool";
 import { getTxcTokenBalance, getTxcTokenProperties } from "@/lib/txc/tokens.functions";
 import { tsdBalanceUnits, vaultTsdHolder } from "@/lib/vault-link/tsd-send";
 import {
   buildTsdGatherPsbt, selectTsdGatherFeeInputs, verifyTsdGatherSigned,
-  vaultTsdReceiveHolder, TSD_GATHER_MAX_INDEX, type TsdGatherIntent,
+  vaultTsdReceiveHolder, TSD_GATHER_GAP, TSD_GATHER_MAX_INDEX, type TsdGatherIntent,
 } from "@/lib/vault-link/tsd-gather";
 
 const SATS = 100_000_000;
@@ -35,6 +35,7 @@ export function VaultTsdGather({ pairing }: { pairing: VaultPairing }) {
   const [profileId] = useState(getActiveProfileId);
   const [identity] = useState(() => JSON.stringify(pairing));
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [checked, setChecked] = useState(0);
   const [loading, setLoading] = useState(false);
   const [feeRate, setFeeRate] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -60,18 +61,24 @@ export function VaultTsdGather({ pairing }: { pairing: VaultPairing }) {
     try {
       await liveFeeRate();
       const out: Row[] = [];
-      for (let start = 1; start <= TSD_GATHER_MAX_INDEX; start += 10) {
+      // Walk receive addresses until TSD_GATHER_GAP never-used ones in a row (store sale addresses can run far past #30).
+      let empty = 0;
+      let last = 0;
+      for (let start = 1; start <= TSD_GATHER_MAX_INDEX && empty < TSD_GATHER_GAP; start += 10) {
         const batch = Array.from({ length: Math.min(10, TSD_GATHER_MAX_INDEX - start + 1) }, (_, i) => vaultTsdReceiveHolder(pairing, start + i));
         const res = await Promise.all(batch.map(async a => {
-          const bal = await fetchBalance({ data: { address: a.address, propertyId: 39 } });
-          if (tsdBalanceUnits(bal.balance) === 0n) return null;
+          const [bal, stats] = await Promise.all([fetchBalance({ data: { address: a.address, propertyId: 39 } }), getAddressStats(a.address)]);
+          const used = stats.chain_stats.tx_count + stats.mempool_stats.tx_count > 0;
+          if (tsdBalanceUnits(bal.balance) === 0n) return { used, row: null };
           const coins = await getAddressUtxos(a.address);
-          return { index: a.index, address: a.address, tsd: bal.balance,
+          return { used: true, row: { index: a.index, address: a.address, tsd: bal.balance,
             confirmedSats: coins.filter(c => c.status.confirmed).reduce((s, c) => s + c.value, 0),
-            pendingSats: coins.filter(c => !c.status.confirmed).reduce((s, c) => s + c.value, 0) };
+            pendingSats: coins.filter(c => !c.status.confirmed).reduce((s, c) => s + c.value, 0) } };
         }));
-        out.push(...res.filter((r): r is Row => !!r));
+        for (const r of res) { empty = r.used ? 0 : empty + 1; if (r.row) out.push(r.row); }
+        last = start + batch.length - 1;
       }
+      setChecked(last);
       setRows(out);
     } catch (e) { setError((e as Error).message); } finally { setLoading(false); }
   }, [pairing, fetchBalance]);
@@ -182,7 +189,7 @@ export function VaultTsdGather({ pairing }: { pairing: VaultPairing }) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-lg font-semibold">Gather TSD to address #0</h3>
-          <p className="mt-1 text-sm text-muted-foreground">TSD can only be sent from your TXC address #0. This finds TSD on your other receive addresses (#1–#{TSD_GATHER_MAX_INDEX}) and moves it there with one Vault signature per address. Address #0 pays the fee.</p>
+          <p className="mt-1 text-sm text-muted-foreground">TSD can only be sent from your TXC address #0. This finds TSD on your other receive addresses (#1 onward, until {TSD_GATHER_GAP} unused in a row{checked ? `; checked up to #${checked}` : ""}) and moves it there with one Vault signature per address. Address #0 pays the fee.</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void scan()} disabled={loading || busy}><RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} /></Button>
       </div>

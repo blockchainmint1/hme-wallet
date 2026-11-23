@@ -6,13 +6,17 @@
  *    right before signing, and the signed bytes must be exactly one ERC-20
  *    transfer of the reviewed amount to the order's deposit address.
  *  - Sell TSD: TSD → USDC on Ethereum stays on the audited cash-out in Send.
- * Vault and watch-only wallets never reach this panel (ThorSwap gates them).
+ * Vault wallets may Buy TSD from their Ethereum/Base address #0: the same
+ * order checks run, then HME Vault signs the one ERC-20 transfer by QR and
+ * the signed bytes are verified and the order re-polled before broadcast.
+ * Watch-only wallets never reach this panel.
  */
 import { useMemo, useState } from "react";
+import { getAddress } from "viem";
 import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { createWalletClient, erc20Abi, http, type Hex } from "viem";
+import { createWalletClient, erc20Abi, formatUnits, http, type Hex } from "viem";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,23 +54,37 @@ import {
   staleReviewedOrders, updateMintRecord,
 } from "@/lib/cashout/mint-history";
 import type { CashoutKeyBinding } from "@/lib/cashout/api-key";
+import { loadPairing, type VaultPairing } from "@/lib/vault-link/pairing";
+import { deriveVaultAddress } from "@/lib/vault-link/derive";
+import { vaultTsdReceiveAddress } from "@/lib/vault-link/tsd-send";
+import { vaultEvmAccount } from "@/lib/vault-link/evm-accounts";
+import { buildErc20Intent, type EvmIntent } from "@/lib/vault-link/evm-intent";
+import { intentTransaction } from "@/lib/vault-link/evm-send";
+import { readFees, VAULT_FEE_CEILING_WEI } from "@/lib/vault-link/evm-roundup";
+import { VaultEvmSigning } from "@/components/wallet/VaultEvmSigning";
+import { loadSession } from "@/lib/txc/session-cache";
+import { getActiveProfileId } from "@/lib/txc/storage";
 
 const OTHER = "__other";
 const TSD = "tsd";
 
 export function TsdBridgeSwap({
-  direction, evmSwapOn, onDirection, onLeave,
+  direction, evmSwapOn, onDirection, onLeave, vaultMode = false, initialSourceId, initialAmount,
 }: {
   direction: "mint" | "redeem";
   evmSwapOn: boolean;
   onDirection: (d: "mint" | "redeem") => void;
   onLeave: () => void;
+  /** Vault wallet: Buy TSD only, signed by HME Vault. */
+  vaultMode?: boolean;
+  initialSourceId?: MintSourceId;
+  initialAmount?: string;
 }) {
   const [apiKey] = useCashoutApiKey();
   const fetchTerms = useServerFn(getTsdBridgeTerms);
   const terms = useQuery({ queryKey: ["tsd-bridge-terms"], queryFn: () => fetchTerms(), staleTime: 60_000, retry: 1 });
 
-  const [sourceId, setSourceId] = useState<MintSourceId>("usdc-eth");
+  const [sourceId, setSourceId] = useState<MintSourceId>(initialSourceId ?? "usdc-eth");
   const sources = availableMintSources(terms.data);
   const source = mintSource(sourceId) ?? MINT_SOURCES[0];
 
@@ -75,13 +93,14 @@ export function TsdBridgeSwap({
 
   function pickPay(v: string) {
     if (v === OTHER) return onLeave();
-    if (v === TSD) return onDirection("redeem");
+    if (v === TSD) return vaultMode ? undefined : onDirection("redeem");
     setSourceId(v as MintSourceId);
     if (direction !== "mint") onDirection("mint");
   }
   function pickReceive(v: string) {
     if (v === OTHER) return onLeave();
     if (v === TSD) return onDirection("mint");
+    if (vaultMode) return;
     if (direction !== "redeem") onDirection("redeem");
   }
 
@@ -97,8 +116,8 @@ export function TsdBridgeSwap({
                 {(sources.length ? sources : MINT_SOURCES).map((s) => (
                   <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
                 ))}
-                <SelectItem value={TSD}>TSD on TEXITcoin</SelectItem>
-                <SelectItem value={OTHER}>Other coins (THORChain)…</SelectItem>
+                {!vaultMode && <SelectItem value={TSD}>TSD on TEXITcoin</SelectItem>}
+                <SelectItem value={OTHER}>{vaultMode ? "Back to round-up" : "Other coins (THORChain)…"}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -110,10 +129,12 @@ export function TsdBridgeSwap({
                 {direction === "mint"
                   ? <SelectItem value={TSD}>TSD on TEXITcoin</SelectItem>
                   : <SelectItem value="usdc-eth-out">USDC on Ethereum</SelectItem>}
-                <SelectItem value={direction === "mint" ? "usdc-eth-out" : TSD}>
-                  {direction === "mint" ? "USDC on Ethereum (sell TSD)" : "TSD on TEXITcoin (buy TSD)"}
-                </SelectItem>
-                <SelectItem value={OTHER}>Other coins (THORChain)…</SelectItem>
+                {!vaultMode && (
+                  <SelectItem value={direction === "mint" ? "usdc-eth-out" : TSD}>
+                    {direction === "mint" ? "USDC on Ethereum (sell TSD)" : "TSD on TEXITcoin (buy TSD)"}
+                  </SelectItem>
+                )}
+                <SelectItem value={OTHER}>{vaultMode ? "Back to round-up" : "Other coins (THORChain)…"}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -127,7 +148,7 @@ export function TsdBridgeSwap({
             </p>
             <TsdCashoutKeyCard />
           </div>
-        ) : direction === "redeem" ? (
+        ) : direction === "redeem" && !vaultMode ? (
           <RedeemRoute redeemFeeBps={terms.data?.redeemFeeBps ?? null} />
         ) : !mintContractsConfirmed() ? (
           <p className="mt-6 max-w-xl text-sm text-muted-foreground">
@@ -147,7 +168,8 @@ export function TsdBridgeSwap({
         ) : terms.data && !sources.some((s) => s.id === source.id) ? (
           <p className="mt-6 text-sm text-muted-foreground">TSD Bridge isn't accepting {source.label} right now — pick another stablecoin.</p>
         ) : terms.data ? (
-          <MintRoute key={`${source.id}:${apiKey.slice(-6)}`} apiKey={apiKey} sourceId={source.id} terms={terms.data} evmSwapOn={evmSwapOn} />
+          <MintRoute key={`${source.id}:${apiKey.slice(-6)}`} apiKey={apiKey} sourceId={source.id} terms={terms.data} evmSwapOn={evmSwapOn}
+            initialAmount={source.id === initialSourceId ? initialAmount : undefined} />
         ) : (
           <p className="mt-6 text-sm text-muted-foreground">Loading TSD Bridge terms…</p>
         )}
@@ -185,11 +207,12 @@ function RedeemRoute({ redeemFeeBps }: { redeemFeeBps: number | null }) {
   );
 }
 
-function MintRoute({ apiKey, sourceId, terms, evmSwapOn }: {
+function MintRoute({ apiKey, sourceId, terms, evmSwapOn, initialAmount }: {
   apiKey: string;
   sourceId: MintSourceId;
   terms: TsdBridgeTerms;
   evmSwapOn: boolean;
+  initialAmount?: string | undefined;
 }) {
   const { root, unlocked, activeProfileId } = useWallet();
   const qc = useQueryClient();
@@ -198,18 +221,45 @@ function MintRoute({ apiKey, sourceId, terms, evmSwapOn }: {
   const source = mintSource(sourceId)!;
   const nativeSymbol = source.chain === "eth" ? "ETH" : "Base ETH";
   const isLocalSigner = !!root && unlocked?.mode !== "vault" && unlocked?.mode !== "keyonly";
-  const evmAddress = useMemo(() => (root ? deriveEvmAccount(root).address : null), [root]);
-  const ownTsd = useMemo(() => (root ? getOmniDepositAddress(root).address : null), [root]);
+  // Vault: pay from the paired Ethereum address #0 only; never derive from the random wrapping anchor.
+  const [pairing] = useState<VaultPairing | null>(() => (unlocked?.mode === "vault" ? loadPairing(activeProfileId) : null));
+  const [pairingIdentity] = useState(() => JSON.stringify(pairing));
+  const isVault = unlocked?.mode === "vault" && !!pairing?.evm && !!pairing.chains.txc?.["44"];
+  const evmAddress = useMemo(() => {
+    if (isLocalSigner && root) return deriveEvmAccount(root).address;
+    if (isVault && pairing?.evm) return getAddress(pairing.evm.address);
+    return null;
+  }, [isLocalSigner, isVault, root, pairing]);
+  /** Every Ethereum address of this wallet we know (deposit addresses must never be ours). */
+  const ownEvm = useMemo(() => {
+    if (!evmAddress) return [] as string[];
+    if (!isVault || !pairing?.evm?.xpub) return [evmAddress];
+    return Array.from({ length: 50 }, (_, i) => vaultEvmAccount(pairing, i).address);
+  }, [evmAddress, isVault, pairing]);
+  const ownTsd = useMemo(() => {
+    if (isLocalSigner && root) return getOmniDepositAddress(root).address;
+    if (isVault) return vaultTsdReceiveAddress(pairing);
+    return null;
+  }, [isLocalSigner, isVault, root, pairing]);
   /** This wallet's own legacy TEXITcoin addresses (first 50 receive, 20 change). */
   const ownTxc = useMemo(() => {
-    if (!root) return new Set<string>();
-    return new Set([
-      ...deriveAddresses(root, "bip44", 0, 50).map((a) => a.address),
-      ...deriveAddresses(root, "bip44", 1, 20).map((a) => a.address),
-    ]);
-  }, [root]);
+    if (isLocalSigner && root) {
+      return new Set([
+        ...deriveAddresses(root, "bip44", 0, 50).map((a) => a.address),
+        ...deriveAddresses(root, "bip44", 1, 20).map((a) => a.address),
+      ]);
+    }
+    if (isVault && pairing) {
+      return new Set([
+        ...Array.from({ length: 50 }, (_, i) => deriveVaultAddress(pairing, "txc", 44, 0, i).address),
+        ...Array.from({ length: 20 }, (_, i) => deriveVaultAddress(pairing, "txc", 44, 1, i).address),
+      ]);
+    }
+    return new Set<string>();
+  }, [isLocalSigner, isVault, root, pairing]);
+  const [vaultSigning, setVaultSigning] = useState<{ payload: string; locked: VerifiedMintOrder; binding: CashoutKeyBinding } | null>(null);
 
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] = useState(initialAmount ?? "");
   const [recipientOverride, setRecipientOverride] = useState<string | null>(null);
   const [order, setOrder] = useState<{ locked: VerifiedMintOrder; binding: CashoutKeyBinding; reused: boolean } | null>(null);
   const [checkedOther, setCheckedOther] = useState(false);
@@ -225,7 +275,7 @@ function MintRoute({ apiKey, sourceId, terms, evmSwapOn }: {
 
   const balance = useQuery({
     queryKey: ["tsd-mint-balance", source.id, evmAddress],
-    enabled: isLocalSigner && !!evmAddress,
+    enabled: (isLocalSigner || isVault) && !!evmAddress,
     queryFn: async () => {
       const pub = evmClient(source.chain);
       const [token, native, maxFeePerGas] = await Promise.all([
@@ -257,7 +307,7 @@ function MintRoute({ apiKey, sourceId, terms, evmSwapOn }: {
 
       const keyFp = cashoutKeyFingerprint(apiKey);
       const history = readMintHistory(activeProfileId);
-      const ctx = { ownEvmAddresses: [evmAddress], priorOrders: history };
+      const ctx = { ownEvmAddresses: ownEvm, priorOrders: history };
       const expected = { sourceId: source.id, amount: amount.trim(), recipient };
 
       // Reuse an identical unpaid order with more than two hours left.
@@ -277,7 +327,7 @@ function MintRoute({ apiKey, sourceId, terms, evmSwapOn }: {
       }
 
       const locked = await createOrder({
-        data: { apiKey, sourceId: source.id, amount: amount.trim(), recipient, ownEvmAddresses: [evmAddress] },
+        data: { apiKey, sourceId: source.id, amount: amount.trim(), recipient, ownEvmAddresses: ownEvm.slice(0, 8) },
       });
       // Keep our own record of what was agreed before checking it, so a
       // refused order's deposit address still counts as "seen".
@@ -299,7 +349,101 @@ function MintRoute({ apiKey, sourceId, terms, evmSwapOn }: {
     }
   }
 
+  async function assertVaultSession() {
+    const s = await loadSession();
+    if (!s || s.mode !== "vault" || getActiveProfileId() !== activeProfileId || JSON.stringify(loadPairing(activeProfileId)) !== pairingIdentity) {
+      throw new Error("Wallet locked or changed. Nothing was sent — reopen this page from the intended Vault.");
+    }
+  }
+
+  /** Vault: same checks as a local send, then hand HME Vault exactly one ERC-20 transfer. */
+  async function prepareVault() {
+    if (!order || !isVault || !pairing || !evmAddress || busy) return;
+    const { locked, binding } = order;
+    setBusy(true);
+    setError(null);
+    try {
+      assertTsdMintEvmExecution(evmSwapOn);
+      await assertVaultSession();
+      if (!cashoutBindingHolds(binding)) throw new Error("Wallet or TSD Swap key changed. Nothing was sent — start again.");
+      if (amount.trim() !== locked.amount || recipient !== locked.recipient) {
+        throw new Error("The amount or TSD address changed. Nothing was sent — start again.");
+      }
+      if (!recipientOwn && !checkedOther) throw new Error("Confirm you checked the TSD address. Nothing was sent.");
+      confirmLockedMintOrder(
+        locked,
+        { sourceId: source.id, amount: locked.amount, recipient },
+        { ownEvmAddresses: ownEvm, priorOrders: readMintHistory(activeProfileId) },
+      );
+      recheckMintOrder(locked, await fetchOrder({ data: { apiKey, id: locked.id } }));
+      const pub = evmClient(source.chain);
+      const transfer = buildMintTransfer(locked);
+      const [bal, native, nonce, estimate, fees] = await Promise.all([
+        pub.readContract({ address: source.contract, abi: erc20Abi, functionName: "balanceOf", args: [evmAddress] }) as Promise<bigint>,
+        pub.getBalance({ address: evmAddress }),
+        pub.getTransactionCount({ address: evmAddress, blockTag: "pending" }),
+        pub.estimateGas({ account: evmAddress, to: transfer.to, data: transfer.data }),
+        readFees(source.chain),
+      ]);
+      if (bal < BigInt(locked.units)) throw new Error(`Not enough ${source.symbol}. Nothing was sent.`);
+      const gas = (estimate * 120n + 99n) / 100n;
+      if (gas > MINT_TRANSFER_GAS_CEILING) throw new Error("This transfer needs more gas than expected. Nothing was sent.");
+      if (gas * fees.maxFeePerGas > VAULT_FEE_CEILING_WEI[source.chain]) throw new Error("Network fees are above HME Vault's safety limit right now. Try again later.");
+      if (native < gas * fees.maxFeePerGas) throw new Error(`Not enough ${nativeSymbol} for the network fee. Nothing was sent.`);
+      const payload = buildErc20Intent({
+        pairing, chainId: EVM_CHAINS[source.chain].viemChain.id, token: source.contract, to: locked.depositAddress as `0x${string}`,
+        amountRaw: BigInt(locked.units), nonce, gas, fees: { type: "eip1559", ...fees },
+      });
+      const intent = JSON.parse(payload) as EvmIntent;
+      assertMintTransferRequest(locked, { ...intentTransaction(intent), chainId: intent.chainId });
+      setVaultSigning({ payload, locked, binding });
+      setOrder(null);
+    } catch (e) {
+      hapticError();
+      setOrder(null);
+      setError(e instanceof Error ? e.message : "Couldn't prepare the Vault payment.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Runs after Vault's signature is verified, right before broadcast. */
+  async function vaultBeforeBroadcast() {
+    if (!vaultSigning) throw new Error("Nothing to send.");
+    const { locked, binding } = vaultSigning;
+    assertTsdMintEvmExecution(evmSwapOn);
+    await assertVaultSession();
+    if (!cashoutBindingHolds(binding)) throw new Error("Wallet or TSD Swap key changed. Nothing was sent — start again.");
+    recheckMintOrder(locked, await fetchOrder({ data: { apiKey, id: locked.id } }));
+    if (!mintOrderStillOpen(locked.expiresAt)) {
+      throw new Error("This order is too close to its deadline. Nothing was sent — start again for a fresh order.");
+    }
+  }
+
+  async function vaultSent(hash: Hex) {
+    if (!vaultSigning) return;
+    const { locked } = vaultSigning;
+    updateMintRecord(activeProfileId, locked.id, { state: "sent", txHash: hash });
+    setVaultSigning(null);
+    setSent({ hash, locked, state: "waiting" });
+    try {
+      const state = await waitForMintPayment(source.chain, hash);
+      updateMintRecord(activeProfileId, locked.id, { state });
+      hapticSuccess();
+      setSent({ hash, locked, state });
+      void qc.invalidateQueries({ queryKey: ["tsd-mint-balance"] });
+    } catch (e) {
+      hapticError();
+      if (e instanceof MintPaymentReverted) {
+        updateMintRecord(activeProfileId, locked.id, { state: "failed" });
+        setSent(null);
+      }
+      setError(friendlyBroadcastError(e));
+    }
+  }
+
   async function send() {
+    if (isVault) return prepareVault();
     if (!order || !root || !isLocalSigner || busy) return;
     const { locked, binding } = order;
     setBusy(true);
@@ -362,6 +506,27 @@ function MintRoute({ apiKey, sourceId, terms, evmSwapOn }: {
     }
   }
 
+  if (vaultSigning) {
+    const l = vaultSigning.locked;
+    return (
+      <div className="mt-6 max-w-xl space-y-4">
+        <h2 className="text-xl font-semibold">Sign on your Vault</h2>
+        <dl className="space-y-1.5 text-sm">
+          <div><dt className="text-muted-foreground">Pay</dt><dd className="font-medium">{l.amount} {source.symbol} ({source.label}) from your address #0</dd></div>
+          <div><dt className="text-muted-foreground">To TSD Bridge deposit address</dt><dd className="break-all font-mono text-xs">{l.depositAddress}</dd></div>
+          <div><dt className="text-muted-foreground">Token contract (check on the Vault)</dt><dd className="break-all font-mono text-xs">{source.contract}</dd></div>
+          <div><dt className="text-muted-foreground">TSD goes to</dt><dd className="break-all font-mono text-xs">{l.recipient}</dd></div>
+        </dl>
+        <p className="text-xs text-muted-foreground">
+          HME Vault shows the contract and the amount in raw units ({BigInt(l.units).toString()} = {l.amount} {source.symbol}). After the
+          signature comes back, the wallet checks it is exactly this transfer and checks the order is still open before sending.
+        </p>
+        <VaultEvmSigning payload={vaultSigning.payload} chain={source.chain} beforeBroadcast={vaultBeforeBroadcast}
+          onSent={(h) => void vaultSent(h)} onBack={() => setVaultSigning(null)} />
+      </div>
+    );
+  }
+
   if (sent) {
     const tsdOut = formatUnitsPlain(estimateTsdOut(BigInt(sent.locked.units), source, sent.locked.feeBps), 8);
     return (
@@ -401,7 +566,13 @@ function MintRoute({ apiKey, sourceId, terms, evmSwapOn }: {
           onChange={(e) => { setAmount(e.target.value); setOrder(null); setError(null); }} className="mt-1.5 text-lg" />
         {balance.data && (
           <p className="mt-1.5 text-xs text-muted-foreground">
-            Available: {formatUnitsPlain(balance.data.token, source.decimals)} {source.symbol}
+            Available{isVault ? " on address #0" : ""}: {formatUnitsPlain(balance.data.token, source.decimals)} {source.symbol}
+            {balance.data.token > 0n && (
+              <button type="button" className="ml-2 underline underline-offset-2"
+                onClick={() => { setAmount(maxMintAmount(balance.data!.token, source.decimals, terms.maxAmount)); setOrder(null); setError(null); }}>
+                Use all{BigInt(Math.floor(terms.maxAmount)) * 10n ** BigInt(source.decimals) < balance.data.token ? ` (up to ${terms.maxAmount.toLocaleString()} per order)` : ""}
+              </button>
+            )}
           </p>
         )}
         {amount && units === null && <p className="mt-1.5 text-xs text-destructive">Enter an amount with up to {source.decimals} decimals.</p>}
@@ -481,7 +652,7 @@ function MintRoute({ apiKey, sourceId, terms, evmSwapOn }: {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Back</AlertDialogCancel>
             <AlertDialogAction disabled={busy || (!recipientOwn && !checkedOther)} onClick={(e) => { e.preventDefault(); void send(); }}>
-              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Confirm and send
+              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{isVault ? "Confirm and sign on Vault" : "Confirm and send"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -496,6 +667,13 @@ function MintRoute({ apiKey, sourceId, terms, evmSwapOn }: {
 }
 
 class MintPaymentReverted extends Error {}
+
+/** Whole balance as a plain decimal, capped at TSD Bridge's per-order maximum. */
+export function maxMintAmount(balance: bigint, decimals: number, maxAmount: number): string {
+  const cap = BigInt(Math.floor(maxAmount)) * 10n ** BigInt(decimals);
+  // Plain digits only: this goes into the amount box, which refuses thousands separators.
+  return formatUnits(balance < cap ? balance : cap, decimals);
+}
 
 /** Current max fee per gas on a chain (EIP-1559 estimate, else legacy gas price). */
 async function currentMaxFee(chain: "eth" | "base"): Promise<bigint> {
