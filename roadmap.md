@@ -158,6 +158,8 @@
 ## Vault Buy TSD (23 Nov)
 - [x] Desktop Vault round-up built: deep scan of Vault Ethereum/Base addresses (incl. NectarPay sale addresses), fee top-up, Vault batch sweep to #0, Buy TSD from #0; TXC TSD gather scan widened past #30 (preview only)
 - [x] Auditor review of the round-up received (OK as preview, 6 small fixes, 3 design notes)
-- [ ] Apply the round-up audit fixes Bobby picks (waiting on his choice)
-- [ ] HME Vault: label its own addresses in bulk fee-money payments (change lives in the HME Vault project; waiting on Bobby)
+- [x] Apply all 6 small round-up audit fixes (Bobby chose these; Check further/dust note/stuck message not chosen)
+- [x] HME Vault handoff note written: label own addresses "Your own address #n" and flag strangers in red on bulk payments, never refuse (Bobby chose; change is built in the HME Vault project)
 - [ ] Bobby: re-pair Vault (needs HME Vault with batch sweep) and run one tiny real round-up
+- [ ] Auditor sign-off on round-up follow-up fixes (pack sent to Bobby)
+- [ ] Bobby: take the label handoff note to the HME Vault project and build it there

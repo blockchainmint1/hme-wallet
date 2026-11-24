@@ -57,7 +57,7 @@ import type { CashoutKeyBinding } from "@/lib/cashout/api-key";
 import { loadPairing, type VaultPairing } from "@/lib/vault-link/pairing";
 import { deriveVaultAddress } from "@/lib/vault-link/derive";
 import { vaultTsdReceiveAddress } from "@/lib/vault-link/tsd-send";
-import { vaultEvmAccount } from "@/lib/vault-link/evm-accounts";
+import { vaultEvmAccount, vaultOwnEvmAddressCount } from "@/lib/vault-link/evm-accounts";
 import { buildErc20Intent, type EvmIntent } from "@/lib/vault-link/evm-intent";
 import { intentTransaction } from "@/lib/vault-link/evm-send";
 import { readFees, VAULT_FEE_CEILING_WEI } from "@/lib/vault-link/evm-roundup";
@@ -69,7 +69,7 @@ const OTHER = "__other";
 const TSD = "tsd";
 
 export function TsdBridgeSwap({
-  direction, evmSwapOn, onDirection, onLeave, vaultMode = false, initialSourceId, initialAmount,
+  direction, evmSwapOn, onDirection, onLeave, vaultMode = false, initialSourceId, initialAmount, vaultOwnEvmCount,
 }: {
   direction: "mint" | "redeem";
   evmSwapOn: boolean;
@@ -79,6 +79,8 @@ export function TsdBridgeSwap({
   vaultMode?: boolean;
   initialSourceId?: MintSourceId;
   initialAmount?: string;
+  /** Vault: how many own Ethereum addresses the round-up scan covered; deposit checks cover at least these. */
+  vaultOwnEvmCount?: number;
 }) {
   const [apiKey] = useCashoutApiKey();
   const fetchTerms = useServerFn(getTsdBridgeTerms);
@@ -169,7 +171,7 @@ export function TsdBridgeSwap({
           <p className="mt-6 text-sm text-muted-foreground">TSD Bridge isn't accepting {source.label} right now — pick another stablecoin.</p>
         ) : terms.data ? (
           <MintRoute key={`${source.id}:${apiKey.slice(-6)}`} apiKey={apiKey} sourceId={source.id} terms={terms.data} evmSwapOn={evmSwapOn}
-            initialAmount={source.id === initialSourceId ? initialAmount : undefined} />
+            initialAmount={source.id === initialSourceId ? initialAmount : undefined} vaultOwnEvmCount={vaultOwnEvmCount} />
         ) : (
           <p className="mt-6 text-sm text-muted-foreground">Loading TSD Bridge terms…</p>
         )}
@@ -207,12 +209,13 @@ function RedeemRoute({ redeemFeeBps }: { redeemFeeBps: number | null }) {
   );
 }
 
-function MintRoute({ apiKey, sourceId, terms, evmSwapOn, initialAmount }: {
+function MintRoute({ apiKey, sourceId, terms, evmSwapOn, initialAmount, vaultOwnEvmCount }: {
   apiKey: string;
   sourceId: MintSourceId;
   terms: TsdBridgeTerms;
   evmSwapOn: boolean;
   initialAmount?: string | undefined;
+  vaultOwnEvmCount?: number | undefined;
 }) {
   const { root, unlocked, activeProfileId } = useWallet();
   const qc = useQueryClient();
@@ -234,8 +237,8 @@ function MintRoute({ apiKey, sourceId, terms, evmSwapOn, initialAmount }: {
   const ownEvm = useMemo(() => {
     if (!evmAddress) return [] as string[];
     if (!isVault || !pairing?.evm?.xpub) return [evmAddress];
-    return Array.from({ length: 50 }, (_, i) => vaultEvmAccount(pairing, i).address);
-  }, [evmAddress, isVault, pairing]);
+    return Array.from({ length: vaultOwnEvmAddressCount(vaultOwnEvmCount) }, (_, i) => vaultEvmAccount(pairing, i).address);
+  }, [evmAddress, isVault, pairing, vaultOwnEvmCount]);
   const ownTsd = useMemo(() => {
     if (isLocalSigner && root) return getOmniDepositAddress(root).address;
     if (isVault) return vaultTsdReceiveAddress(pairing);

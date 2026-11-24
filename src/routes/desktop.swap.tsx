@@ -33,7 +33,7 @@ function Page() {
   const tsdAllowed = exchangeAllowed && !d.isVault && unlocked?.mode !== "vault" && unlocked?.mode !== "keyonly";
   // Vault: Buy TSD only, from Ethereum/Base address #0, signed on HME Vault.
   const vaultTsd = exchangeAllowed && d.isVault && unlocked?.mode === "vault";
-  const [vaultBuy, setVaultBuy] = useState<{ sourceId: MintSourceId; amount: string } | null>(null);
+  const [vaultBuy, setVaultBuy] = useState<{ sourceId: MintSourceId; amount: string; ownChecked: number } | null>(null);
   if (vaultTsd) {
     return (
       <>
@@ -49,13 +49,14 @@ function Page() {
               evmSwapOn={evmSwapOn}
               initialSourceId={vaultBuy.sourceId}
               initialAmount={vaultBuy.amount}
+              vaultOwnEvmCount={vaultBuy.ownChecked}
               onDirection={() => undefined}
               onLeave={() => setVaultBuy(null)}
             />
             </>
           ) : (
             <>
-              <VaultRoundUp key={d.activeProfileId} profileId={d.activeProfileId} onBuy={(sourceId, amount) => setVaultBuy({ sourceId, amount })} />
+              <VaultRoundUp key={d.activeProfileId} profileId={d.activeProfileId} onBuy={(sourceId, amount, ownChecked) => setVaultBuy({ sourceId, amount, ownChecked })} />
               {anyEnabled && <ThorSwap key={d.activeProfileId} utxoSwapOn={utxoSwapOn} evmSwapOn={evmSwapOn} />}
             </>
           )}

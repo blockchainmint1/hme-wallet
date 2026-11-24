@@ -130,10 +130,17 @@ export function mergeRefreshedPairing(current: VaultPairing, fresh: VaultPairing
   if (current.evm) {
     const f = fresh.evm;
     if (!f || f.address.toLowerCase() !== current.evm.address.toLowerCase() || f.path !== current.evm.path) return fail();
-    if (current.evm.xpub && f.xpub !== current.evm.xpub) fail();
+    if (current.evm.xpub && f.xpub && f.xpub !== current.evm.xpub) fail();
   }
   const chains: VaultPairing["chains"] = { ...fresh.chains };
-  return { ...fresh, chains, pairedAt: current.pairedAt };
+  // Only add: an older Vault's QR (no account key / capabilities) keeps what was already paired.
+  const xpub = fresh.evm?.xpub ?? current.evm?.xpub;
+  const evm = fresh.evm ? { ...fresh.evm, ...(xpub ? { xpub } : {}) } : fresh.evm;
+  const caps = KNOWN_CAPS.filter((c) => fresh.caps?.includes(c) || current.caps?.includes(c));
+  const out: VaultPairing = { v: 1, fp: fresh.fp, chains, pairedAt: current.pairedAt };
+  if (evm) out.evm = evm;
+  if (caps.length) out.caps = caps;
+  return out;
 }
 
 /* -----------------------------------------------------------------------

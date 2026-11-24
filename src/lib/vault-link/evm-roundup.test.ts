@@ -3,10 +3,10 @@ import { mnemonicToSeedSync } from "@scure/bip39";
 import { keccak256, stringToBytes, getAddress, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { rootFromSeed } from "@/lib/txc/wallet";
-import { evmAddressFromAccountXpub, vaultEvmAccount } from "./evm-accounts";
+import { evmAddressFromAccountXpub, vaultEvmAccount, vaultOwnEvmAddressCount } from "./evm-accounts";
 import { mergeRefreshedPairing, parsePairing, vaultCan, type VaultPairing } from "./pairing";
 import {
-  buildDisperseIntent, buildSweepBatchRequest, disperseCalldata, planRoundup, planTopUp, sweepBatchIntents,
+  base64ToHex, buildDisperseIntent, buildSweepBatchRequest, disperseCalldata, planRoundup, planTopUp, sweepBatchIntents,
   verifySweepBatchReply, verifyVaultDisperse, DISPERSE_ADDRESS, type Fees, type ScannedAddress,
 } from "./evm-roundup";
 import { intentTransaction } from "./evm-send";
@@ -170,5 +170,45 @@ describe("Buy TSD amount", () => {
   it("uses the whole balance, capped at TSD Bridge's per-order maximum", () => {
     expect(maxMintAmount(14_005_930_000n, 6, 50_000)).toBe("14005.93");
     expect(maxMintAmount(60_000_000_000n, 6, 50_000)).toBe("50000");
+  });
+});
+
+describe("Auditor follow-ups (24 Nov)", () => {
+  it("a failed fee estimate is reported as a network problem with a retry, not a Vault limit", () => {
+    const plan = planRoundup({
+      chain: "eth", destination: ADDR0, fees,
+      tokenGas: (_f, t) => (t === USDC ? { error: "RPC timeout" } : 250_000n),
+      addresses: [addr(1, ETH, { [USDC]: 5n }), addr(2, ETH, { [USDT]: 5n })],
+    });
+    expect(plan.skipped).toEqual([
+      { index: 1, reason: "USDC: couldn't work out the network fee (RPC timeout)", retry: true },
+      { index: 2, reason: "USDT transfer needs more gas than HME Vault allows" },
+    ]);
+  });
+  it("re-scanning an older Vault's QR keeps the account key and batch capabilities", () => {
+    const older = parsePairing(JSON.stringify({ hmvault: 1, fp: "73c5da0a", evm: { address: ADDR0, path: "m/44'/60'/0'/0/0" } }));
+    const merged = mergeRefreshedPairing(pairing, older);
+    expect(merged.evm?.xpub).toBe(accountXpub);
+    expect(vaultCan(merged, "sweep-batch") && vaultCan(merged, "native-disperse")).toBe(true);
+  });
+  it("a different account key on the same Vault is still refused", () => {
+    const other = { ...pairing, evm: { ...pairing.evm!, xpub: `${accountXpub.slice(0, -1)}x` } };
+    expect(() => mergeRefreshedPairing(other, parsePairing(JSON.stringify({ hmvault: 1, fp: "73c5da0a", evm: pairing.evm })))).toThrow(/different Vault/);
+  });
+  it("a garbled signed transaction gives the friendly message", () => {
+    expect(() => base64ToHex("AAAAA")).toThrow(/damaged transaction/);
+    expect(base64ToHex("AAE=")).toBe("0x0001");
+  });
+  it("fee money is refused for an address that isn't this Vault's own", () => {
+    const addresses = [addr(2, ETH, {}, 9), addr(1, 0n, { [USDC]: 1n })];
+    const t = planTopUp({ chain: "eth", addresses, fees, gas: 100_000n,
+      needs: [{ index: 1, address: addresses[1]!.address, path: addresses[1]!.path, native: 0n, needed: GWEI }] });
+    expect(() => buildDisperseIntent(pairing, "eth", { ...t, recipients: [key(7).address] }, fees)).toThrow(/isn't one of this Vault's own/);
+    expect(() => buildDisperseIntent(pairing, "eth", t, fees)).not.toThrow();
+  });
+  it("TSD order address checks cover every scanned address, at least 50, at most 1,000", () => {
+    expect(vaultOwnEvmAddressCount(undefined)).toBe(50);
+    expect(vaultOwnEvmAddressCount(120)).toBe(120);
+    expect(vaultOwnEvmAddressCount(5000)).toBe(1000);
   });
 });

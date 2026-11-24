@@ -18,8 +18,8 @@ import { vaultEvmAccount } from "@/lib/vault-link/evm-accounts";
 import {
   ROUNDUP_CHAINS, ROUNDUP_CHAIN_NAME, ROUNDUP_GAP, assertDisperseCode, buildDisperseIntent, buildSweepBatchRequest,
   estimateDisperseGas, estimateTokenGas, planRoundup, planTopUp, readAddress, readFees, roundupTokens, scanVaultEvm,
-  topUpAmount, verifySweepBatchReply, verifyVaultDisperse, TOKEN_GAS_MAX,
-  type Fees, type RoundupChain, type RoundupItem, type RoundupPlan, type ScannedAddress, type TopUpPlan,
+  topUpAmount, verifySweepBatchReply, verifyVaultDisperse,
+  type Fees, type TokenGasEstimate, type RoundupChain, type RoundupItem, type RoundupPlan, type ScannedAddress, type TopUpPlan,
 } from "@/lib/vault-link/evm-roundup";
 import { formatUnitsPlain, type MintSourceId } from "@/lib/cashout/mint";
 import { EVM_CHAINS, evmClient } from "@/lib/chains/evm";
@@ -28,13 +28,18 @@ import { getActiveProfileId } from "@/lib/txc/storage";
 
 const eth = (wei: bigint) => formatUnitsPlain(wei, 18);
 const short = (a: string) => `${a.slice(0, 8)}…${a.slice(-6)}`;
+const shortError = (e: unknown) => ((e as Error)?.message ?? "").split("\n")[0]?.slice(0, 120) || "network error";
 
 type Signing =
   | { kind: "topup"; payload: string; plan: TopUpPlan; fees: Fees }
   | { kind: "batch"; payload: string; items: RoundupItem[]; batch: number; of: number };
 interface Broadcast { label: string; hash: Hex | null; error?: string }
 
-export function VaultRoundUp({ profileId, onBuy }: { profileId: string; onBuy?: (sourceId: MintSourceId, amount: string) => void }) {
+export function VaultRoundUp({ profileId, onBuy }: {
+  profileId: string;
+  /** `ownChecked`: how many of this Vault's Ethereum addresses the scan covered (#0…#n-1). */
+  onBuy?: (sourceId: MintSourceId, amount: string, ownChecked: number) => void;
+}) {
   const [pairing, setPairing] = useState<VaultPairing | null>(() => loadPairing(profileId));
   const [chain, setChain] = useState<RoundupChain>("eth");
   const [rows, setRows] = useState<ScannedAddress[] | null>(null);
@@ -77,14 +82,14 @@ export function VaultRoundUp({ profileId, onBuy }: { profileId: string; onBuy?: 
   async function makePlan(c: RoundupChain, used: ScannedAddress[]) {
     const fees = await readFees(c);
     const dest = vaultEvmAccount(p, 0).address;
-    const gas = new Map<string, bigint>();
+    const gas = new Map<string, TokenGasEstimate>();
     await Promise.all(used.filter((a) => a.index !== 0).flatMap((a) => roundupTokens(c)
       .filter((t) => (a.tokens[t.contract] ?? 0n) > 0n)
       .map(async (t) => {
         try { gas.set(`${a.address}:${t.contract}`, await estimateTokenGas(c, a.address, t.contract, a.tokens[t.contract]!, dest)); }
-        catch { gas.set(`${a.address}:${t.contract}`, TOKEN_GAS_MAX + 1n); }
+        catch (e) { gas.set(`${a.address}:${t.contract}`, { error: shortError(e) }); }
       })));
-    setPlan({ plan: planRoundup({ chain: c, destination: dest, addresses: used, fees, tokenGas: (f, t) => gas.get(`${f}:${t}`) ?? TOKEN_GAS_MAX + 1n }), fees });
+    setPlan({ plan: planRoundup({ chain: c, destination: dest, addresses: used, fees, tokenGas: (f, t) => gas.get(`${f}:${t}`) ?? { error: "no estimate" } }), fees });
   }
 
   async function prepareTopUp() {
@@ -151,6 +156,8 @@ export function VaultRoundUp({ profileId, onBuy }: { profileId: string; onBuy?: 
       const raw = full.trim() as Hex;
       if (!/^0x(?:[0-9a-fA-F]{2})+$/.test(raw)) throw new Error("That QR doesn't contain a signed Ethereum transaction.");
       await verifyVaultDisperse(raw, signing.payload);
+      // Checked when prepared; checked again here, right before it is sent.
+      await assertDisperseCode(chain);
       await assertSession();
       const f = await readAddress(p, chain, signing.plan.funder.index);
       if (f.nonce !== signing.plan.funder.nonce) throw new Error("The paying address sent something since. Nothing was broadcast — prepare again.");
@@ -294,11 +301,17 @@ export function VaultRoundUp({ profileId, onBuy }: { profileId: string; onBuy?: 
               ) : plan.plan.needsGas.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nothing left to bring to #0 on {ROUNDUP_CHAIN_NAME[chain]}.</p>
               ) : null}
-              {plan.plan.skipped.length > 0 && (
-                <p className="text-xs text-muted-foreground">Left out: {plan.plan.skipped.map((s) => `#${s.index} ${s.reason}`).join("; ")}.</p>
+              {plan.plan.skipped.some((s) => !s.retry) && (
+                <p className="text-xs text-muted-foreground">Left out: {plan.plan.skipped.filter((s) => !s.retry).map((s) => `#${s.index} ${s.reason}`).join("; ")}.</p>
+              )}
+              {plan.plan.skipped.some((s) => s.retry) && (
+                <div className="rounded-md border border-border p-3 text-xs">
+                  <p>Left out for now because of a network problem, not a Vault limit: {plan.plan.skipped.filter((s) => s.retry).map((s) => `#${s.index} ${s.reason}`).join("; ")}.</p>
+                  <Button size="sm" variant="outline" className="mt-2" disabled={!!busy} onClick={() => void scan()}>Check again</Button>
+                </div>
               )}
               <BuyStep chain={chain} n={(plan.plan.needsGas.length ? 1 : 0) + (plan.plan.batches.length ? 1 : 0) + 1}
-                zero={rows.find((r) => r.index === 0)} onBuy={onBuy} />
+                zero={rows.find((r) => r.index === 0)} onBuy={onBuy ? (s, a) => onBuy(s, a, checked) : undefined} />
             </div>
           )}
         </>

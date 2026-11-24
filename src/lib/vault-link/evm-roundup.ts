@@ -18,6 +18,7 @@ import {
 import { MINT_SOURCES, type MintSourceId } from "@/lib/cashout/mint";
 import { evmClient } from "@/lib/chains/evm";
 import { verifyVaultEvmSend } from "./evm-send";
+import { assertReviewedVaultBatchSurface } from "@/lib/security/execution-policy";
 import type { EvmIntent } from "./evm-intent";
 import { vaultEvmAccount, VAULT_EVM_MAX_INDEX } from "./evm-accounts";
 import type { VaultPairing } from "./pairing";
@@ -93,8 +94,13 @@ export interface RoundupPlan {
   batches: RoundupItem[][];
   /** Token holders without enough ETH for their own transfer fees. */
   needsGas: GasNeed[];
-  skipped: { index: number; reason: string }[];
+  /** `retry`: a passing network problem, not a Vault limit — checking again may include it. */
+  skipped: RoundupSkip[];
 }
+export interface RoundupSkip { index: number; reason: string; retry?: boolean }
+
+/** Result of a token-transfer gas estimate: a gas limit, or why the estimate failed. */
+export type TokenGasEstimate = bigint | { error: string };
 
 const itemFee = (gas: bigint, f: Fees) => gas * f.maxFeePerGas;
 
@@ -107,7 +113,7 @@ export function planRoundup(args: {
   destination: Address;
   addresses: ScannedAddress[];
   fees: Fees;
-  tokenGas: (from: Address, token: Address) => bigint;
+  tokenGas: (from: Address, token: Address) => TokenGasEstimate;
 }): RoundupPlan {
   const { chain, fees } = args;
   const destination = getAddress(args.destination);
@@ -119,7 +125,7 @@ export function planRoundup(args: {
   const tokens = roundupTokens(chain);
   const groups: RoundupItem[][] = [];
   const needsGas: GasNeed[] = [];
-  const skipped: { index: number; reason: string }[] = [];
+  const skipped: RoundupSkip[] = [];
   const nativeFee = itemFee(NATIVE_GAS, fees);
 
   for (const a of [...args.addresses].sort((x, y) => x.index - y.index)) {
@@ -127,7 +133,12 @@ export function planRoundup(args: {
     const held = tokens.filter((t) => (a.tokens[t.contract] ?? 0n) > 0n);
     const tokenItems: { token: Address; amount: bigint; gas: bigint }[] = [];
     for (const t of held) {
-      let gas = args.tokenGas(a.address, t.contract);
+      const est = args.tokenGas(a.address, t.contract);
+      if (typeof est !== "bigint") {
+        skipped.push({ index: a.index, reason: `${t.symbol}: couldn't work out the network fee (${est.error})`, retry: true });
+        continue;
+      }
+      let gas = est;
       if (gas < TOKEN_GAS_MIN) gas = TOKEN_GAS_MIN;
       if (gas > TOKEN_GAS_MAX || itemFee(gas, fees) > ceiling) {
         skipped.push({ index: a.index, reason: `${t.symbol} transfer needs more gas than HME Vault allows` });
@@ -174,6 +185,7 @@ export function planRoundup(args: {
 /* ------------------------------------------------------------------ */
 
 export function buildSweepBatchRequest(pairing: VaultPairing, chain: RoundupChain, destination: Address, items: RoundupItem[], fees: Fees): string {
+  assertReviewedVaultBatchSurface("vault-sweep-batch-to-own-address-0");
   if (!items.length || items.length > VAULT_BATCH_MAX_ITEMS) throw new Error(`A Vault batch holds 1–${VAULT_BATCH_MAX_ITEMS} payments.`);
   const dest = getAddress(destination);
   const fee = { type: "eip1559" as const, maxFeePerGas: fees.maxFeePerGas.toString(), maxPriorityFeePerGas: fees.maxPriorityFeePerGas.toString() };
@@ -198,9 +210,11 @@ export function sweepBatchIntents(requestText: string): EvmIntent[] {
   return r.items.map((i) => ({ ...i, format: "hm-evm-tx", v: 1, fp: r.fp, chainId: r.chainId }) as unknown as EvmIntent);
 }
 
-function base64ToHex(b64: string): Hex {
-  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(b64)) throw new Error("The Vault reply has a damaged transaction.");
-  const bin = atob(b64);
+export function base64ToHex(b64: string): Hex {
+  const damaged = () => new Error("The Vault reply has a damaged transaction. Nothing was broadcast — scan it again.");
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(b64) || b64.length % 4 !== 0) throw damaged();
+  let bin: string;
+  try { bin = atob(b64); } catch { throw damaged(); }
   let hex = "0x";
   for (let i = 0; i < bin.length; i++) hex += bin.charCodeAt(i).toString(16).padStart(2, "0");
   return hex as Hex;
@@ -237,6 +251,8 @@ export interface TopUpPlan {
   values: bigint[];
   total: bigint;
   gas: bigint;
+  /** Address number of each recipient, same order. */
+  needsIndexes: number[];
 }
 
 /** Each needy address gets 1.5× its shortfall so a small fee rise doesn't strand it. */
@@ -267,7 +283,7 @@ export function planTopUp(args: { chain: RoundupChain; addresses: ScannedAddress
     .sort((x, y) => (y.native > x.native ? 1 : y.native < x.native ? -1 : x.index - y.index))[0];
   if (!funder || funder.native < total + fee)
     throw new Error(`Not enough ${args.chain === "eth" ? "ETH" : "Base ETH"} on any one address to pay the fees for the others.`);
-  return { funder, recipients: needs.map((n) => getAddress(n.address)), values, total, gas };
+  return { funder, recipients: needs.map((n) => getAddress(n.address)), values, total, gas, needsIndexes: needs.map((n) => n.index) };
 }
 
 export interface DisperseIntent {
@@ -277,9 +293,14 @@ export interface DisperseIntent {
 }
 
 export function buildDisperseIntent(pairing: VaultPairing, chain: RoundupChain, plan: TopUpPlan, fees: Fees): string {
+  assertReviewedVaultBatchSurface("vault-native-disperse-fee-topup");
   const own = vaultEvmAccount(pairing, plan.funder.index);
   if (own.address !== getAddress(plan.funder.address)) throw new Error("The paying address doesn't belong to this Vault.");
   if (plan.recipients.some((r) => r === own.address || r === DISPERSE_ADDRESS)) throw new Error("Invalid fee top-up recipient.");
+  // Fee money only ever goes to this Vault's own addresses (the Vault itself doesn't check this yet).
+  const ownRecipients = new Set(plan.needsIndexes.map((i) => vaultEvmAccount(pairing, i).address));
+  if (plan.recipients.length !== plan.needsIndexes.length || plan.recipients.some((r) => !ownRecipients.has(getAddress(r))))
+    throw new Error("A fee top-up recipient isn't one of this Vault's own addresses.");
   const intent: DisperseIntent = {
     format: "hm-evm-tx", v: 1, kind: "native-disperse", fp: pairing.fp, path: own.path, chainId: ROUNDUP_CHAIN_ID[chain],
     from: own.address, to: DISPERSE_ADDRESS, recipients: plan.recipients, values: plan.values.map(String), value: plan.total.toString(),

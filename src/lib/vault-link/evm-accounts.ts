@@ -50,3 +50,9 @@ export function vaultEvmAccount(pairing: VaultPairing, index: number): VaultEvmA
   if (!evm.xpub) throw new Error("Update the Vault pairing to see more Ethereum addresses.");
   return { index, path, address: evmAddressFromAccountXpub(evm.xpub, index) };
 }
+
+/** Own-address cover for deposit checks: at least the first 50, or every address a scan covered (≤ #999). */
+export function vaultOwnEvmAddressCount(scanned?: number): number {
+  const n = Number.isSafeInteger(scanned) && (scanned as number) > 0 ? (scanned as number) : 0;
+  return Math.min(VAULT_EVM_MAX_INDEX + 1, Math.max(50, n));
+}
