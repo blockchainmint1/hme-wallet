@@ -63,6 +63,8 @@ import { loadPairing } from "@/lib/vault-link/pairing";
 import { evmSourceAddress, prepareVaultEvmSend } from "@/lib/vault-link/evm-send";
 import { VaultEvmSigning } from "@/components/wallet/VaultEvmSigning";
 
+import { pickInitialEvmAsset } from "@/lib/chains/evm-initial-asset";
+
 function findKnownToken(chain: EvmChainId, symbol: string): Erc20TokenMeta | null {
   const s = symbol.toUpperCase();
   return getKnownTokens(chain).find((t) => t.symbol.toUpperCase() === s) ?? null;
@@ -135,7 +137,19 @@ function safeFormatUnits(raw: string, decimals: number): string | undefined {
 
 type AssetKind = { kind: "native" } | { kind: "erc20"; token: Erc20TokenMeta };
 
-export function EvmSend({ chain, search = {}, backTo = "/wallet" }: { chain: EvmChainId; search?: { asset?: string; contract?: string; to?: string; amount?: string }; backTo?: "/wallet" | "/desktop" }) {
+type EvmSendProps = { chain: EvmChainId; search?: { asset?: string; contract?: string; to?: string; amount?: string }; backTo?: "/wallet" | "/desktop" };
+
+/** A passed contract with no enabled match selects nothing: never fall back to a symbol. */
+export function EvmSend(props: EvmSendProps) {
+  const tokens = useTokensForChain(props.chain);
+  const search = props.search ?? {};
+  if (search.contract && pickInitialEvmAsset(tokens, search, EVM_CHAINS[props.chain].nativeSymbol, () => null) === null) {
+    return <p className="py-10 text-sm text-muted-foreground">This token isn't enabled in your token list.</p>;
+  }
+  return <EvmSendForm {...props} />;
+}
+
+function EvmSendForm({ chain, search = {}, backTo = "/wallet" }: EvmSendProps) {
   const chainId = chain as EvmChainId;
   const meta = EVM_CHAINS[chainId];
   const tokens = useTokensForChain(chainId);
@@ -149,21 +163,10 @@ export function EvmSend({ chain, search = {}, backTo = "/wallet" }: { chain: Evm
   const [vaultPayload, setVaultPayload] = useState<string | null>(null);
 
   // Selected asset: derive initial from ?asset= then let user change.
-  const initialAsset: AssetKind = useMemo(() => {
-    // Exact contract match first (custom tokens): a symbol can be spoofed, the contract can't.
-    if (search.contract) {
-      const c = search.contract.toLowerCase();
-      const t = tokens.find((x) => x.address.toLowerCase() === c);
-      if (t) return { kind: "erc20", token: t };
-    }
-    const wanted = search.asset?.toUpperCase();
-    if (wanted && wanted !== meta.nativeSymbol.toUpperCase()) {
-      const t = findKnownToken(chainId, wanted);
-      if (t) return { kind: "erc20", token: t };
-    }
-    return { kind: "native" };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search.asset, search.contract, chainId, meta.nativeSymbol]);
+  const initialAsset: AssetKind = useMemo(
+    () => pickInitialEvmAsset(tokens, search, meta.nativeSymbol, (sym) => findKnownToken(chainId, sym)) ?? { kind: "native" },
+    [tokens, search.asset, search.contract, chainId, meta.nativeSymbol],
+  );
   const [asset, setAsset] = useState<AssetKind>(initialAsset);
 
   const [to, setTo] = useState(search.to ?? "");
