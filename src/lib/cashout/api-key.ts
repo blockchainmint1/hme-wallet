@@ -1,3 +1,4 @@
+import { safeSetItem } from "@/lib/storage/safe-set";
 /**
  * TSD Swap API key, one per wallet profile.
  *
@@ -159,7 +160,7 @@ export function migrateLegacyCashoutKey(): CashoutKeyMigration {
       return "conflict-removed";
     }
     if (!existing) {
-      s.setItem(target, legacy);
+      safeSetItem(target, legacy, s);
       if (s.getItem(target) !== legacy) {
         try {
           s.removeItem(target);
@@ -227,7 +228,7 @@ export function setCashoutApiKey(
   migrateLegacyCashoutKey();
   const slot = scopedKey(CASHOUT_KEY_BASE, profileId);
   try {
-    if (key) s.setItem(slot, key);
+    if (key) safeSetItem(slot, key, s);
     else s.removeItem(slot);
     emit();
     return (s.getItem(slot) || null) === (key || null);

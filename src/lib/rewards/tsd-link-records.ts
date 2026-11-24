@@ -1,3 +1,4 @@
+import { safeSetItem } from "@/lib/storage/safe-set";
 /**
  * Local TSD Swap link records, one list per wallet profile.
  *
@@ -39,7 +40,7 @@ export function saveTsdLink(record: TsdLinkRecord, profileId: string = activePro
       ...listTsdLinks(profileId).filter((l) => l.accountId !== record.accountId),
       record,
     ];
-    window.localStorage.setItem(scopedKey(TSD_LINK_STORE_BASE, profileId), JSON.stringify(next));
+    safeSetItem(scopedKey(TSD_LINK_STORE_BASE, profileId), JSON.stringify(next));
   } catch {
     /* noop */
   }
@@ -47,7 +48,7 @@ export function saveTsdLink(record: TsdLinkRecord, profileId: string = activePro
 
 export function writeTsdLinks(list: TsdLinkRecord[], profileId: string = activeProfileId()) {
   try {
-    window.localStorage.setItem(scopedKey(TSD_LINK_STORE_BASE, profileId), JSON.stringify(list));
+    safeSetItem(scopedKey(TSD_LINK_STORE_BASE, profileId), JSON.stringify(list));
   } catch {
     /* noop */
   }

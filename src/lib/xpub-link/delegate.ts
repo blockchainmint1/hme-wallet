@@ -1,3 +1,4 @@
+import { safeSetItem } from "@/lib/storage/safe-set";
 /**
  * `hm-link-delegate` — a site (Seeds Exchange) asks to trade from the user's
  * Trading pocket. The user picks one of two modes:
@@ -450,7 +451,7 @@ export function listDelegateLinks(): DelegateLinkRecord[] {
 }
 
 function write(list: DelegateLinkRecord[]) {
-  window.localStorage.setItem(scopedKey(STORE), JSON.stringify(list));
+  safeSetItem(scopedKey(STORE), JSON.stringify(list));
   window.dispatchEvent(new Event(DELEGATE_LINKS_EVENT));
 }
 

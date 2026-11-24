@@ -1,3 +1,4 @@
+import { safeSetItem } from "@/lib/storage/safe-set";
 /**
  * Nectar Pay ⇄ wallet link protocol (v1).
  *
@@ -391,7 +392,7 @@ export function listLinks(): NectarLinkRecord[] {
 export function saveLink(record: NectarLinkRecord) {
   try {
     const next = [record, ...listLinks().filter((l) => l.merchantId !== record.merchantId)];
-    window.localStorage.setItem(scopedKey(STORE_BASE), JSON.stringify(next));
+    safeSetItem(scopedKey(STORE_BASE), JSON.stringify(next));
   } catch {
     /* noop */
   }
@@ -399,7 +400,7 @@ export function saveLink(record: NectarLinkRecord) {
 
 export function removeLink(merchantId: string) {
   try {
-    window.localStorage.setItem(
+    safeSetItem(
       scopedKey(STORE_BASE),
       JSON.stringify(listLinks().filter((l) => l.merchantId !== merchantId)),
     );

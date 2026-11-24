@@ -1,3 +1,4 @@
+import { safeSetItem } from "@/lib/storage/safe-set";
 /**
  * Per-wallet "branch book" for trading links.
  *
@@ -110,7 +111,7 @@ function readRaw(): BranchBook {
 }
 
 function write(book: BranchBook): void {
-  window.localStorage.setItem(scopedKey(BRANCH_BOOK_KEY), JSON.stringify(book));
+  safeSetItem(scopedKey(BRANCH_BOOK_KEY), JSON.stringify(book));
 }
 
 /** Current book for the active wallet, with legacy state folded in (and saved). */

@@ -1,3 +1,4 @@
+import { safeSetItem } from "@/lib/storage/safe-set";
 import type { BIP32Interface } from "bip32";
 import { isLegacyCoinTypeKind, type DerivationKind } from "./network";
 import { rootFromSeed, seedFromMnemonic } from "./wallet";
@@ -178,8 +179,9 @@ export async function saveWallet(
     ...(keyOnly ? { mode: "keyonly" as const } : {}),
     ...(vault ? { mode: "vault" as const } : {}),
   };
+  // Envelope first: if storage is full, no profile entry is left without an envelope.
+  safeSetItem(walletKey(), JSON.stringify(env));
   registerProfile(activeProfileId());
-  localStorage.setItem(walletKey(), JSON.stringify(env));
   return env;
 }
 
@@ -397,7 +399,7 @@ export function renameStoredWallet(
   const env = loadEnvelope(profileId);
   if (!env) return null;
   const next: StoredWalletEnvelope = { ...env, label: newLabel };
-  localStorage.setItem(walletKey(profileId), JSON.stringify(next));
+  safeSetItem(walletKey(profileId), JSON.stringify(next));
   return next;
 }
 
@@ -411,7 +413,7 @@ export function setStoredKind(kind: DerivationKind): StoredWalletEnvelope | null
   const env = loadEnvelope();
   if (!env) return null;
   const next: StoredWalletEnvelope = { ...env, kind, pathsV: 2 };
-  localStorage.setItem(walletKey(), JSON.stringify(next));
+  safeSetItem(walletKey(), JSON.stringify(next));
   return next;
 }
 
