@@ -10,7 +10,7 @@ function isQuota(e: unknown): boolean {
 }
 
 /** Halve the largest chart-history records, dropping their oldest samples. Returns bytes freed (approx). */
-export function trimChartHistory(storage: Storage = localStorage): number {
+export function trimChartHistory(storage: Storage = window.localStorage): number {
   const keys: { key: string; size: number }[] = [];
   for (let i = 0; i < storage.length; i++) {
     const key = storage.key(i);
@@ -34,7 +34,7 @@ export class StorageFullError extends Error {
   constructor() { super("This browser's storage for Honest Money is full, so the change couldn't be saved."); }
 }
 
-export function safeSetItem(key: string, value: string, storage: Storage = localStorage): void {
+export function safeSetItem(key: string, value: string, storage: Storage = window.localStorage): void {
   for (let attempt = 0; attempt < 4; attempt++) {
     try { storage.setItem(key, value); return; }
     catch (e) {
