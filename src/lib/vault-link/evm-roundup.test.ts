@@ -6,7 +6,7 @@ import { rootFromSeed } from "@/lib/txc/wallet";
 import { evmAddressFromAccountXpub, vaultEvmAccount, vaultOwnEvmAddressCount } from "./evm-accounts";
 import { mergeRefreshedPairing, parsePairing, vaultCan, type VaultPairing } from "./pairing";
 import {
-  base64ToHex, buildDisperseIntent, buildSweepBatchRequest, disperseCalldata, planRoundup, planTopUp, sweepBatchIntents,
+  base64ToHex, buildDisperseIntent, externalTopUpList, externalTopUpText, buildSweepBatchRequest, disperseCalldata, planRoundup, planTopUp, sweepBatchIntents,
   verifySweepBatchReply, verifyVaultDisperse, DISPERSE_ADDRESS, type Fees, type ScannedAddress,
 } from "./evm-roundup";
 import { intentTransaction } from "./evm-send";
@@ -210,5 +210,21 @@ describe("Auditor follow-ups (24 Nov)", () => {
     expect(vaultOwnEvmAddressCount(undefined)).toBe(50);
     expect(vaultOwnEvmAddressCount(120)).toBe(120);
     expect(vaultOwnEvmAddressCount(5000)).toBe(1000);
+  });
+});
+
+describe("Fund fee money from another wallet", () => {
+  const need = (i: number, needed: bigint) => ({ index: i, address: vaultEvmAccount(pairing, i).address, path: vaultEvmAccount(pairing, i).path, native: 0n, needed });
+  it("rounds the 1.5x top-up up to 6 decimals and lists address,amount", () => {
+    // 0.000110345 ETH short -> 1.5x = 0.0001655175 -> rounded up 0.000166
+    const list = externalTopUpList(pairing, [need(3, 110_345_000_000_000n), need(5, 2n)]);
+    expect(list.map((l) => l.amount)).toEqual(["0.000166", "0.000001"]);
+    expect(externalTopUpText(list)).toBe(`${key(3).address},0.000166\n${key(5).address},0.000001`);
+  });
+  it("keeps an exact 6-decimal amount unchanged", () => {
+    expect(externalTopUpList(pairing, [need(2, 100_000_000_000_000n)])[0]!.amount).toBe("0.00015");
+  });
+  it("refuses an address that isn't this Vault's own", () => {
+    expect(() => externalTopUpList(pairing, [{ ...need(4, 1n), address: key(9).address }])).toThrow(/doesn't belong/);
   });
 });

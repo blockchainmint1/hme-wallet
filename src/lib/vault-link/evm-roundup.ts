@@ -12,7 +12,7 @@
  * See HME Vault docs/offline-signing-handoff.md ("Batch sweep", "Disperse").
  */
 import {
-  encodeFunctionData, getAddress, keccak256, parseTransaction, recoverTransactionAddress, stringToBytes,
+  encodeFunctionData, formatUnits, getAddress, keccak256, parseTransaction, recoverTransactionAddress, stringToBytes,
   erc20Abi, type Address, type Hex, type TransactionSerialized,
 } from "viem";
 import { MINT_SOURCES, type MintSourceId } from "@/lib/cashout/mint";
@@ -258,6 +258,30 @@ export interface TopUpPlan {
 /** Each needy address gets 1.5× its shortfall so a small fee rise doesn't strand it. */
 export function topUpAmount(need: GasNeed): bigint {
   return (need.needed * 3n + 1n) / 2n;
+}
+
+/** One line of the "fund from another wallet" list. */
+export interface ExternalTopUp { index: number; address: Address; wei: bigint; amount: string }
+
+const EXTERNAL_STEP_WEI = 10n ** 12n; // 0.000001 ETH
+
+/**
+ * Fee money for paying from another wallet instead of a Vault signature: each
+ * address is re-derived from the paired Vault key (never taken from the scan
+ * alone) and the 1.5× top-up is rounded UP to 6 decimals so it's easy to type.
+ */
+export function externalTopUpList(pairing: VaultPairing, needs: GasNeed[]): ExternalTopUp[] {
+  return needs.map((n) => {
+    const own = vaultEvmAccount(pairing, n.index).address;
+    if (own !== getAddress(n.address)) throw new Error(`Address #${n.index} doesn't belong to this Vault.`);
+    const wei = ((topUpAmount(n) + EXTERNAL_STEP_WEI - 1n) / EXTERNAL_STEP_WEI) * EXTERNAL_STEP_WEI;
+    return { index: n.index, address: own, wei, amount: formatUnits(wei, 18) };
+  });
+}
+
+/** "address,amount" lines, the format bulk-send tools accept. */
+export function externalTopUpText(list: ExternalTopUp[]): string {
+  return list.map((l) => `${l.address},${l.amount}`).join("\n");
 }
 
 export function disperseGasRange(recipients: number): { min: bigint; max: bigint } {

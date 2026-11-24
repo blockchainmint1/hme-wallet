@@ -7,7 +7,7 @@
  */
 import { useRef, useState, type ReactNode } from "react";
 import { formatUnits, keccak256, type Address, type Hex } from "viem";
-import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { Check, Copy, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { QrScanButton } from "@/components/wallet/QrScanButton";
@@ -17,9 +17,9 @@ import { loadPairing, mergeRefreshedPairing, parsePairing, savePairing, vaultCan
 import { vaultEvmAccount } from "@/lib/vault-link/evm-accounts";
 import {
   ROUNDUP_CHAINS, ROUNDUP_CHAIN_NAME, ROUNDUP_GAP, assertDisperseCode, buildDisperseIntent, buildSweepBatchRequest,
-  estimateDisperseGas, estimateTokenGas, planRoundup, planTopUp, readAddress, readFees, roundupTokens, scanVaultEvm,
+  estimateDisperseGas, estimateTokenGas, externalTopUpList, externalTopUpText, planRoundup, planTopUp, readAddress, readFees, roundupTokens, scanVaultEvm,
   topUpAmount, verifySweepBatchReply, verifyVaultDisperse,
-  type Fees, type TokenGasEstimate, type RoundupChain, type RoundupItem, type RoundupPlan, type ScannedAddress, type TopUpPlan,
+  type ExternalTopUp, type Fees, type TokenGasEstimate, type RoundupChain, type RoundupItem, type RoundupPlan, type ScannedAddress, type TopUpPlan,
 } from "@/lib/vault-link/evm-roundup";
 import { formatUnitsPlain, type MintSourceId } from "@/lib/cashout/mint";
 import { EVM_CHAINS, evmClient } from "@/lib/chains/evm";
@@ -283,6 +283,9 @@ export function VaultRoundUp({ profileId, onBuy }: {
                     {plan.plan.needsGas.map((n) => `#${n.index} (needs ${eth(topUpAmount(n))})`).join(", ")}. One Vault signature sends it from your address with the most {EVM_CHAINS[chain].nativeSymbol}.
                   </p>
                   <Button className="mt-3" disabled={!!busy} onClick={() => void prepareTopUp()}>{busy === "prepare" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Prepare fee money</Button>
+                  <FundElsewhere chainName={ROUNDUP_CHAIN_NAME[chain]} symbol={EVM_CHAINS[chain].nativeSymbol}
+                    list={(() => { try { return externalTopUpList(p, plan.plan.needsGas); } catch { return null; } })()}
+                    onRecheck={() => void scan()} busy={!!busy} />
                 </Step>
               )}
               {plan.plan.batches.length > 0 ? (
@@ -336,6 +339,49 @@ function BuyStep({ chain, n, zero, onBuy }: { chain: RoundupChain; n: number; ze
       )}
       <p className="mt-2 text-xs text-muted-foreground">Each order is one payment from #0 that your Vault signs. Keep a little {EVM_CHAINS[chain].nativeSymbol} on #0 for those fees.</p>
     </Step>
+  );
+}
+
+/** Pay the fee money from any other wallet: copy each own address and amount, no Vault signature. */
+function FundElsewhere({ list, chainName, symbol, onRecheck, busy }: { list: ExternalTopUp[] | null; chainName: string; symbol: string; onRecheck: () => void; busy: boolean }) {
+  const [copied, setCopied] = useState<string | null>(null);
+  if (!list) return <p className="mt-3 text-xs text-destructive">Couldn't confirm these addresses belong to this Vault — use Prepare fee money instead.</p>;
+  async function copy(id: string, text: string) {
+    try { await navigator.clipboard.writeText(text); setCopied(id); setTimeout(() => setCopied((c) => (c === id ? null : c)), 1500); }
+    catch { setCopied(null); }
+  }
+  const btn = (id: string, text: string, label: string) => (
+    <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => void copy(id, text)} aria-label={label}>
+      {copied === id ? <Check className="mr-1 h-3 w-3" /> : <Copy className="mr-1 h-3 w-3" />}{copied === id ? "Copied" : label}
+    </Button>
+  );
+  return (
+    <div className="mt-4 rounded-md border border-border p-3">
+      <p className="text-sm font-medium">Or pay it from another wallet</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Send {symbol} on {chainName} to each of your own Vault addresses below — no Vault signature needed. Amounts are rounded up slightly.
+        When they arrive, press Check again.
+      </p>
+      <ul className="mt-3 space-y-2">
+        {list.map((l) => (
+          <li key={l.address} className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="w-10 font-medium">#{l.index}</span>
+            <span className="break-all font-mono">{l.address}</span>
+            <span className="font-medium">{l.amount} {symbol}</span>
+            {btn(`a${l.index}`, l.address, "Address")}
+            {btn(`m${l.index}`, l.amount, "Amount")}
+            {btn(`b${l.index}`, `${l.address},${l.amount}`, "Address,amount")}
+          </li>
+        ))}
+      </ul>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {list.length > 1 && btn("all", externalTopUpText(list), `Copy all ${list.length} (address,amount)`)}
+        <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={busy} onClick={onRecheck}>
+          <RefreshCw className="mr-1 h-3 w-3" />Check again
+        </Button>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">After pasting, check the first and last few characters match before you send.</p>
+    </div>
   );
 }
 
