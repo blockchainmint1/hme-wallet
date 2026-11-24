@@ -96,14 +96,20 @@ describe("review-only Vault THORChain preparation", () => {
 });
 
 describe("sumVaultUtxos available-balance total", () => {
-  const utxo = (txid: string, vout: number, value: number) => ({ txid, vout, value, purpose: 84 as const, change: 0 as const, index: 0, path: "m/84'/0'/0'/0/0", address: "bc1qtest", pubkey: new Uint8Array(33) });
-  const scan = (utxos: ReturnType<typeof utxo>[], scanned = 40) => ({ chain: "btc" as const, purpose: 84 as const, balanceSats: 0, nextReceive: "", nextReceiveIndex: 0, utxos, used: [], scanned });
+  const utxo = (txid: string, vout: number, value: number, confirmed?: boolean) => ({ txid, vout, value, purpose: 84 as const, change: 0 as const, index: 0, path: "m/84'/0'/0'/0/0", address: "bc1qtest", pubkey: new Uint8Array(33), ...(confirmed === undefined ? {} : { confirmed }) });
+  const scan = (utxos: ReturnType<typeof utxo>[], complete = true, scanned = 40) => ({ chain: "btc" as const, purpose: 84 as const, balanceSats: 0, nextReceive: "", nextReceiveIndex: 0, utxos, used: [], scanned, complete });
   it("sums deduped coins across branches", () => {
     const a = utxo("aa", 0, 100_000), b = utxo("bb", 1, 50_000);
-    expect(sumVaultUtxos([scan([a, b]), scan([a])])).toBe(150_000n);
+    expect(sumVaultUtxos([scan([a, b]), scan([a])], 2).total).toBe(150_000n);
   });
-  it("refuses an empty or incomplete scan so a partial total never shows as zero", () => {
-    expect(() => sumVaultUtxos([])).toThrow(/incomplete/);
-    expect(() => sumVaultUtxos([scan([utxo("aa", 0, 1)], 39)])).toThrow(/incomplete/);
+  it("reports pending coins separately but inside the spendable total", () => {
+    const r = sumVaultUtxos([scan([utxo("aa", 0, 100_000, true), utxo("bb", 0, 25_000, false)])], 1);
+    expect(r).toEqual({ total: 125_000n, confirmed: 100_000n, pending: 25_000n });
+  });
+  it("refuses an empty, incomplete or missing-branch scan, regardless of address count", () => {
+    expect(() => sumVaultUtxos([], 0)).toThrow(/incomplete/);
+    expect(() => sumVaultUtxos([scan([utxo("aa", 0, 1)], false, 400)], 1)).toThrow(/incomplete/);
+    expect(() => sumVaultUtxos([scan([utxo("aa", 0, 1)])], 2)).toThrow(/incomplete/);
+    expect(sumVaultUtxos([scan([utxo("aa", 0, 1)], true, 7)], 1).total).toBe(1n);
   });
 });

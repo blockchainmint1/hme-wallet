@@ -10,8 +10,8 @@ import { VaultAnimatedQr } from "@/components/wallet/VaultAnimatedQr";
 import { QrScanButton } from "@/components/wallet/QrScanButton";
 import { PartCollector } from "@/lib/vault-link/qr-parts";
 import { loadPairing } from "@/lib/vault-link/pairing";
-import { scanVaultChainAll } from "@/lib/vault-link/snapshot";
-import { vaultThorAddress, vaultThorAvailable, prepareVaultThorSwap, verifyVaultThorResult, type VaultThorPrepared } from "@/lib/vault-link/thor-swap";
+import { pairedPurposes, scanVaultChainAll } from "@/lib/vault-link/snapshot";
+import { assertVaultScanComplete, dedupeVaultUtxos, vaultThorAddress, vaultThorAvailable, prepareVaultThorSwap, verifyVaultThorResult, type VaultThorPrepared } from "@/lib/vault-link/thor-swap";
 import { THOR_CATALOG, parseAssetAmount, thorUnitsToNumber, validateThorDestination, type ThorAssetId, type ThorUtxoCoin } from "@/lib/thorchain/catalog";
 import { getThorCatalogQuote, getThorCatalogRoutes } from "@/lib/thorchain/catalog.functions";
 import { THOR_UTXO_COINS } from "@/lib/thorchain/execute";
@@ -66,8 +66,8 @@ export function VaultThorSwap({ profileId }: { profileId: string }) {
         const coin = meta.chain as ThorUtxoCoin;
         if (!pairing.chains[coin]) throw new Error("Pair this source coin with your Vault first.");
         const scans = await scanVaultChainAll(pairing, coin);
-        if (!scans.length || scans.some(scan => scan.scanned < 40)) throw new Error("Paired coin scan was incomplete. Try again.");
-        coins = [...new Map(scans.flatMap(s => s.utxos).map(u => [`${u.txid}:${u.vout}`, u])).values()];
+        assertVaultScanComplete(scans, pairedPurposes(pairing, coin).length);
+        coins = dedupeVaultUtxos(scans);
         const fees = await THOR_UTXO_COINS[coin].getFeeEstimates();
         rate = Math.ceil(fees.halfHourFee);
       }
@@ -97,7 +97,8 @@ export function VaultThorSwap({ profileId }: { profileId: string }) {
   }
   const available = (routes.data ?? []).filter(id => pairing && vaultThorAddress(pairing, id));
   const balance = useQuery({
-    queryKey: ["vault-thor-available", profileId, from],
+    // Pairing identity in the key: a re-pair never shows the previous Vault's cached balance.
+    queryKey: ["vault-thor-available", profileId, pairing ? JSON.stringify(pairing) : null, from],
     enabled: !!pairing && !!vaultThorAddress(pairing, from),
     queryFn: () => vaultThorAvailable(pairing!, from),
     staleTime: 30_000, retry: 0,
@@ -135,7 +136,7 @@ export function VaultThorSwap({ profileId }: { profileId: string }) {
           <Label htmlFor="vault-thor-amount">Amount ({THOR_CATALOG[from].symbol})</Label>
           <span className="text-xs text-muted-foreground">
             {balance.isFetching ? "Checking balance…"
-              : balance.data != null ? `Available: ${formatAvailable(balance.data, THOR_CATALOG[from].decimals)} ${THOR_CATALOG[from].symbol}`
+              : balance.data != null ? `Available: ${formatAvailable(balance.data.total, THOR_CATALOG[from].decimals)} ${THOR_CATALOG[from].symbol}${balance.data.pending > 0n ? ` (incl. ${formatAvailable(balance.data.pending, THOR_CATALOG[from].decimals)} pending)` : ""}`
               : balance.isError ? "Couldn't check the balance"
               : null}
           </span>

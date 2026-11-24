@@ -8,7 +8,7 @@ import { EVM_CHAINS, evmClient, type EvmChainId } from "@/lib/chains/evm";
 import { deriveVaultAddress, VAULT_CHAIN_META } from "./derive";
 import type { VaultPairing } from "./pairing";
 import { chainIo, type VaultChainScan, type VaultUtxo } from "./scan";
-import { scanVaultChainAll } from "./snapshot";
+import { pairedPurposes, scanVaultChainAll } from "./snapshot";
 import { vaultBytesToBase64, verifySignedAgainstPsbt } from "./psbt-build";
 
 export function vaultThorAddress(pairing: VaultPairing, asset: ThorAssetId): string | null {
@@ -21,14 +21,32 @@ export function vaultThorAddress(pairing: VaultPairing, asset: ThorAssetId): str
 }
 
 /**
- * Sum deduped coins across every paired branch. Throws on an incomplete
- * scan so a partial total can never look like "nothing left".
+ * Completeness comes from the scan itself: one result per paired branch, and
+ * each branch's receive + change walks ended on the gap rule with every lookup
+ * answered. No fixed address count, so changing scan limits cannot drift it.
  */
-export function sumVaultUtxos(scans: VaultChainScan[]): bigint {
-  if (!scans.length || scans.some(s => s.scanned < 40)) throw new Error("Paired coin scan was incomplete. Try again.");
-  const seen = new Map<string, bigint>();
-  for (const s of scans) for (const u of s.utxos) seen.set(`${u.txid}:${u.vout}`, BigInt(u.value));
-  return [...seen.values()].reduce((a, v) => a + v, 0n);
+export function assertVaultScanComplete(scans: VaultChainScan[], expectedBranches: number): void {
+  if (!scans.length || scans.length !== expectedBranches || scans.some(s => s.complete !== true)) throw new Error("Paired coin scan was incomplete. Try again.");
+}
+
+/** Deduped coins across every paired branch — exactly what preparation spends. */
+export function dedupeVaultUtxos(scans: VaultChainScan[]): VaultUtxo[] {
+  return [...new Map(scans.flatMap(s => s.utxos).map(u => [`${u.txid}:${u.vout}`, u])).values()];
+}
+
+export interface VaultUtxoAvailable { total: bigint; confirmed: bigint; pending: bigint }
+
+/**
+ * Sum deduped coins across every paired branch. Throws on an incomplete
+ * scan so a partial total can never look like "nothing left". Preparation
+ * spends confirmed and pending coins alike, so `total` covers both and the
+ * pending part is reported separately for labelling.
+ */
+export function sumVaultUtxos(scans: VaultChainScan[], expectedBranches: number): VaultUtxoAvailable {
+  assertVaultScanComplete(scans, expectedBranches);
+  let confirmed = 0n, pending = 0n;
+  for (const u of dedupeVaultUtxos(scans)) { if (u.confirmed === false) pending += BigInt(u.value); else confirmed += BigInt(u.value); }
+  return { total: confirmed + pending, confirmed, pending };
 }
 
 /**
@@ -37,19 +55,20 @@ export function sumVaultUtxos(scans: VaultChainScan[]): bigint {
  * all); EVM assets read the paired #0 address only, the same address the
  * deposit would come from.
  */
-export async function vaultThorAvailable(pairing: VaultPairing, asset: ThorAssetId): Promise<bigint> {
+export async function vaultThorAvailable(pairing: VaultPairing, asset: ThorAssetId): Promise<VaultUtxoAvailable> {
   const meta = THOR_CATALOG[asset];
   if (meta.kind === "utxo") {
     const coin = meta.chain as "btc" | "ltc" | "doge";
     if (!pairing.chains[coin]) throw new Error("Pair this source coin with your Vault first.");
-    return sumVaultUtxos(await scanVaultChainAll(pairing, coin));
+    return sumVaultUtxos(await scanVaultChainAll(pairing, coin), pairedPurposes(pairing, coin).length);
   }
   const evm = pairing.evm;
   if (!evm) throw new Error("Pair this Vault's Ethereum address first.");
   const pub = evmClient(meta.chain as EvmChainId);
-  if (meta.kind === "evm-native") return pub.getBalance({ address: evm.address as Address });
+  const one = (v: bigint): VaultUtxoAvailable => ({ total: v, confirmed: v, pending: 0n });
+  if (meta.kind === "evm-native") return one(await pub.getBalance({ address: evm.address as Address }));
   if (!meta.contract) throw new Error("Missing token contract.");
-  return pub.readContract({ address: meta.contract, abi: erc20Abi, functionName: "balanceOf", args: [evm.address as Address] });
+  return one(await pub.readContract({ address: meta.contract, abi: erc20Abi, functionName: "balanceOf", args: [evm.address as Address] }));
 }
 
 export function validateVaultThorQuote(q: ThorCatalogQuote) {

@@ -12,7 +12,7 @@ const pairing: VaultPairing = { v: 1, fp: "73c5da0a", chains: { ltc: { "84": roo
   evm: { address: "0x14de43dc534c6911c46ca5ca44323e785f07e9ef", path: "m/44'/60'/0'/0/0" } };
 const address = deriveVaultAddress(pairing, "ltc", 84, 0, 0);
 const scan: VaultChainScan = { chain: "ltc", purpose: 84, balanceSats: 200_000_000, nextReceive: address.address, nextReceiveIndex: 0,
-  utxos: [{ ...address, txid: "11".repeat(32), vout: 0, value: 200_000_000 }], used: [], scanned: 40 };
+  utxos: [{ ...address, txid: "11".repeat(32), vout: 0, value: 200_000_000 }], used: [], scanned: 40, complete: true };
 
 describe("Vault deposit-address swaps", () => {
   it("uses Bobby's paired payout address, not the random anchor", () => {

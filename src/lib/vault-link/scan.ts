@@ -15,14 +15,15 @@ import * as dogeMempool from "@/lib/doge/mempool";
 import { deriveVaultAddress, VAULT_CHAIN_META, type VaultAddress } from "./derive";
 import type { VaultPairing, VaultUtxoChain } from "./pairing";
 
-const GAP_LIMIT = 20;
+/** Unused addresses in a row that end a branch walk. */
+export const GAP_LIMIT = 20;
 
 interface ChainIo {
   stats: (address: string) => Promise<{
     chain_stats: { funded_txo_sum: number; spent_txo_sum: number; tx_count: number };
     mempool_stats: { funded_txo_sum: number; spent_txo_sum: number; tx_count: number };
   }>;
-  utxos: (address: string) => Promise<{ txid: string; vout: number; value: number }[]>;
+  utxos: (address: string) => Promise<{ txid: string; vout: number; value: number; status?: { confirmed?: boolean } }[]>;
   txHex: (txid: string) => Promise<string>;
   broadcast: (hex: string) => Promise<string>;
 }
@@ -45,6 +46,8 @@ export interface VaultUtxo {
   path: string;
   address: string;
   pubkey: Uint8Array;
+  /** False when the indexer reports the coin as still in the mempool. */
+  confirmed?: boolean;
 }
 
 export interface VaultChainScan {
@@ -59,6 +62,11 @@ export interface VaultChainScan {
   used: VaultAddress[];
   /** Total addresses checked (used + gap). */
   scanned: number;
+  /**
+   * True only when both receive and change walks ended on GAP_LIMIT unused
+   * addresses with every lookup answered and every used address's coins listed.
+   */
+  complete: boolean;
 }
 
 /**
@@ -77,11 +85,12 @@ export async function scanVaultChain(
   let scanned = 0;
   let nextReceive = "";
   let nextReceiveIndex = 0;
+  let complete = true;
 
   // Check addresses in parallel windows of GAP_LIMIT instead of one at a
   // time — same gap-limit result, a few round trips instead of 40+.
   const scanBranch = async (change: 0 | 1) => {
-    const hits: { derived: VaultAddress; index: number; addrUtxos: { txid: string; vout: number; value: number }[]; bal: number }[] = [];
+    const hits: { derived: VaultAddress; index: number; addrUtxos: { txid: string; vout: number; value: number; status?: { confirmed?: boolean } }[]; bal: number; ok: boolean }[] = [];
     let firstUnused = -1;
     let lastUsed = -1;
     let start = 0;
@@ -111,22 +120,26 @@ export async function scanVaultChain(
         const bal =
           s.chain_stats.funded_txo_sum - s.chain_stats.spent_txo_sum +
           s.mempool_stats.funded_txo_sum - s.mempool_stats.spent_txo_sum;
-        hits.push({ derived: r.derived, index: r.index, addrUtxos: [], bal });
+        hits.push({ derived: r.derived, index: r.index, addrUtxos: [], bal, ok: false });
       }
       start += GAP_LIMIT;
       if (start - 1 - lastUsed >= GAP_LIMIT) break;
     }
     await Promise.all(
       hits.map(async (h) => {
-        try { h.addrUtxos = await io.utxos(h.derived.address); } catch { /* send re-checks */ }
+        try { h.addrUtxos = await io.utxos(h.derived.address); h.ok = true; } catch { /* send re-checks */ }
       }),
     );
-    return { hits, firstUnused: firstUnused < 0 ? start : firstUnused, count };
+    // Complete = every address queried answered (count === start, which
+    // ends on GAP_LIMIT unused) and every used address listed its coins.
+    const complete = count === start && start - 1 - lastUsed >= GAP_LIMIT && hits.every(h => h.ok);
+    return { hits, firstUnused: firstUnused < 0 ? start : firstUnused, count, complete };
   };
 
   const branches = await Promise.all([scanBranch(0), scanBranch(1)]);
   branches.forEach((b, change) => {
     scanned += b.count;
+    complete &&= b.complete;
     if (change === 0) {
       nextReceiveIndex = b.firstUnused;
       nextReceive = deriveVaultAddress(pairing, chain, purpose, 0, b.firstUnused).address;
@@ -139,6 +152,7 @@ export async function scanVaultChain(
           txid: u.txid, vout: u.vout, value: u.value, purpose,
           change: change as 0 | 1, index: h.index, path: h.derived.path,
           address: h.derived.address, pubkey: h.derived.pubkey,
+          ...(u.status && typeof u.status.confirmed === "boolean" ? { confirmed: u.status.confirmed } : {}),
         });
       }
     }
@@ -149,7 +163,7 @@ export async function scanVaultChain(
     nextReceive = derived.address;
   }
 
-  return { chain, purpose, balanceSats, nextReceive, nextReceiveIndex, utxos, used, scanned };
+  return { chain, purpose, balanceSats, nextReceive, nextReceiveIndex, utxos, used, scanned, complete };
 }
 
 /** Every paired chain/purpose branch, scanned in parallel. */
