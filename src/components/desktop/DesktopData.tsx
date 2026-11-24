@@ -313,7 +313,7 @@ function useDesktopBalances() {
         amount: amt,
         price: identity.price,
         usd: identity.price !== null ? amt : amt === 0 ? 0 : null,
-        send: identity.custom ? undefined : { to: "/wallet/evm/$chain/send", params: { chain } },
+        send: { to: "/wallet/evm/$chain/send", params: { chain } },
         receive: { to: "/wallet/evm/$chain/receive", params: { chain } },
       });
     });

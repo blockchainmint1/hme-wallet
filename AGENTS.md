@@ -15,7 +15,7 @@
 - Charts use deletable profile/fingerprint history; portfolio requires coverage. Changed totals record immediately; unchanged throttle. After 24h thin by coverage to real five-minute samples, cap 2000. Explicit time/value bounds. Why: bounded history without invention.
 - Desktop Earn stays paused; shared UTXO swap entry blocks Vault mode before quotes/orders/signing on all builds. Why: phone cannot bypass independent acceptance.
 - Direct Earn shares Ethereum-only fixed ABIs, public-address reads and an unconditional execution gate. Sky conversion estimates are bigint-only, distinguishing USDC, USDS and shares; intermediate-asset bounds never authorize final-share promises. Why: official contracts and previews do not enforce user minimums or attest upgrade safety.
-- Desktop features are profile-scoped, chains device-wide, separate from phone; token controls/catalogs are shared. Portfolio EVM customs use contract keys, no assumed peg; desktop custom sends stay unavailable. Why: preserve storage, valuation and signing boundaries.
+- Desktop features are profile-scoped, chains device-wide, separate from phone; token controls/catalogs are shared. Portfolio EVM customs use contract keys, no assumed peg; desktop custom sends reuse the shared EVM send, selected by exact contract (never symbol). Why: preserve storage, valuation and signing boundaries.
 
 ## Shared platform capabilities and layout
 - Wide fine-pointer web browsers land on /desktop from /wallet unless "Phone view" was chosen (src/lib/desktop-pref.ts); APK and extension never redirect. Why: desktop default must never alter phone/APK/extension behavior.

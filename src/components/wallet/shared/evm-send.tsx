@@ -135,7 +135,7 @@ function safeFormatUnits(raw: string, decimals: number): string | undefined {
 
 type AssetKind = { kind: "native" } | { kind: "erc20"; token: Erc20TokenMeta };
 
-export function EvmSend({ chain, search = {}, backTo = "/wallet" }: { chain: EvmChainId; search?: { asset?: string; to?: string; amount?: string }; backTo?: "/wallet" | "/desktop" }) {
+export function EvmSend({ chain, search = {}, backTo = "/wallet" }: { chain: EvmChainId; search?: { asset?: string; contract?: string; to?: string; amount?: string }; backTo?: "/wallet" | "/desktop" }) {
   const chainId = chain as EvmChainId;
   const meta = EVM_CHAINS[chainId];
   const tokens = useTokensForChain(chainId);
@@ -150,13 +150,20 @@ export function EvmSend({ chain, search = {}, backTo = "/wallet" }: { chain: Evm
 
   // Selected asset: derive initial from ?asset= then let user change.
   const initialAsset: AssetKind = useMemo(() => {
+    // Exact contract match first (custom tokens): a symbol can be spoofed, the contract can't.
+    if (search.contract) {
+      const c = search.contract.toLowerCase();
+      const t = tokens.find((x) => x.address.toLowerCase() === c);
+      if (t) return { kind: "erc20", token: t };
+    }
     const wanted = search.asset?.toUpperCase();
     if (wanted && wanted !== meta.nativeSymbol.toUpperCase()) {
       const t = findKnownToken(chainId, wanted);
       if (t) return { kind: "erc20", token: t };
     }
     return { kind: "native" };
-  }, [search.asset, chainId, meta.nativeSymbol]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search.asset, search.contract, chainId, meta.nativeSymbol]);
   const [asset, setAsset] = useState<AssetKind>(initialAsset);
 
   const [to, setTo] = useState(search.to ?? "");
