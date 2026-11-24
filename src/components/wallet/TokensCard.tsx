@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Coins, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,14 +27,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { EVM_CHAINS, type EvmChainId } from "@/lib/chains/evm";
+import { EVM_CHAINS, evmClient, type EvmChainId } from "@/lib/chains/evm";
 import {
   addCustomToken,
   removeCustomToken,
   setTokenEnabled,
   useAllTokensForChain,
 } from "@/lib/token-prefs";
-import type { Address } from "viem";
+import { erc20Abi, isAddress, type Address } from "viem";
 import { useFeature } from "@/lib/feature-prefs";
 
 const CHAINS: EvmChainId[] = ["eth", "base", "bsc"];
@@ -140,16 +140,35 @@ function AddCustomTokenDialog() {
   const [address, setAddress] = useState("");
   const [decimals, setDecimals] = useState("18");
   const [error, setError] = useState<string | null>(null);
+  const [lookup, setLookup] = useState<"idle" | "loading" | "found" | "failed">("idle");
+
+  // Paste the contract address → read its symbol and decimals from the chain.
+  useEffect(() => {
+    const a = address.trim();
+    if (!isAddress(a)) { setLookup("idle"); return; }
+    let live = true;
+    setLookup("loading");
+    const pub = evmClient(chain);
+    Promise.all([
+      pub.readContract({ address: a, abi: erc20Abi, functionName: "symbol" }),
+      pub.readContract({ address: a, abi: erc20Abi, functionName: "decimals" }),
+    ]).then(([sym, dec]) => {
+      if (!live) return;
+      setSymbol(String(sym).slice(0, 16)); setDecimals(String(dec)); setLookup("found");
+    }).catch(() => { if (live) setLookup("failed"); });
+    return () => { live = false; };
+  }, [address, chain]);
 
   function reset() {
     setSymbol("");
     setAddress("");
     setDecimals("18");
     setError(null);
+    setLookup("idle");
   }
 
-  function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function onSubmit(e?: React.FormEvent) {
+    e?.preventDefault();
     setError(null);
     const res = addCustomToken(chain, {
       symbol,
@@ -181,11 +200,11 @@ function AddCustomTokenDialog() {
         <DialogHeader>
           <DialogTitle>Add custom token</DialogTitle>
           <DialogDescription>
-            Paste the contract address for an ERC-20 token. Symbol and decimals
-            must match the token on-chain.
+            Pick the network and paste the token's contract address. The symbol
+            and decimals are filled in from the blockchain.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="space-y-3">
+        <form onSubmit={onSubmit} className="space-y-3" autoComplete="off">
           <div>
             <Label htmlFor="ct-chain">Chain</Label>
             <Select value={chain} onValueChange={(v) => setChain(v as EvmChainId)}>
@@ -202,6 +221,24 @@ function AddCustomTokenDialog() {
             </Select>
           </div>
           <div>
+            <Label htmlFor="ct-address">Contract address</Label>
+            <Input
+              id="ct-address"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="0x…"
+              className="mt-1 font-mono text-xs"
+              autoComplete="off"
+              spellCheck={false}
+              data-1p-ignore
+              data-lpignore="true"
+              data-bwignore
+            />
+            {lookup === "loading" && <p className="mt-1 text-xs text-muted-foreground">Looking up this token…</p>}
+            {lookup === "found" && <p className="mt-1 text-xs text-muted-foreground">Found on {EVM_CHAINS[chain].name}. Symbol and decimals filled in.</p>}
+            {lookup === "failed" && <p className="mt-1 text-xs text-destructive">Couldn't read a token at this address on {EVM_CHAINS[chain].name}. Check the network and address.</p>}
+          </div>
+          <div>
             <Label htmlFor="ct-symbol">Symbol</Label>
             <Input
               id="ct-symbol"
@@ -210,16 +247,6 @@ function AddCustomTokenDialog() {
               placeholder="e.g. DAI"
               className="mt-1"
               autoCapitalize="characters"
-            />
-          </div>
-          <div>
-            <Label htmlFor="ct-address">Contract address</Label>
-            <Input
-              id="ct-address"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="0x…"
-              className="mt-1 font-mono text-xs"
             />
           </div>
           <div>
@@ -239,7 +266,7 @@ function AddCustomTokenDialog() {
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit">Add token</Button>
+            <Button type="button" onClick={() => onSubmit()} disabled={lookup === "loading"}>Add token</Button>
           </DialogFooter>
         </form>
       </DialogContent>

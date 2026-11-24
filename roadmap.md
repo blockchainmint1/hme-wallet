@@ -168,3 +168,5 @@
 - [x] HME Vault labels verified live in HME Vault 1.0.2 (commit 093102d2): "Your own address #n", red stranger warning, index-1000 test
 - [ ] HME Vault still missing the required "I meant to pay K addresses that aren't mine" tap before signing stranger payments (handoff v2; Bobby to build in HME Vault project)
 - [ ] First real Base round-up: only do the fee top-up when Vault shows 1–2 recipients and they match the wallet's list
+- [x] Fix desktop Add custom token button doing nothing
+- [x] Custom token: auto-lookup symbol/decimals from contract address
