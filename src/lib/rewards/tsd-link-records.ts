@@ -34,22 +34,26 @@ export function listTsdLinks(profileId: string = activeProfileId()): TsdLinkReco
   }
 }
 
-export function saveTsdLink(record: TsdLinkRecord, profileId: string = activeProfileId()) {
+/** Returns false when the record could not be saved (e.g. storage full). */
+export function saveTsdLink(record: TsdLinkRecord, profileId: string = activeProfileId()): boolean {
   try {
     const next = [
       ...listTsdLinks(profileId).filter((l) => l.accountId !== record.accountId),
       record,
     ];
     safeSetItem(scopedKey(TSD_LINK_STORE_BASE, profileId), JSON.stringify(next));
+    return true;
   } catch {
-    /* noop */
+    return false;
   }
 }
 
-export function writeTsdLinks(list: TsdLinkRecord[], profileId: string = activeProfileId()) {
+/** Returns false when the list could not be saved (e.g. storage full). */
+export function writeTsdLinks(list: TsdLinkRecord[], profileId: string = activeProfileId()): boolean {
   try {
     safeSetItem(scopedKey(TSD_LINK_STORE_BASE, profileId), JSON.stringify(list));
+    return true;
   } catch {
-    /* noop */
+    return false;
   }
 }

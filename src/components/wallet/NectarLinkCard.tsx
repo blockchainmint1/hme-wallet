@@ -98,12 +98,13 @@ export function NectarLinkCard({ compact, initialPayload, hideInput }: { compact
         mnemonic: unlocked.mnemonic,
         passphrase: unlocked.passphrase ?? "",
       });
-      saveLink({
+      const saved = saveLink({
         merchantId: `${requested.host}:${requested.keys[0]!.path}`,
         merchantName: `${res.appName} (${requested.host})`,
         url: requested.manifestUrl,
         linkedAt: new Date().toISOString(),
       });
+      if (!saved) throw new Error("Linked on the other side, but this browser's storage for Honest Money is full, so this wallet couldn't record the link. Free up browser storage and link again.");
       setLinks(listLinks());
       setRequested(null);
       setInput("");
@@ -131,7 +132,7 @@ export function NectarLinkCard({ compact, initialPayload, hideInput }: { compact
         url: manifest.manifest_url,
         linkedAt: new Date().toISOString(),
       };
-      saveLink(record);
+      if (!saveLink(record)) throw new Error("Linked on the other side, but this browser's storage for Honest Money is full, so this wallet couldn't record the link. Free up browser storage and link again.");
       setLinks(listLinks());
       setManifest(null);
       setInput("");

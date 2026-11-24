@@ -389,12 +389,14 @@ export function listLinks(): NectarLinkRecord[] {
   }
 }
 
-export function saveLink(record: NectarLinkRecord) {
+/** Returns false when the record could not be saved (e.g. storage full). */
+export function saveLink(record: NectarLinkRecord): boolean {
   try {
     const next = [record, ...listLinks().filter((l) => l.merchantId !== record.merchantId)];
     safeSetItem(scopedKey(STORE_BASE), JSON.stringify(next));
+    return true;
   } catch {
-    /* noop */
+    return false;
   }
 }
 

@@ -1,3 +1,4 @@
+import { safeSetItem } from "@/lib/storage/safe-set";
 import { scopedKey } from "@/lib/profiles";
 /**
  * Persistence for imported single-key (WIF) wallets.
@@ -88,13 +89,10 @@ export function listWifWallets(): WifWalletEntry[] {
   return safeParse(localStorage.getItem(STORAGE_KEY()));
 }
 
+/** Throws StorageFullError when the list can't be saved: an imported key must never appear saved when it isn't. */
 function persist(list: WifWalletEntry[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY(), JSON.stringify(list));
-    window.dispatchEvent(new CustomEvent(WIF_CHANGED_EVENT));
-  } catch {
-    /* quota — non-fatal */
-  }
+  safeSetItem(STORAGE_KEY(), JSON.stringify(list), localStorage);
+  try { window.dispatchEvent(new CustomEvent(WIF_CHANGED_EVENT)); } catch { /* no window */ }
 }
 
 function newId(): string {

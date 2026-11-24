@@ -106,7 +106,7 @@ export function TsdAccountLinkCard({ compact, initialPayload, hideInput }: { com
         linkedAt: new Date().toISOString(),
         keyFp: res.api_key_fp,
       };
-      saveTsdLink(record, profileId);
+      if (!saveTsdLink(record, profileId)) throw new Error("Linked on the other side, but this browser's storage for Honest Money is full, so this wallet couldn't record the link. Free up browser storage and link again.");
       setLinks(listTsdLinks());
       setManifest(null);
       setInput("");

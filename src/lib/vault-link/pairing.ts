@@ -1,3 +1,4 @@
+import { safeSetItem } from "@/lib/storage/safe-set";
 /**
  * Pairing with HME Vault (offline signer).
  *
@@ -150,12 +151,9 @@ export function mergeRefreshedPairing(current: VaultPairing, fresh: VaultPairing
 
 const STORE_BASE = "hme.vault-link.v1";
 
+/** Throws StorageFullError when the pairing can't be saved, so callers show it instead of pretending. */
 export function savePairing(profileId: string, p: VaultPairing): void {
-  try {
-    localStorage.setItem(scopedKey(STORE_BASE, profileId), JSON.stringify(p));
-  } catch {
-    /* quota — non-fatal, pairing can be redone */
-  }
+  safeSetItem(scopedKey(STORE_BASE, profileId), JSON.stringify(p), localStorage);
 }
 
 export function loadPairing(profileId: string): VaultPairing | null {
