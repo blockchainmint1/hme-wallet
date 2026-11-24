@@ -127,8 +127,8 @@ function AddCustomTxcTokenDialog() {
     setError(null);
   }
 
-  function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function onSubmit(e?: React.FormEvent) {
+    e?.preventDefault();
     setError(null);
     const res = addCustomTxcToken({
       id: Number(id),
@@ -165,11 +165,15 @@ function AddCustomTxcTokenDialog() {
             match the on-chain issuance or amounts will render wrong.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="space-y-3">
+        <form onSubmit={onSubmit} className="space-y-3" autoComplete="off">
           <div>
             <Label htmlFor="tt-id">Property ID</Label>
             <Input
               id="tt-id"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-bwignore
               type="number"
               min={1}
               value={id}
@@ -182,6 +186,10 @@ function AddCustomTxcTokenDialog() {
             <Label htmlFor="tt-symbol">Symbol</Label>
             <Input
               id="tt-symbol"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-bwignore
               value={symbol}
               onChange={(e) => setSymbol(e.target.value)}
               placeholder="e.g. WUSDC"
@@ -193,6 +201,10 @@ function AddCustomTxcTokenDialog() {
             <Label htmlFor="tt-name">Name (optional)</Label>
             <Input
               id="tt-name"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-bwignore
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Wrapped USDC"
@@ -217,7 +229,7 @@ function AddCustomTxcTokenDialog() {
             >
               Cancel
             </Button>
-            <Button type="submit">Add token</Button>
+            <Button type="button" onClick={() => onSubmit()}>Add token</Button>
           </DialogFooter>
         </form>
       </DialogContent>
