@@ -7,7 +7,8 @@ import { thorApprovalRequest, thorDepositRequest } from "@/lib/thorchain/execute
 import { EVM_CHAINS, evmClient, type EvmChainId } from "@/lib/chains/evm";
 import { deriveVaultAddress, VAULT_CHAIN_META } from "./derive";
 import type { VaultPairing } from "./pairing";
-import { chainIo, type VaultUtxo } from "./scan";
+import { chainIo, type VaultChainScan, type VaultUtxo } from "./scan";
+import { scanVaultChainAll } from "./snapshot";
 import { vaultBytesToBase64, verifySignedAgainstPsbt } from "./psbt-build";
 
 export function vaultThorAddress(pairing: VaultPairing, asset: ThorAssetId): string | null {
@@ -17,6 +18,38 @@ export function vaultThorAddress(pairing: VaultPairing, asset: ThorAssetId): str
   const purposes = VAULT_CHAIN_META[coin].purposes;
   const purpose = purposes.find(p => pairing.chains[coin]?.[String(p) as "44" | "49" | "84"]);
   return purpose ? deriveVaultAddress(pairing, coin, purpose, 0, 0).address : null;
+}
+
+/**
+ * Sum deduped coins across every paired branch. Throws on an incomplete
+ * scan so a partial total can never look like "nothing left".
+ */
+export function sumVaultUtxos(scans: VaultChainScan[]): bigint {
+  if (!scans.length || scans.some(s => s.scanned < 40)) throw new Error("Paired coin scan was incomplete. Try again.");
+  const seen = new Map<string, bigint>();
+  for (const s of scans) for (const u of s.utxos) seen.set(`${u.txid}:${u.vout}`, BigInt(u.value));
+  return [...seen.values()].reduce((a, v) => a + v, 0n);
+}
+
+/**
+ * Fresh balance of the Vault's own funds for a swap source, in chain-native
+ * raw units. UTXO coins total every paired branch (preparation spends them
+ * all); EVM assets read the paired #0 address only, the same address the
+ * deposit would come from.
+ */
+export async function vaultThorAvailable(pairing: VaultPairing, asset: ThorAssetId): Promise<bigint> {
+  const meta = THOR_CATALOG[asset];
+  if (meta.kind === "utxo") {
+    const coin = meta.chain as "btc" | "ltc" | "doge";
+    if (!pairing.chains[coin]) throw new Error("Pair this source coin with your Vault first.");
+    return sumVaultUtxos(await scanVaultChainAll(pairing, coin));
+  }
+  const evm = pairing.evm;
+  if (!evm) throw new Error("Pair this Vault's Ethereum address first.");
+  const pub = evmClient(meta.chain as EvmChainId);
+  if (meta.kind === "evm-native") return pub.getBalance({ address: evm.address as Address });
+  if (!meta.contract) throw new Error("Missing token contract.");
+  return pub.readContract({ address: meta.contract, abi: erc20Abi, functionName: "balanceOf", args: [evm.address as Address] });
 }
 
 export function validateVaultThorQuote(q: ThorCatalogQuote) {

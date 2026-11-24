@@ -11,11 +11,18 @@ import { QrScanButton } from "@/components/wallet/QrScanButton";
 import { PartCollector } from "@/lib/vault-link/qr-parts";
 import { loadPairing } from "@/lib/vault-link/pairing";
 import { scanVaultChainAll } from "@/lib/vault-link/snapshot";
-import { vaultThorAddress, prepareVaultThorSwap, verifyVaultThorResult, type VaultThorPrepared } from "@/lib/vault-link/thor-swap";
+import { vaultThorAddress, vaultThorAvailable, prepareVaultThorSwap, verifyVaultThorResult, type VaultThorPrepared } from "@/lib/vault-link/thor-swap";
 import { THOR_CATALOG, parseAssetAmount, thorUnitsToNumber, validateThorDestination, type ThorAssetId, type ThorUtxoCoin } from "@/lib/thorchain/catalog";
 import { getThorCatalogQuote, getThorCatalogRoutes } from "@/lib/thorchain/catalog.functions";
 import { THOR_UTXO_COINS } from "@/lib/thorchain/execute";
 import { getActiveProfileId } from "@/lib/txc/storage";
+import { formatUnits } from "viem";
+
+/** Trim trailing zeros from a raw-unit balance for display. */
+function formatAvailable(raw: bigint, decimals: number): string {
+  const s = formatUnits(raw, decimals);
+  return s.includes(".") ? s.replace(/\.?0+$/, "") : s;
+}
 import { loadSession } from "@/lib/txc/session-cache";
 
 /** Auditable preparation only: no broadcast dependency or execution switch. */
@@ -89,6 +96,12 @@ export function VaultThorSwap({ profileId }: { profileId: string }) {
     finally { setBusy(false); }
   }
   const available = (routes.data ?? []).filter(id => pairing && vaultThorAddress(pairing, id));
+  const balance = useQuery({
+    queryKey: ["vault-thor-available", profileId, from],
+    enabled: !!pairing && !!vaultThorAddress(pairing, from),
+    queryFn: () => vaultThorAvailable(pairing!, from),
+    staleTime: 30_000, retry: 0,
+  });
   if (!pairing) return <p className="py-8 text-muted-foreground">Pair a Cold Storage wallet to preview THORChain swaps.</p>;
   return <section className="min-w-0 space-y-6">
     <div className="border-b border-border pb-4">
@@ -117,7 +130,18 @@ export function VaultThorSwap({ profileId }: { profileId: string }) {
         <div><Label htmlFor="vault-thor-from">Pay with</Label><Select value={from} onValueChange={v => setFrom(v as ThorAssetId)}><SelectTrigger id="vault-thor-from"><SelectValue /></SelectTrigger><SelectContent>{available.filter(id => id !== to).map(id => <SelectItem key={id} value={id}>{THOR_CATALOG[id].label}</SelectItem>)}</SelectContent></Select></div>
         <div><Label htmlFor="vault-thor-to">Receive</Label><Select value={to} onValueChange={v => { setTo(v as ThorAssetId); setOverride(null); }}><SelectTrigger id="vault-thor-to"><SelectValue /></SelectTrigger><SelectContent>{available.filter(id => id !== from).map(id => <SelectItem key={id} value={id}>{THOR_CATALOG[id].label}</SelectItem>)}</SelectContent></Select></div>
       </div>
-      <div><Label htmlFor="vault-thor-amount">Amount ({THOR_CATALOG[from].symbol})</Label><Input id="vault-thor-amount" value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" placeholder="0.0" /></div>
+      <div>
+        <div className="flex items-baseline justify-between gap-3">
+          <Label htmlFor="vault-thor-amount">Amount ({THOR_CATALOG[from].symbol})</Label>
+          <span className="text-xs text-muted-foreground">
+            {balance.isFetching ? "Checking balance…"
+              : balance.data != null ? `Available: ${formatAvailable(balance.data, THOR_CATALOG[from].decimals)} ${THOR_CATALOG[from].symbol}`
+              : balance.isError ? "Couldn't check the balance"
+              : null}
+          </span>
+        </div>
+        <Input id="vault-thor-amount" value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" placeholder="0.0" />
+      </div>
       <div><Label htmlFor="vault-thor-payout">Payout address ({THOR_CATALOG[to].label})</Label><Input id="vault-thor-payout" value={destination} onChange={e => setOverride(e.target.value)} className="font-mono text-xs" /></div>
       {quote.data && <dl className="space-y-2 text-sm"><div>Expected payout: {thorUnitsToNumber(quote.data.expectedOut)} {THOR_CATALOG[to].symbol}</div><div>Minimum payout: {thorUnitsToNumber(quote.data.minimumOut)} {THOR_CATALOG[to].symbol}</div></dl>}
       {quote.error && <p className="text-sm text-destructive">{quote.error instanceof Error ? quote.error.message : "Quote unavailable."}</p>}
