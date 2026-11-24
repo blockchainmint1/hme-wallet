@@ -163,7 +163,8 @@
 - [ ] Bobby: re-pair Vault (needs HME Vault with batch sweep) and run one tiny real round-up
 - [x] Auditor sign-off on round-up follow-up fixes (Nov 24): all six correct, wallet side OK to publish as preview
 - [x] HME Vault handoff v2: required "I meant to pay K addresses that aren't mine" tap + index-1000 test
-- [ ] Publish web + rebuild extension/APK with the round-up (waits on Bobby's go)
+- [x] Publish web + extension 0.5.7 with the round-up (24 Nov, Bobby's go)
+- [ ] Next APK build carrying the round-up's shared changes (Bobby runs GitHub Actions → Android APK, sends the zip)
 - [ ] Bobby: hand HME Vault handoff v2 to the HME Vault project (waits on Bobby)
 - [ ] First real Base round-up: only do the fee top-up when Vault shows 1–2 recipients and they match the wallet's list
 - [ ] Bobby: take the label handoff note to the HME Vault project and build it there
