@@ -19,6 +19,7 @@ import { useEffect, useState } from "react";
 import type { BIP32Interface } from "bip32";
 import { TSD_PROPERTY_ID } from "@/lib/cashout/tsd";
 import { deriveAddress, type DerivedAddress } from "./wallet";
+import { safeSetItem } from "@/lib/storage/safe-set";
 
 /**
  * The one canonical deposit address for Omni tokens (TSD, POP, …):
@@ -78,7 +79,7 @@ function readCustom(): TxcTokenMeta[] {
   }
 }
 function writeCustom(v: TxcTokenMeta[]) {
-  localStorage.setItem(CUSTOM_KEY, JSON.stringify(v));
+  safeSetItem(CUSTOM_KEY, JSON.stringify(v));
 }
 function readHidden(): Set<number> {
   try {
@@ -95,7 +96,7 @@ function readHidden(): Set<number> {
   }
 }
 function writeHidden(s: Set<number>) {
-  localStorage.setItem(HIDDEN_KEY, JSON.stringify([...s]));
+  safeSetItem(HIDDEN_KEY, JSON.stringify([...s]));
 }
 function isTokenMeta(v: unknown): v is TxcTokenMeta {
   return (
@@ -158,7 +159,8 @@ export function addCustomTxcToken(
     divisible: !!token.divisible,
     name: token.name?.trim() || undefined,
   };
-  writeCustom([...readCustom(), normalized]);
+  try { writeCustom([...readCustom(), normalized]); }
+  catch (e) { return { ok: false, error: e instanceof Error ? e.message : "Couldn't save the token." }; }
   emit();
   return { ok: true };
 }

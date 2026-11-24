@@ -20,6 +20,7 @@ import {
   BUILTIN_TOKENS_BY_CHAIN,
   type Erc20TokenMeta,
 } from "@/lib/chains/erc20";
+import { safeSetItem } from "@/lib/storage/safe-set";
 
 const CUSTOM_KEY_BASE = "hme:tokens:custom:v1";
 /** App-wide key (the default profile's historical unprefixed key). */
@@ -65,7 +66,7 @@ function readCustom(): CustomMap {
   }
 }
 function writeCustom(v: CustomMap) {
-  localStorage.setItem(CUSTOM_KEY(), JSON.stringify(v));
+  safeSetItem(CUSTOM_KEY(), JSON.stringify(v));
 }
 function readHidden(): Set<string> {
   try {
@@ -78,7 +79,7 @@ function readHidden(): Set<string> {
   }
 }
 function writeHidden(s: Set<string>) {
-  localStorage.setItem(HIDDEN_KEY(), JSON.stringify([...s]));
+  safeSetItem(HIDDEN_KEY(), JSON.stringify([...s]));
 }
 function emit() {
   window.dispatchEvent(new Event(EVT));
@@ -131,7 +132,8 @@ export function addCustomToken(chain: EvmChainId, token: Erc20TokenMeta): { ok: 
 
   const all = readCustom();
   const list = all[chain] ?? [];
-  writeCustom({ ...all, [chain]: [...list, normalized] });
+  try { writeCustom({ ...all, [chain]: [...list, normalized] }); }
+  catch (e) { return { ok: false, error: e instanceof Error ? e.message : "Couldn't save the token." }; }
   emit();
   return { ok: true };
 }

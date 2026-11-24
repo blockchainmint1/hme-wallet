@@ -5,13 +5,13 @@ import { ArrowLeftRight, ArrowUpRight, ArrowDownLeft, RefreshCw, Landmark } from
 import { Button } from "@/components/ui/button";
 import { useDesktopData } from "./DesktopData";
 import { formatFiat } from "@/lib/txc/units";
-import { appendBalancePoint, readBalanceHistory, balanceHistoryKey, portfolioChartWindow, type BalancePoint } from "@/lib/desktop/history";
+import { appendBalancePoint, coverageId, readBalanceHistory, balanceHistoryKey, portfolioChartWindow, type BalancePoint } from "@/lib/desktop/history";
 import { Holdings } from "./Holdings";
 import { Activity } from "./Activity";
 import { visibleAllocation } from "@/lib/desktop/display-policy";
 import { useFeature } from "@/lib/feature-prefs";
 export function Portfolio({range="1M",onRange}:{range?:string;onRange:(range:string)=>void}) {
- const d=useDesktopData();const [points,setPoints]=useState<BalancePoint[]>([]); const coverage=d.rows.map(r=>r.key).sort().join(",");const allocation=visibleAllocation(d.valued,d.hidden);const [utxoSwapOn]=useFeature("utxoSwap");const historyId=d.historyId;
+ const d=useDesktopData();const [points,setPoints]=useState<BalancePoint[]>([]); const coverage=coverageId(d.rows.map(r=>r.key));const allocation=visibleAllocation(d.valued,d.hidden);const [utxoSwapOn]=useFeature("utxoSwap");const historyId=d.historyId;
  const [now,setNow]=useState(()=>Date.now());
  useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),60_000);return()=>clearInterval(timer);},[]);
  useEffect(()=>{setPoints(historyId?readBalanceHistory(d.activeProfileId,historyId):[]);},[d.activeProfileId,historyId]);

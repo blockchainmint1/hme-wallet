@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
-import { appendBalancePoint, balanceHistoryKey, balanceHistoryBlockers, clearBalanceHistory, readBalanceHistory, portfolioChartWindow, thinOlderBalancePoints } from "./history";
+import { appendBalancePoint, coverageId, balanceHistoryKey, balanceHistoryBlockers, clearBalanceHistory, readBalanceHistory, portfolioChartWindow, thinOlderBalancePoints } from "./history";
 describe("desktop balance history", () => {
   beforeAll(() => {
     const store: Record<string, string> = {};
@@ -21,7 +21,7 @@ describe("desktop balance history", () => {
     expect(balanceHistoryBlockers([{ name: "Bitcoin", amount: 1, price: NaN }])).toEqual(["Bitcoin"]);
   });
   it("isolates two wallet profiles without changing envelope keys", () => { expect(balanceHistoryKey("default", "aa")).toBe("hme.desktop.balance-history.v1.aa"); expect(balanceHistoryKey("second", "bb")).toBe("p:second:hme.desktop.balance-history.v1.bb"); });
-  it("keys history by wallet fingerprint so a new seed never inherits old history", () => { localStorage.setItem(balanceHistoryKey("default", "oldseed"), JSON.stringify([{ at: 1, usd: 100, coverage: "btc" }])); expect(readBalanceHistory("default", "newseed")).toEqual([]); expect(readBalanceHistory("default", "oldseed")).toEqual([{ at: 1, usd: 100, coverage: "btc" }]); });
+  it("keys history by wallet fingerprint so a new seed never inherits old history", () => { localStorage.setItem(balanceHistoryKey("default", "oldseed"), JSON.stringify([{ at: 1, usd: 100, coverage: "btc" }])); expect(readBalanceHistory("default", "newseed")).toEqual([]); expect(readBalanceHistory("default", "oldseed")).toEqual([{ at: 1, usd: 100, coverage: coverageId(["btc"]) }]); });
   it("clears fingerprinted and legacy history when the wallet is deleted", () => { localStorage.setItem(balanceHistoryKey("default", "aa"), "[]"); localStorage.setItem("hme.desktop.balance-history.v1", "[]"); localStorage.setItem(balanceHistoryKey("second", "bb"), "[]"); clearBalanceHistory("default"); expect(localStorage.getItem("hme.desktop.balance-history.v1.aa")).toBeNull(); expect(localStorage.getItem("hme.desktop.balance-history.v1")).toBeNull(); expect(localStorage.getItem("p:second:hme.desktop.balance-history.v1.bb")).not.toBeNull(); });
   it("never records incomplete outage values as losses", () => { const saved = [{at: 1, usd: 100, coverage: "btc"}]; expect(appendBalancePoint(saved, {at: 600001, usd: 0, coverage: "btc"}, false)).toEqual(saved); });
   it("removes per-currency observations with the deleted profile only", () => {

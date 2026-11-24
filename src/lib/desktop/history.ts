@@ -40,8 +40,18 @@ export function thinOlderBalancePoints(points: BalancePoint[], now: number): Bal
   }
   return [...buckets.values(), ...recent].sort((a, b) => a.at - b.at);
 }
+/** Short stable id for an asset set: repeating the full key list in every sample filled browser storage. */
+export function coverageId(keys: readonly string[]): string {
+  const text = [...keys].sort().join(",");
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return "h:" + (h2 >>> 0).toString(36) + (h1 >>> 0).toString(36);
+}
+const isCoverageId = (c: string) => c.startsWith("h:");
 export function readBalanceHistory(profileId: string, fingerprint: string): BalancePoint[] {
-  try { const data: unknown = JSON.parse(localStorage.getItem(balanceHistoryKey(profileId, fingerprint)) ?? "[]"); return Array.isArray(data) ? data.filter((p): p is BalancePoint => p && Number.isFinite(p.at) && Number.isFinite(p.usd) && p.usd >= 0 && typeof p.coverage === "string") : []; } catch { return []; }
+  try { const data: unknown = JSON.parse(localStorage.getItem(balanceHistoryKey(profileId, fingerprint)) ?? "[]"); return Array.isArray(data) ? data.filter((p): p is BalancePoint => p && Number.isFinite(p.at) && Number.isFinite(p.usd) && p.usd >= 0 && typeof p.coverage === "string").map(p => isCoverageId(p.coverage) ? p : { ...p, coverage: coverageId(p.coverage ? p.coverage.split(",") : []) }) : []; } catch { return []; }
 }
 
 /** Selected windows never manufacture observations or borrow a different asset set. */
