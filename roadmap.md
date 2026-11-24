@@ -161,5 +161,9 @@
 - [x] Apply all 6 small round-up audit fixes (Bobby chose these; Check further/dust note/stuck message not chosen)
 - [x] HME Vault handoff note written: label own addresses "Your own address #n" and flag strangers in red on bulk payments, never refuse (Bobby chose; change is built in the HME Vault project)
 - [ ] Bobby: re-pair Vault (needs HME Vault with batch sweep) and run one tiny real round-up
-- [ ] Auditor sign-off on round-up follow-up fixes (pack sent to Bobby)
+- [x] Auditor sign-off on round-up follow-up fixes (Nov 24): all six correct, wallet side OK to publish as preview
+- [x] HME Vault handoff v2: required "I meant to pay K addresses that aren't mine" tap + index-1000 test
+- [ ] Publish web + rebuild extension/APK with the round-up (waits on Bobby's go)
+- [ ] Bobby: hand HME Vault handoff v2 to the HME Vault project (waits on Bobby)
+- [ ] First real Base round-up: only do the fee top-up when Vault shows 1–2 recipients and they match the wallet's list
 - [ ] Bobby: take the label handoff note to the HME Vault project and build it there
