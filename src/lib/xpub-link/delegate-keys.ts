@@ -30,6 +30,7 @@ import { base58 } from "@scure/base";
 import { mnemonicToEntropy } from "@scure/bip39";
 import { wordlist as englishWordlist } from "@scure/bip39/wordlists/english.js";
 import { normalizeMnemonic } from "@/lib/txc/wallet";
+import { HOLD_FORMAT, HOLD_LABEL, holdAccountPath, holdPublicHalf, isHoldChain, SEEDS_HOLD_COINS_LIVE, type HoldChain } from "./hold-coins";
 
 const bip32 = BIP32Factory(ecc);
 const H = 0x80000000;
@@ -60,6 +61,18 @@ export function isExtraChain(c: string): c is ExtraChain {
   return (EXTRA_CHAINS as readonly string[]).includes(c);
 }
 
+/** Any extra coin a link may carry: the shown extras plus Seeds' accept-and-hold coins. */
+export type LinkExtraChain = ExtraChain | HoldChain;
+
+/** Coins this build may put in a link: hold coins only once Seeds is live. */
+export function isLinkExtraChain(c: string, live: boolean = SEEDS_HOLD_COINS_LIVE): c is LinkExtraChain {
+  return isExtraChain(c) || (live && isHoldChain(c));
+}
+
+export function linkExtraFormat(c: LinkExtraChain): string {
+  return isHoldChain(c) ? HOLD_FORMAT[c] : EXTRA_FORMAT[c];
+}
+
 /** purpose / coin type for the plain secp256k1 extras. */
 const SECP: Record<Exclude<ExtraChain, "SOL" | "ADA" | "XMR">, [number, number]> = {
   DOGE: [44, 3],
@@ -72,7 +85,8 @@ const SECP: Record<Exclude<ExtraChain, "SOL" | "ADA" | "XMR">, [number, number]>
   RUNE: [44, 931],
 };
 
-export const EXTRA_CHAIN_LABEL: Record<ExtraChain, string> = {
+export const EXTRA_CHAIN_LABEL: Record<LinkExtraChain, string> = {
+  ...HOLD_LABEL,
   DOGE: "Dogecoin",
   BCH: "Bitcoin Cash",
   DASH: "Dash",
@@ -86,7 +100,8 @@ export const EXTRA_CHAIN_LABEL: Record<ExtraChain, string> = {
   XMR: "Monero",
 };
 
-export function extraAccountPath(chain: ExtraChain, account: number): string {
+export function extraAccountPath(chain: LinkExtraChain, account: number): string {
+  if (isHoldChain(chain)) return holdAccountPath(chain, account);
   if (chain === "SOL") return `m/44'/501'/${account}'/0'`;
   if (chain === "ADA") return `m/1852'/1815'/${account}'`;
   if (chain === "XMR") return `m/44'/128'/${account}'`;
@@ -95,9 +110,9 @@ export function extraAccountPath(chain: ExtraChain, account: number): string {
 }
 
 /** Account number named by `path`, only if it is exactly that chain's account path. */
-export function extraAccountOf(chain: ExtraChain, path: unknown): number | null {
-  if (!isExtraChain(chain)) return null;
-  const m = /^m\/\d+'\/\d+'\/(\d{1,10})'(?:\/0')?$/.exec(String(path));
+export function extraAccountOf(chain: LinkExtraChain, path: unknown): number | null {
+  if (!isExtraChain(chain) && !isHoldChain(chain)) return null;
+  const m = /^m\/\d+'\/\d+'\/(\d{1,10})'(?:\/0'){0,2}$/.exec(String(path));
   if (!m) return null;
   const n = Number(m[1]);
   return extraAccountPath(chain, n) === path ? n : null;
@@ -264,7 +279,7 @@ export function moneroAccountKey(seed: Uint8Array, account: number): { address: 
  * instead needs the words themselves (Icarus derives from the entropy).
  */
 export function deriveExtraKey(args: {
-  chain: ExtraChain;
+  chain: LinkExtraChain;
   account: number;
   seed: Uint8Array;
   mnemonic: string;
@@ -273,6 +288,13 @@ export function deriveExtraKey(args: {
 }): ExtraKey {
   const { chain, account, seed, mnemonic, passphrase, withPrivate } = args;
   const path = extraAccountPath(chain, account);
+  if (isHoldChain(chain)) {
+    const k = slip10Ed25519(seed, path);
+    const out: ExtraKey = { path, pub: holdPublicHalf(chain, ed25519.getPublicKey(k)) };
+    if (withPrivate) out.priv = hex(k);
+    k.fill(0);
+    return out;
+  }
   if (chain === "SOL") {
     const k = slip10Ed25519(seed, path);
     const out: ExtraKey = { path, pub: base58.encode(ed25519.getPublicKey(k)) };

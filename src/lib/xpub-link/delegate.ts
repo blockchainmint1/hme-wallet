@@ -33,7 +33,7 @@ import { isEcosystemSite, loginSiteName, setEcosystemSites, spendingGrant } from
 import { getEcosystemSites } from "@/lib/ecosystem-sites.functions";
 import { accountPath, chainRoot, legacyPocketAccount, POCKET_CHAINS, type PocketChain } from "@/lib/seeds/pocket";
 import { chooseDelegateBranch, claimBranch, loadBranchBook, type BranchBook } from "./branches";
-import { deriveExtraKey, EXTRA_CHAIN_LABEL, EXTRA_FORMAT, extraAccountOf, isExtraChain, type ExtraChain } from "./delegate-keys";
+import { deriveExtraKey, EXTRA_CHAIN_LABEL, extraAccountOf, isLinkExtraChain, linkExtraFormat, type LinkExtraChain as ExtraChain } from "./delegate-keys";
 
 const PROXY = "/api/nectar/link";
 
@@ -131,7 +131,7 @@ export function validateDelegate(
     const chain = String(r?.["chain"] ?? "").toUpperCase();
     const core = (POCKET_CHAINS as string[]).includes(chain);
     // Extra coins must name the exact key method this wallet implements; any other is unknown.
-    const extra = isExtraChain(chain) && r?.["format"] === EXTRA_FORMAT[chain];
+    const extra = isLinkExtraChain(chain) && r?.["format"] === linkExtraFormat(chain);
     if (!core && !extra) {
       // A coin this wallet can't make a key for: skip it if optional, refuse if required.
       if (optional) continue;

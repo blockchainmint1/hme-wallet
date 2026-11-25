@@ -1,3 +1,4 @@
+import { SEEDS_HOLD_COINS_LIVE } from "@/lib/xpub-link/hold-coins";
 import { z } from "zod";
 import { checkLoginMessageShape } from "@/lib/hm-login-template";
 const address = z.string().regex(/^[A-Za-z0-9]{26,64}$/);
@@ -14,14 +15,18 @@ const path = z.string().regex(/^m\/(?:44|84)'\/\d+'\/\d+'$/);
  * uses 1852') and Cardano's public key is hex.
  */
 export const DELEGATE_RELAY_CHAINS = ["TXC", "ISK", "BTC", "LTC", "EVM", "DOGE", "BCH", "DASH", "TRX", "SOL", "ZEC", "XRP", "ATOM", "RUNE", "ADA", "XMR"] as const;
-const delegateChain = z.enum(DELEGATE_RELAY_CHAINS);
-const delegateKeys = z.record(delegateChain, z.string().regex(/^(?:[1-9A-HJ-NP-Za-km-z]{32,120}|[0-9a-f]{64,128})$/));
-const delegatePath = z.string().regex(/^m\/(?:44|84|1852)'\/\d{1,6}'\/\d{1,10}'(?:\/0')?$/);
+/** Seeds' accept-and-hold coins (hold-coins.ts); relayed only once Seeds is live. */
+export const DELEGATE_HOLD_RELAY_CHAINS = ["XLM", "TON", "SUI"] as const;
+const relayChains: readonly string[] = SEEDS_HOLD_COINS_LIVE ? [...DELEGATE_RELAY_CHAINS, ...DELEGATE_HOLD_RELAY_CHAINS] : DELEGATE_RELAY_CHAINS;
+const delegateChain = z.enum(relayChains as [string, ...string[]]);
+// base58 keys, lowercase hex (ADA/XMR/TON/private halves), Stellar G… strkey, Sui 0x address.
+const delegateKeys = z.record(delegateChain, z.string().regex(/^(?:[1-9A-HJ-NP-Za-km-z]{32,120}|[0-9a-f]{64,128}|G[A-Z2-7]{55}|0x[0-9a-f]{64})$/));
+const delegatePath = z.string().regex(/^m\/(?:44|84|1852)'\/\d{1,6}'\/\d{1,10}'(?:\/0'){0,2}$/);
 const body = z.union([
   z.object({ id, address, signature, message: z.string().max(2000) }).strict(),
   z.object({ payload: z.object({ v: z.literal(1), type: z.literal("hm-link-xpubs"), challenge_id: id, from: z.string().max(253), callback_url: z.string().url().max(2048), chains: z.array(chain).max(11), xpubs: keys, exp: z.number(), issued_at: z.string().max(40) }).strict(), address, signature }).strict(),
   z.object({ token: id, identity_address: address, xpub, path, signature, app_name: z.literal("honest.money wallet") }).strict(),
-  z.object({ token: id, mode: z.enum(["access", "approve"]), account: z.number().int().min(1106).max(2147483647), paths: z.array(delegatePath).min(1).max(DELEGATE_RELAY_CHAINS.length), identity_address: address, signature, message: z.string().max(2000), payload: z.string().regex(/^[A-Za-z0-9_-]+={0,2}$/).max(16000).optional(), xpubs: delegateKeys, app_name: z.literal("honest.money wallet"), app: z.object({ name: z.literal("honest.money wallet") }).strict() }).strict(),
+  z.object({ token: id, mode: z.enum(["access", "approve"]), account: z.number().int().min(1106).max(2147483647), paths: z.array(delegatePath).min(1).max(relayChains.length), identity_address: address, signature, message: z.string().max(2000), payload: z.string().regex(/^[A-Za-z0-9_-]+={0,2}$/).max(16000).optional(), xpubs: delegateKeys, app_name: z.literal("honest.money wallet"), app: z.object({ name: z.literal("honest.money wallet") }).strict() }).strict(),
   z.object({ link_id: id, identity_address: address, signature, message: z.string().max(2000) }).strict(),
   z.object({ link_id: id, trade_id: id, decision: z.enum(["approve", "decline"]), signed_psbt: z.string().regex(/^cHNidP[A-Za-z0-9+/=]+$/).max(28000).optional(), identity_address: address, signature, message: z.string().max(2000) }).strict(),
 ]);
