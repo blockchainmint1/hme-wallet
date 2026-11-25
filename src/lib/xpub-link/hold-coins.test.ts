@@ -62,11 +62,11 @@ describe("Seeds Stellar / TON / Sui keys (pocket 1106)", () => {
   });
 });
 
-describe("release gate: held until Seeds is live", () => {
-  it("is off in this build", () => expect(SEEDS_HOLD_COINS_LIVE).toBe(false));
-  it("the link reader skips Stellar, TON and Sui while held, and keeps the rest", () => {
+describe("release gate: Seeds is live (Nov 25 2026)", () => {
+  it("is on in this build", () => expect(SEEDS_HOLD_COINS_LIVE).toBe(true));
+  it("the link reader takes Stellar, TON and Sui, and still skips them when held", () => {
     setEcosystemSites([SEEDS], true);
-    expect(isLinkExtraChain("XLM")).toBe(false);
+    expect(isLinkExtraChain("XLM", false)).toBe(false);
     expect(isLinkExtraChain("XLM", true)).toBe(true);
     const host = "seeds.honest.money";
     const raw = {
@@ -83,11 +83,12 @@ describe("release gate: held until Seeds is live", () => {
       ],
     };
     const v = validateDelegate(raw, `https://${host}/api/public/hme-link/manifest/abc`, {});
-    expect(v.extraChains).toEqual(["DOGE"]);
+    expect(v.extraChains).toEqual(["DOGE", "XLM", "TON", "SUI"]);
   });
-  it("the relay refuses a Stellar key while held", () => {
+  it("the relay takes Stellar, TON and Sui keys, and still refuses unknown coins", () => {
     const target = new URL("https://seeds.honest.money/api/public/hme-link/submit");
     const base = { token: "t", mode: "access", account: 1106, paths: ["m/44'/696969'/1106'"], identity_address: "T".repeat(34), signature: "A".repeat(88), message: "Honest Money - Link wallet (delegate)\n\nDomain: seeds.honest.money", xpubs: { TXC: "x".repeat(40) }, app_name: "honest.money wallet", app: { name: "honest.money wallet" } };
-    expect(() => validateRelayPost({ ...base, xpubs: { ...base.xpubs, XLM: "GARWV2LPPTIXJYVWMINIZHNKNUCR3FDVANOPTZXGYV3765UZKSHWV5AI" } }, target)).toThrow();
+    expect(() => validateRelayPost({ ...base, paths: [...base.paths, "m/44'/148'/1106'", "m/44'/607'/1106'", "m/44'/784'/1106'/0'/0'"], xpubs: { ...base.xpubs, XLM: "GARWV2LPPTIXJYVWMINIZHNKNUCR3FDVANOPTZXGYV3765UZKSHWV5AI", TON: "a".repeat(64), SUI: "0xc103715616f6451c7d969ef90d20d1016924dad27e9c36cd3c1bd5ee5c36b8a1" } }, target)).not.toThrow();
+    expect(() => validateRelayPost({ ...base, xpubs: { ...base.xpubs, FOO: "x".repeat(40) } }, target)).toThrow();
   });
 });

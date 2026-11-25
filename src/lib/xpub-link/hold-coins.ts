@@ -21,7 +21,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { base32nopad, base64urlnopad, hex } from "@scure/base";
 
 /** Flip to true only after Seeds' written "Seeds is live" note (audited one-line change). */
-export const SEEDS_HOLD_COINS_LIVE = false;
+export const SEEDS_HOLD_COINS_LIVE = true;
 
 export const HOLD_CHAINS = ["XLM", "TON", "SUI"] as const;
 export type HoldChain = (typeof HOLD_CHAINS)[number];

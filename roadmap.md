@@ -163,7 +163,7 @@
 - [ ] Bobby: re-pair Vault (needs HME Vault with batch sweep) and run one tiny real round-up
 - [x] Auditor sign-off on round-up follow-up fixes (Nov 24): all six correct, wallet side OK to publish as preview
 - [x] HME Vault handoff v2: required "I meant to pay K addresses that aren't mine" tap + index-1000 test
-- [x] Publish web + extension 0.5.7 with the round-up (24 Nov, Bobby's go)
+- [x] Publish web + extension 0.5.8 with the round-up (24 Nov, Bobby's go)
 - [x] APK 0.1.202611240105 released (24 Nov): same signing cert, no new permissions, pinned QmS8MsMPfp6koes3HpEHYXJM37kYwcuerp9vaTMWPtSnFC, live download byte-verified
 - [x] HME Vault labels verified live in HME Vault 1.0.2 (commit 093102d2): "Your own address #n", red stranger warning, index-1000 test
 - [ ] HME Vault still missing the required "I meant to pay K addresses that aren't mine" tap before signing stranger payments (handoff v2; Bobby to build in HME Vault project)
