@@ -26,6 +26,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { RecipientListSafetyNotice, useRecipientListSafety } from "@/components/wallet/RecipientSafety";
+import { VaultBulkSend } from "@/components/desktop/VaultBulkSend";
 
 type Step = BulkSavedStep;
 const VB: Record<string, number> = { bip84: 68, bip49: 91, bip44: TXC_P2PKH_INPUT_VB };
@@ -43,6 +44,11 @@ function scriptHexFor(pubkey: Uint8Array, kind: DerivationKind): string | undefi
 }
 
 export function BulkSend() {
+  const { unlocked } = useWallet();
+  return unlocked?.mode === "vault" ? <VaultBulkSend /> : <RegularBulkSend />;
+}
+
+function RegularBulkSend() {
   const { root, unlocked } = useWallet();
   const qc = useQueryClient();
   const regular = !!root && !!unlocked && unlocked.mode !== "vault" && !root.isNeutered();
@@ -229,7 +235,7 @@ export function BulkSend() {
 
   async function onFile(f: File | undefined) { if (f) setText(await f.text()); }
 
-  if (!regular) return <><h1 className="text-3xl font-semibold">Send to many</h1><p className="mt-4 text-sm text-muted-foreground">Bulk sending is available for regular wallets. Cold Storage and watch-only wallets aren't supported yet.</p></>;
+  if (!regular) return <><h1 className="text-3xl font-semibold">Send to many</h1><p className="mt-4 text-sm text-muted-foreground">Bulk sending is available for regular wallets. Watch-only wallets can't send.</p></>;
 
   const fmt = (u: bigint) => token ? `${formatTokenAmount(u, token.divisible)} ${token.symbol}` : formatTxc(Number(u));
   return <>
