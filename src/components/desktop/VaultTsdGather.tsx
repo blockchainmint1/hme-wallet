@@ -29,7 +29,11 @@ const fmt = (sats: number) => (sats / SATS).toLocaleString(undefined, { maximumF
 interface Row { index: number; address: string; tsd: string; confirmedSats: number; pendingSats: number }
 type Signing = { payload: string; intent: TsdGatherIntent } | { txid: string; intent: TsdGatherIntent };
 
-export function VaultTsdGather({ pairing }: { pairing: VaultPairing }) {
+export function VaultTsdGather({ pairing, onBusyChange, onBroadcast }: {
+  pairing: VaultPairing;
+  onBusyChange?: (busy: boolean) => void;
+  onBroadcast?: () => void;
+}) {
   const fetchBalance = useServerFn(getTxcTokenBalance);
   const fetchProperties = useServerFn(getTxcTokenProperties);
   const [profileId] = useState(getActiveProfileId);
@@ -46,6 +50,8 @@ export function VaultTsdGather({ pairing }: { pairing: VaultPairing }) {
   const [scanProgress, setScanProgress] = useState<{ have: number; total: number; received?: number[] } | null>(null);
   const [scanComplete, setScanComplete] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+
+  useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
 
   async function assertSession() {
     const s = await loadSession();
@@ -140,6 +146,7 @@ export function VaultTsdGather({ pairing }: { pairing: VaultPairing }) {
         await assertSession();
         const real = await chainIo("txc").broadcast(full.trim());
         setSigning({ txid: real || txid, intent: signing.intent });
+        onBroadcast?.();
       } catch (e) { processing.current = false; setError((e as Error).message); } finally { setBusy(false); }
     } catch (e) {
       collector.current = new PartCollector(); setScanProgress(null); setScanComplete(false);

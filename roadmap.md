@@ -1,5 +1,10 @@
 # Roadmap
 
+## Vault Send to many consolidation (Nov 28)
+- [x] Add Consolidate TSD beside the available balance, using the existing Vault QR gather flow; preserve the recipient list and refresh balance on return.
+- [x] Verified in an unlocked disposable paired Vault: button opens gather view, Back preserves CSV, no page errors; 7 Vault gather/bulk tests pass, preview build clean.
+- [ ] Auditor review and tiny real Vault consolidation before release — waits on auditor/Bobby.
+
 ## Seeds re-link error (Nov 18 evening)
 - [x] "hasn't approved Seeds" was a slow honest.money answer (timed out 20:32 BA), not the existing link; wallet now retries and says "couldn't reach honest.money" (5 tests, 726 total, browser-checked phone + desktop)
 - [ ] Publish the fix (web + extension; next phone build for the message) — waits on Bobby / auditor

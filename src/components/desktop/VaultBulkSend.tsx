@@ -8,8 +8,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Transaction } from "bitcoinjs-lib";
-import { Check, ExternalLink, Loader2, Upload } from "lucide-react";
+import { ArrowLeft, Check, ExternalLink, Layers, Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { VaultTsdGather } from "@/components/desktop/VaultTsdGather";
 import { Textarea } from "@/components/ui/textarea";
 import { QrScanButton } from "@/components/wallet/QrScanButton";
 import { VaultAnimatedQr } from "@/components/wallet/VaultAnimatedQr";
@@ -59,6 +60,8 @@ export function VaultBulkSend() {
   const [scanError, setScanError] = useState<string | null>(null);
   const progressKey = bulkProgressKey(`vault.${profileId}`);
   const [restored, setRestored] = useState(false);
+  const [consolidating, setConsolidating] = useState(false);
+  const [gatherBusy, setGatherBusy] = useState(false);
 
   useEffect(() => {
     const saved = parseSavedRun(window.localStorage.getItem(progressKey));
@@ -189,6 +192,17 @@ export function VaultBulkSend() {
 
   if (!pairing || !holderAddr) return <><h1 className="text-3xl font-semibold">Send to many</h1><p className="mt-4 text-sm text-muted-foreground">Pair this Vault's legacy TXC account to send TSD to many people.</p></>;
 
+  if (consolidating) return <>
+    <Button type="button" variant="ghost" className="mb-5" disabled={gatherBusy} onClick={() => {
+      setConsolidating(false);
+      void qc.invalidateQueries({ queryKey: ["vault-tsd-balance"] });
+    }}><ArrowLeft className="h-4 w-4" />Back to Send to many</Button>
+    <h1 className="text-3xl font-semibold">Consolidate TSD · Cold Storage</h1>
+    <VaultTsdGather pairing={pairing} onBusyChange={setGatherBusy} onBroadcast={() => {
+      void qc.invalidateQueries({ queryKey: ["vault-tsd-balance"] });
+    }} />
+  </>;
+
   return <>
     <h1 className="text-3xl font-semibold">Send to many · Cold Storage</h1>
     <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Pay TSD to many people from your Vault. Paste or upload one <code>address,amount</code> per line. Every {STM_BATCH_SIZE} people make one payment that you sign on Vault by QR.</p>
@@ -225,6 +239,9 @@ export function VaultBulkSend() {
           <div className="flex justify-between"><dt className="text-muted-foreground">TSD available</dt><dd className="tabular-nums">{units === null ? "…" : tsd(units)}</dd></div>
           <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Sending from</dt><dd className="truncate font-mono text-xs">{holderAddr}</dd></div>
         </dl>
+        <Button type="button" variant="outline" size="sm" className="mt-3" disabled={!!plan || busy || (steps.length > 0 && !bulkRunSettled({ asset: "39", steps, savedAt: 0 }))} onClick={() => setConsolidating(true)}>
+          <Layers className="h-4 w-4" />Consolidate TSD
+        </Button>
         <p className="mt-4 text-xs text-muted-foreground">Each recipient also gets {formatTxc(TSD_REFERENCE_SATS)} as a required marker. Fees come from TXC on the same address. If a payment fails, earlier ones are already sent and the rest stop.</p>
         {parsed.duplicates.length > 0 && <p className="mt-3 text-xs text-muted-foreground">Listed more than once, amounts combined: {parsed.duplicates.join(", ")}</p>}
         {problems.length > 0 && <ul className="mt-3 space-y-1 text-xs text-destructive">{problems.slice(0, 8).map(p => <li key={p}>{p}</li>)}</ul>}
