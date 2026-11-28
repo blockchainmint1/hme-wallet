@@ -13,6 +13,11 @@ import { buildSimpleSendPayload } from "@/lib/txc/tokens";
 import { verifyMessage } from "@/lib/txc/message-sign";
 import { TSD_PROPERTY_ID } from "@/lib/cashout/tsd";
 import { validateCardAmount } from "./payment-policy";
+import {
+  findBroadcastTx,
+  submitTxcHex,
+  TxcBroadcastUncertainError,
+} from "@/lib/txc/broadcast-submit";
 
 export const CARD_MAX_WRONG_PINS = 5;
 export const CARD_APPROVAL_TTL_MS = 15 * 60 * 1000;
@@ -36,7 +41,9 @@ export function normalizeUid(uid: string): string {
 }
 
 export function uidHash(uid: string): string {
-  return createHmac("sha256", encSecret()).update(`card-uid:${normalizeUid(uid)}`).digest("hex");
+  return createHmac("sha256", encSecret())
+    .update(`card-uid:${normalizeUid(uid)}`)
+    .digest("hex");
 }
 
 async function aesKey(): Promise<CryptoKey> {
@@ -46,20 +53,41 @@ async function aesKey(): Promise<CryptoKey> {
 
 export async function encryptKey(hex: string): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesKey(), Buffer.from(hex, "hex")));
+  const ct = new Uint8Array(
+    await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesKey(), Buffer.from(hex, "hex")),
+  );
   return Buffer.concat([Buffer.from(iv), Buffer.from(ct)]).toString("base64");
 }
 
 async function decryptKey(b64: string): Promise<Uint8Array> {
   const buf = Buffer.from(b64, "base64");
-  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: buf.subarray(0, 12) }, await aesKey(), buf.subarray(12));
+  const pt = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: buf.subarray(0, 12) },
+    await aesKey(),
+    buf.subarray(12),
+  );
   return new Uint8Array(pt);
 }
 
-export async function hashPin(pin: string, saltB64?: string): Promise<{ hash: string; salt: string }> {
-  const salt = saltB64 ? Buffer.from(saltB64, "base64") : Buffer.from(crypto.getRandomValues(new Uint8Array(16)));
-  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pin), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: 100_000 }, base, 256);
+export async function hashPin(
+  pin: string,
+  saltB64?: string,
+): Promise<{ hash: string; salt: string }> {
+  const salt = saltB64
+    ? Buffer.from(saltB64, "base64")
+    : Buffer.from(crypto.getRandomValues(new Uint8Array(16)));
+  const base = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(pin),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations: 100_000 },
+    base,
+    256,
+  );
   return { hash: Buffer.from(bits).toString("hex"), salt: salt.toString("base64") };
 }
 
@@ -94,8 +122,10 @@ export function envelopeMessage(action: string, ts: number, body: unknown): stri
 
 export function verifyOwner(env: OwnerEnvelope, action: string): string {
   if (env.action !== action) throw new Error("Wrong action");
-  if (Math.abs(Date.now() / 1000 - env.ts) > 300) throw new Error("Request expired — check your phone's clock");
-  if (!verifyMessage(env.owner, envelopeMessage(action, env.ts, env.body), env.sig)) throw new Error("Bad wallet signature");
+  if (Math.abs(Date.now() / 1000 - env.ts) > 300)
+    throw new Error("Request expired — check your phone's clock");
+  if (!verifyMessage(env.owner, envelopeMessage(action, env.ts, env.body), env.sig))
+    throw new Error("Bad wallet signature");
   return env.owner;
 }
 
@@ -138,10 +168,7 @@ async function feeRate(): Promise<number> {
 }
 
 async function broadcast(hex: string): Promise<string> {
-  const r = await fetch(`${MEMPOOL_API}/tx`, { method: "POST", headers: { "content-type": "text/plain" }, body: hex });
-  const t = await r.text();
-  if (!r.ok) throw new Error(`broadcast failed: ${t.slice(0, 160)}`);
-  return t.trim();
+  return submitTxcHex(hex);
 }
 
 async function rpc<T>(method: string, params: unknown[]): Promise<T> {
@@ -151,7 +178,10 @@ async function rpc<T>(method: string, params: unknown[]): Promise<T> {
   if (!url || !user || !pass) throw new Error("TXC node not configured");
   const res = await fetch(url.startsWith("http") ? url : `https://${url}`, {
     method: "POST",
-    headers: { "content-type": "text/plain", authorization: "Basic " + Buffer.from(`${user}:${pass}`).toString("base64") },
+    headers: {
+      "content-type": "text/plain",
+      authorization: "Basic " + Buffer.from(`${user}:${pass}`).toString("base64"),
+    },
     body: JSON.stringify({ jsonrpc: "1.0", id: "card", method, params }),
   });
   const j = (await res.json()) as { result: T; error: { message: string } | null };
@@ -180,7 +210,13 @@ export async function tsdBalanceUnits(address: string): Promise<bigint> {
  * Pay `units` TSD from the pocket to `to`. TXC change returns to the pocket.
  * With `sweepTo`, ALL TXC also goes to `to` (one output) — used when killing a card.
  */
-export async function sendFromPocket(encKey: string, to: string, units: bigint, sweepAll = false): Promise<string> {
+export async function sendFromPocket(
+  encKey: string,
+  to: string,
+  units: bigint,
+  sweepAll = false,
+  beforeBroadcast?: (txid: string) => Promise<void>,
+): Promise<string> {
   if (/^txc1/i.test(to)) throw new Error("Token payments need a T… address");
   const priv = await decryptKey(encKey);
   try {
@@ -189,7 +225,11 @@ export async function sendFromPocket(encKey: string, to: string, units: bigint, 
     if (list.length === 0) throw new Error("Card pocket has no TXC for the network fee");
     const psbt = new Psbt({ network: TXC_NETWORK, maximumFeeRate: 10_000_000 });
     for (const u of list) {
-      psbt.addInput({ hash: u.txid, index: u.vout, nonWitnessUtxo: Buffer.from(await txHex(u.txid), "hex") });
+      psbt.addInput({
+        hash: u.txid,
+        index: u.vout,
+        nonWitnessUtxo: Buffer.from(await txHex(u.txid), "hex"),
+      });
     }
     const total = list.reduce((s, u) => s + u.value, 0);
     const withToken = units > 0n;
@@ -207,7 +247,9 @@ export async function sendFromPocket(encKey: string, to: string, units: bigint, 
       if (change >= DUST) psbt.addOutput({ address: from, value: BigInt(change) });
     }
     if (withToken) {
-      const script = payments.embed({ data: [buildSimpleSendPayload(TSD_PROPERTY_ID, units)] }).output;
+      const script = payments.embed({
+        data: [buildSimpleSendPayload(TSD_PROPERTY_ID, units)],
+      }).output;
       if (!script) throw new Error("bad token payload");
       psbt.addOutput({ script, value: 0n });
     }
@@ -217,7 +259,9 @@ export async function sendFromPocket(encKey: string, to: string, units: bigint, 
       psbt.signInput(i, { publicKey: pubkey, sign: (h: Uint8Array) => ecc.sign(h, priv) } as never);
     }
     psbt.finalizeAllInputs();
-    return await broadcast(psbt.extractTransaction().toHex());
+    const tx = psbt.extractTransaction();
+    await beforeBroadcast?.(tx.getId());
+    return await broadcast(tx.toHex());
   } finally {
     priv.fill(0);
   }
@@ -234,9 +278,16 @@ export interface ResolvedInvoice {
   units: bigint;
 }
 
-export async function resolveTsdInvoice(invoiceId: string, nonce: string): Promise<ResolvedInvoice> {
+export async function resolveTsdInvoice(
+  invoiceId: string,
+  nonce: string,
+): Promise<ResolvedInvoice> {
   const url = `${NECTAR}/${encodeURIComponent(invoiceId)}?t=${encodeURIComponent(nonce)}`;
-  const r = await fetch(url, { headers: { accept: "application/json" }, redirect: "manual", signal: AbortSignal.timeout(10_000) });
+  const r = await fetch(url, {
+    headers: { accept: "application/json" },
+    redirect: "manual",
+    signal: AbortSignal.timeout(10_000),
+  });
   if (!r.ok) throw new Error("Invoice not found");
   const inv = (await r.json()) as {
     status: string;
@@ -247,7 +298,9 @@ export async function resolveTsdInvoice(invoiceId: string, nonce: string): Promi
   };
   if (inv.status !== "pending") throw new Error(`Invoice is ${inv.status}`);
   if (String(inv.currency).toUpperCase() !== "USD") throw new Error("Card pays USD invoices only");
-  const opt = (inv.options ?? []).find((o) => /^txc/i.test(o.chain) && (o.tokenSymbol ?? "").toUpperCase() === "TSD");
+  const opt = (inv.options ?? []).find(
+    (o) => /^txc/i.test(o.chain) && (o.tokenSymbol ?? "").toUpperCase() === "TSD",
+  );
   if (!opt) throw new Error("This merchant doesn't accept TSD");
   const s = await fetch(url, {
     method: "POST",
@@ -257,7 +310,11 @@ export async function resolveTsdInvoice(invoiceId: string, nonce: string): Promi
     signal: AbortSignal.timeout(10_000),
   });
   if (!s.ok) throw new Error("Couldn't select TSD on the invoice");
-  const sel = (await s.json()) as { address: string; crypto_amount: string | number; fiat_amount: number };
+  const sel = (await s.json()) as {
+    address: string;
+    crypto_amount: string | number;
+    fiat_amount: number;
+  };
   const units = decimalToUnits(sel.crypto_amount);
   if (units <= 0n) throw new Error("Bad invoice amount");
   const usd = validateCardAmount(units, Number(sel.fiat_amount ?? inv.fiat_amount));
@@ -274,7 +331,11 @@ export async function tg(method: string, body: unknown): Promise<unknown> {
   if (!lk || !tk) throw new Error("Telegram not configured");
   const r = await fetch(`https://connector-gateway.lovable.dev/telegram/${method}`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${lk}`, "X-Connection-Api-Key": tk, "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${lk}`,
+      "X-Connection-Api-Key": tk,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(body),
   });
   const t = await r.text();
@@ -286,7 +347,9 @@ export async function tg(method: string, body: unknown): Promise<unknown> {
 }
 
 export function telegramWebhookSecret(): string {
-  return createHash("sha256").update(`telegram-webhook:${process.env["TELEGRAM_API_KEY"] ?? ""}`).digest("base64url");
+  return createHash("sha256")
+    .update(`telegram-webhook:${process.env["TELEGRAM_API_KEY"] ?? ""}`)
+    .digest("base64url");
 }
 
 export const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
@@ -294,25 +357,108 @@ export const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
 /* ------------------------------- payments ------------------------------- */
 
 /** Send a payment row that is already claimed as 'pending'. Never throws. */
-export async function executePayment(paymentId: string): Promise<{ status: string; txid?: string; reason?: string }> {
+export async function executePayment(
+  paymentId: string,
+): Promise<{ status: string; txid?: string; reason?: string }> {
   const db = await admin();
   const { data: p } = await db.from("nfc_card_payments").select("*").eq("id", paymentId).single();
   if (!p) return { status: "failed", reason: "payment missing" };
   if (p.status !== "pending") return { status: "declined", reason: "payment not authorized" };
+  // An attempted payment is read-only until its exact tx is found. Never sign it twice.
+  if (p.txid) {
+    try {
+      if (await findBroadcastTx(p.txid)) {
+        await db
+          .from("nfc_card_payments")
+          .update({ status: "paid", decided_at: new Date().toISOString() })
+          .eq("id", p.id)
+          .eq("status", "pending");
+        return { status: "paid", txid: p.txid };
+      }
+    } catch {
+      /* keep the existing spending reservation */
+    }
+    return {
+      status: "sending",
+      txid: p.txid,
+      reason: "Sending was not confirmed; do not pay this invoice again.",
+    };
+  }
   const { data: card } = await db.from("nfc_cards").select("status").eq("id", p.card_id).single();
   if (card?.status !== "active") return { status: "declined", reason: "card not active" };
-  const { data: k } = await db.from("nfc_card_keys").select("enc_key").eq("card_id", p.card_id).single();
+  const { data: k } = await db
+    .from("nfc_card_keys")
+    .select("enc_key")
+    .eq("card_id", p.card_id)
+    .single();
   if (!k) {
-    await db.from("nfc_card_payments").update({ status: "declined", reason: "card not active", decided_at: new Date().toISOString() }).eq("id", p.id);
+    await db
+      .from("nfc_card_payments")
+      .update({
+        status: "declined",
+        reason: "card not active",
+        decided_at: new Date().toISOString(),
+      })
+      .eq("id", p.id);
     return { status: "declined", reason: "card not active" };
   }
+  let attemptedTxid: string | null = null;
+  let savingAttempt = false;
   try {
-    const txid = await sendFromPocket(k.enc_key, p.pay_to, BigInt(p.amount_units));
-    await db.from("nfc_card_payments").update({ status: "paid", txid, decided_at: new Date().toISOString() }).eq("id", p.id);
+    const txid = await sendFromPocket(
+      k.enc_key,
+      p.pay_to,
+      BigInt(p.amount_units),
+      false,
+      async (localTxid) => {
+        savingAttempt = true;
+        const { data: claimed, error } = await db
+          .from("nfc_card_payments")
+          .update({ txid: localTxid })
+          .eq("id", p.id)
+          .eq("status", "pending")
+          .is("txid", null)
+          .select("id")
+          .maybeSingle();
+        if (error || !claimed)
+          throw new Error("Could not save this payment attempt. Nothing was submitted.");
+        attemptedTxid = localTxid;
+        savingAttempt = false;
+      },
+    );
+    await db
+      .from("nfc_card_payments")
+      .update({ status: "paid", txid, decided_at: new Date().toISOString() })
+      .eq("id", p.id)
+      .eq("status", "pending");
     return { status: "paid", txid };
   } catch (e) {
+    if (e instanceof TxcBroadcastUncertainError) {
+      // 'pending' already counts toward limits and prevents paying this invoice again.
+      return {
+        status: "sending",
+        txid: e.txid,
+        reason: "Sending was not confirmed; do not pay this invoice again.",
+      };
+    }
+    if (attemptedTxid)
+      return {
+        status: "sending",
+        txid: attemptedTxid,
+        reason: "Payment result could not be saved. Check this transaction before trying again.",
+      };
+    if (savingAttempt)
+      return {
+        status: "sending",
+        reason: "Payment attempt could not be confirmed. Check this invoice before trying again.",
+      };
     const reason = (e as Error).message.slice(0, 200);
-    await db.from("nfc_card_payments").update({ status: "failed", reason, decided_at: new Date().toISOString() }).eq("id", p.id);
+    await db
+      .from("nfc_card_payments")
+      .update({ status: "failed", reason, decided_at: new Date().toISOString() })
+      .eq("id", p.id)
+      .eq("status", "pending")
+      .is("txid", null);
     return { status: "failed", reason };
   }
 }
@@ -320,6 +466,11 @@ export async function executePayment(paymentId: string): Promise<{ status: strin
 export async function spentLast24h(cardId: string): Promise<number> {
   const db = await admin();
   const since = new Date(Date.now() - 86_400_000).toISOString();
-  const { data } = await db.from("nfc_card_payments").select("amount_units").eq("card_id", cardId).in("status", ["paid", "pending"]).gte("created_at", since);
+  const { data } = await db
+    .from("nfc_card_payments")
+    .select("amount_units")
+    .eq("card_id", cardId)
+    .in("status", ["paid", "pending"])
+    .gte("created_at", since);
   return (data ?? []).reduce((s, r) => s + Number(r.amount_units) / 100_000_000, 0);
 }

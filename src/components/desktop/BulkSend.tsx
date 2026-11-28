@@ -7,7 +7,13 @@ import { copyToClipboard } from "@/lib/clipboard";
 import { useWallet } from "@/lib/txc/wallet-context";
 import { scanAccount, type AccountUtxo } from "@/lib/txc/scan";
 import { buildAndSignTx, TXC_MAX_FEE_RATE, type UtxoInput } from "@/lib/txc/wallet";
-import { DERIVATION_PATHS, TXC_NETWORK, MEMPOOL_API, scriptKindOf, type DerivationKind } from "@/lib/txc/network";
+import {
+  DERIVATION_PATHS,
+  TXC_NETWORK,
+  MEMPOOL_API,
+  scriptKindOf,
+  type DerivationKind,
+} from "@/lib/txc/network";
 import { broadcastTx, explorerTxUrl, getFeeEstimates, getTxHex } from "@/lib/txc/mempool";
 import { txcFeeRate, TXC_P2PKH_INPUT_VB } from "@/lib/txc/fees";
 import { reserveOutpoints } from "@/lib/txc/spent-outpoints";
@@ -19,27 +25,54 @@ import { getTxcTokenBalancesPerAddress, getOmniTxValidity } from "@/lib/txc/toke
 import { friendlyBroadcastError } from "@/lib/broadcast-error";
 import { confirmWithBiometric } from "@/lib/native/biometric";
 import {
-  BULK_DUST_SATS, STM_ACTIVATION_HEIGHT, STM_BATCH_SIZE, buildSendToManyPayload, chunk, estimateVsize, parseBulkCsv,
-  bulkProgressKey, bulkRunSettled, parseSavedRun, tokenSourceProblem, type BulkSavedStep,
+  BULK_DUST_SATS,
+  STM_ACTIVATION_HEIGHT,
+  STM_BATCH_SIZE,
+  buildSendToManyPayload,
+  chunk,
+  estimateVsize,
+  parseBulkCsv,
+  bulkProgressKey,
+  bulkRunSettled,
+  parseSavedRun,
+  recordBulkAttempt,
+  tokenSourceProblem,
+  type BulkSavedStep,
 } from "@/lib/txc/bulk-send";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { safeSetItem } from "@/lib/storage/safe-set";
+import { useBulkRecovery } from "@/hooks/use-bulk-recovery";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { RecipientListSafetyNotice, useRecipientListSafety } from "@/components/wallet/RecipientSafety";
+import {
+  RecipientListSafetyNotice,
+  useRecipientListSafety,
+} from "@/components/wallet/RecipientSafety";
 import { VaultBulkSend } from "@/components/desktop/VaultBulkSend";
 
 type Step = BulkSavedStep;
 const VB: Record<string, number> = { bip84: 68, bip49: 91, bip44: TXC_P2PKH_INPUT_VB };
 
 function kindFromPath(path: string): DerivationKind | null {
-  for (const [kind, prefix] of Object.entries(DERIVATION_PATHS)) if (path.startsWith(prefix + "/")) return kind as DerivationKind;
+  for (const [kind, prefix] of Object.entries(DERIVATION_PATHS))
+    if (path.startsWith(prefix + "/")) return kind as DerivationKind;
   return null;
 }
 function scriptHexFor(pubkey: Uint8Array, kind: DerivationKind): string | undefined {
   const s = scriptKindOf(kind);
   if (s === "bip44") return undefined;
   const inner = payments.p2wpkh({ pubkey, network: TXC_NETWORK });
-  const out = s === "bip84" ? inner.output : payments.p2sh({ redeem: inner, network: TXC_NETWORK }).output;
+  const out =
+    s === "bip84" ? inner.output : payments.p2sh({ redeem: inner, network: TXC_NETWORK }).output;
   return out ? Array.from(out, (b) => b.toString(16).padStart(2, "0")).join("") : undefined;
 }
 
@@ -55,7 +88,7 @@ function RegularBulkSend() {
   const localTokens = useEnabledTxcTokens();
   const { resolved: tokens } = useTxcTokenProps(localTokens);
   const [asset, setAsset] = useState<string>("txc");
-  const token = asset === "txc" ? null : tokens.find((t) => String(t.id) === asset) ?? null;
+  const token = asset === "txc" ? null : (tokens.find((t) => String(t.id) === asset) ?? null);
   const [text, setText] = useState("");
   const [steps, setSteps] = useState<Step[]>([]);
   const [busy, setBusy] = useState(false);
@@ -70,18 +103,35 @@ function RegularBulkSend() {
   useEffect(() => {
     if (!progressKey) return;
     const saved = parseSavedRun(window.localStorage.getItem(progressKey));
-    if (saved && saved.steps.length) { setAsset(saved.asset); setSteps(saved.steps); setError(saved.error ?? ""); }
+    if (saved && saved.steps.length) {
+      setAsset(saved.asset);
+      setSteps(saved.steps);
+      setError(saved.error ?? "");
+    }
     setRestored(true);
   }, [progressKey]);
   useEffect(() => {
     if (!progressKey || !restored) return;
-    if (steps.length) window.localStorage.setItem(progressKey, JSON.stringify({ asset, steps, error: error || undefined, savedAt: Date.now() }));
-    else window.localStorage.removeItem(progressKey);
+    if (steps.length) {
+      try {
+        safeSetItem(
+          progressKey,
+          JSON.stringify({ asset, steps, error: error || undefined, savedAt: Date.now() }),
+        );
+      } catch {
+        setError(
+          "Couldn't save payment progress. Nothing more can be sent until browser storage is available.",
+        );
+      }
+    } else window.localStorage.removeItem(progressKey);
   }, [progressKey, restored, steps, error, asset]);
 
   // After each token batch confirms, ask the TXC node whether the tokens actually moved.
   const fetchValidity = useServerFn(getOmniTxValidity);
-  const checking = steps.filter((s) => s.status === "ok" && s.delivery === "checking" && s.txid).map((s) => s.txid!);
+  useBulkRecovery(progressKey, asset, steps, setSteps, setError);
+  const checking = steps.flatMap((s) =>
+    s.status === "ok" && s.delivery === "checking" && s.txid ? [s.txid] : [],
+  );
   const validity = useQuery({
     queryKey: ["bulk-omni-validity", checking.join(",")],
     enabled: checking.length > 0,
@@ -97,7 +147,11 @@ function RegularBulkSend() {
         const r = s.txid && s.delivery === "checking" ? v[s.txid] : undefined;
         if (!r) return s;
         changed = true;
-        return { ...s, delivery: r.valid ? "delivered" as const : "rejected" as const, reason: r.reason };
+        return {
+          ...s,
+          delivery: r.valid ? ("delivered" as const) : ("rejected" as const),
+          reason: r.reason,
+        };
       });
       return changed ? next : prev;
     });
@@ -112,119 +166,278 @@ function RegularBulkSend() {
   const fees = useQuery({ queryKey: ["fees"], queryFn: getFeeEstimates, staleTime: 60_000 });
   const feeRate = txcFeeRate(fees.data);
 
-  const addrs = useMemo(() => [...(account.data?.external ?? []), ...(account.data?.internal ?? [])]
-    .map((d) => ({ ...d, kind: kindFromPath(d.path) }))
-    .filter((d): d is typeof d & { kind: DerivationKind } => d.kind !== null), [account.data]);
+  const addrs = useMemo(
+    () =>
+      [...(account.data?.external ?? []), ...(account.data?.internal ?? [])]
+        .map((d) => ({ ...d, kind: kindFromPath(d.path) }))
+        .filter((d): d is typeof d & { kind: DerivationKind } => d.kind !== null),
+    [account.data],
+  );
   const fetchPerAddr = useServerFn(getTxcTokenBalancesPerAddress);
   const perAddr = useQuery({
     queryKey: ["txc-token-balances-per-addr", addrs.map((a) => a.address).join(","), token?.id],
     enabled: !!token && addrs.length > 0,
-    queryFn: () => fetchPerAddr({ data: { addresses: addrs.slice(0, 200).map((a) => a.address), propertyIds: [token!.id] } }),
+    queryFn: () =>
+      fetchPerAddr({
+        data: { addresses: addrs.slice(0, 200).map((a) => a.address), propertyIds: [token!.id] },
+      }),
     staleTime: 30_000,
   });
 
-  const parsed = useMemo(() => parseBulkCsv(text, token ? { type: "omni", divisible: token.divisible } : { type: "txc" }), [text, token]);
+  const parsed = useMemo(
+    () =>
+      parseBulkCsv(text, token ? { type: "omni", divisible: token.divisible } : { type: "txc" }),
+    [text, token],
+  );
   const holder = useMemo(() => {
     if (!token || !perAddr.data) return null;
-    const ranked = addrs.map((a) => ({ a, units: BigInt(perAddr.data[a.address]?.[token.id] ?? "0") })).sort((x, y) => (y.units > x.units ? 1 : -1));
+    const ranked = addrs
+      .map((a) => ({ a, units: BigInt(perAddr.data[a.address]?.[token.id] ?? "0") }))
+      .sort((x, y) => (y.units > x.units ? 1 : -1));
     return ranked[0] && ranked[0].units > 0n ? ranked[0] : null;
   }, [addrs, perAddr.data, token]);
-  const utxos = account.data?.utxos ?? [];
+  const reserved = new Set(steps.flatMap((s) => s.spent ?? []));
+  const utxos = (account.data?.utxos ?? []).filter((u) => !reserved.has(`${u.txid}:${u.vout}`));
   const txcBalance = utxos.reduce((s, u) => s + u.value, 0);
-  const batches = token ? chunk(parsed.rows, STM_BATCH_SIZE) : parsed.rows.length ? [parsed.rows] : [];
+  const batches = token
+    ? chunk(parsed.rows, STM_BATCH_SIZE)
+    : parsed.rows.length
+      ? [parsed.rows]
+      : [];
   const estFee = token
-    ? batches.reduce((s, b) => s + Math.ceil(estimateVsize(2, b.length + 1, 13 + 9 * b.length) * feeRate), 0)
+    ? batches.reduce(
+        (s, b) => s + Math.ceil(estimateVsize(2, b.length + 1, 13 + 9 * b.length) * feeRate),
+        0,
+      )
     : Math.ceil(estimateVsize(Math.min(utxos.length, 20) || 1, parsed.rows.length + 1) * feeRate);
   const txcNeeded = (token ? BULK_DUST_SATS * parsed.rows.length : Number(parsed.total)) + estFee;
 
   const problems: string[] = [...parsed.errors];
-  if (feeRate >= TXC_MAX_FEE_RATE) problems.push(`The TXC network fee is unusually high right now (${feeRate.toLocaleString()} sats per byte). Try again later.`);
-  if (steps.length && !bulkRunSettled({ asset, steps, savedAt: 0 })) problems.push("Wait until the previous run's transactions are confirmed.");
-  if (token && holder && holder.units < parsed.total) problems.push(`Your ${token.symbol} address holds ${formatTokenAmount(holder.units, token.divisible)} ${token.symbol}, less than the ${formatTokenAmount(parsed.total, token.divisible)} total. Use Consolidate in Phone view if it's spread across addresses.`);
+  if (feeRate >= TXC_MAX_FEE_RATE)
+    problems.push(
+      `The TXC network fee is unusually high right now (${feeRate.toLocaleString()} sats per byte). Try again later.`,
+    );
+  if (steps.length && !bulkRunSettled({ asset, steps, savedAt: 0 }))
+    problems.push("Wait until the previous run's transactions are confirmed.");
+  if (token && holder && holder.units < parsed.total)
+    problems.push(
+      `Your ${token.symbol} address holds ${formatTokenAmount(holder.units, token.divisible)} ${token.symbol}, less than the ${formatTokenAmount(parsed.total, token.divisible)} total. Use Consolidate in Phone view if it's spread across addresses.`,
+    );
   if (token) {
     const lookup = perAddr.data ? "done" : perAddr.isError ? "failed" : "loading";
     const p = tokenSourceProblem({ symbol: token.symbol, lookup, holderFound: !!holder });
     if (p) problems.push(p);
   }
-  const fundingUtxos = token && holder ? utxos.filter((u) => u.address === holder.a.address) : utxos;
+  const fundingUtxos =
+    token && holder ? utxos.filter((u) => u.address === holder.a.address) : utxos;
   const fundingSats = fundingUtxos.reduce((s, u) => s + u.value, 0);
-  if (parsed.rows.length && account.data && (!token || holder) && fundingSats < txcNeeded) problems.push(token ? `The ${token.symbol} address needs about ${formatTxc(txcNeeded)} for network fees and markers, but has ${formatTxc(fundingSats)}. Send some TXC to ${holder!.a.address} first.` : `Not enough TXC. Need about ${formatTxc(txcNeeded)}, have ${formatTxc(txcBalance)}.`);
-  const listSafety = useRecipientListSafety({ family: "utxo", coin: "txc" }, parsed.rows.map((r) => r.address));
+  if (parsed.rows.length && account.data && (!token || holder) && fundingSats < txcNeeded)
+    problems.push(
+      token
+        ? `The ${token.symbol} address needs about ${formatTxc(txcNeeded)} for network fees and markers, but has ${formatTxc(fundingSats)}. Send some TXC to ${holder!.a.address} first.`
+        : `Not enough TXC. Need about ${formatTxc(txcNeeded)}, have ${formatTxc(txcBalance)}.`,
+    );
+  const listSafety = useRecipientListSafety(
+    { family: "utxo", coin: "txc" },
+    parsed.rows.map((r) => r.address),
+  );
   const flaggedAddrs = new Set(listSafety.warnings.map((w) => w.address));
-  const ready = regular && parsed.rows.length > 0 && problems.length === 0 && !listSafety.blocked && !busy && !!account.data;
+  const ready =
+    restored &&
+    regular &&
+    parsed.rows.length > 0 &&
+    problems.length === 0 &&
+    !listSafety.blocked &&
+    !busy &&
+    !!account.data;
 
-  function setStep(log: Step[], i: number, p: Partial<Step>) { log[i] = { ...log[i], ...p }; setSteps([...log]); }
-
-  async function withHex(u: AccountUtxo): Promise<UtxoInput> {
-    return scriptKindOf(u.kind ?? unlocked!.kind) === "bip44" && !u.nonWitnessUtxoHex ? { ...u, nonWitnessUtxoHex: await getTxHex(u.txid) } : u;
+  function setStep(log: Step[], i: number, p: Partial<Step>) {
+    log[i] = { ...log[i], ...p };
+    setSteps([...log]);
   }
 
-  const confirmLabel = token ? `${formatTokenAmount(parsed.total, token.divisible)} ${token.symbol}` : formatTxc(Number(parsed.total));
+  async function withHex(u: AccountUtxo): Promise<UtxoInput> {
+    return scriptKindOf(u.kind ?? unlocked!.kind) === "bip44" && !u.nonWitnessUtxoHex
+      ? { ...u, nonWitnessUtxoHex: await getTxHex(u.txid) }
+      : u;
+  }
+
+  const confirmLabel = token
+    ? `${formatTokenAmount(parsed.total, token.divisible)} ${token.symbol}`
+    : formatTxc(Number(parsed.total));
   async function run() {
     if (!ready || !root || !unlocked || !account.data) return;
     // The address lookup can restart (for example after a rescan) while the confirm box is open.
-    if (listSafety.blocked) { setConfirmOpen(false); setError("Check the lookalike-address warning first. Nothing was sent."); return; }
-    if (token && !holder) { setConfirmOpen(false); setError(`Still checking which address holds your ${token.symbol}. Nothing was sent; try again in a moment.`); return; }
+    if (listSafety.blocked) {
+      setConfirmOpen(false);
+      setError("Check the lookalike-address warning first. Nothing was sent.");
+      return;
+    }
+    if (token && !holder) {
+      setConfirmOpen(false);
+      setError(
+        `Still checking which address holds your ${token.symbol}. Nothing was sent; try again in a moment.`,
+      );
+      return;
+    }
     const label = confirmLabel;
     setConfirmOpen(false);
     if (!(await confirmWithBiometric(`Send to many: ${label}`))) return;
-    setBusy(true); setError("");
-    const log: Step[] = batches.map((b, i) => ({ label: `Transaction ${i + 1} · ${b.length} recipient${b.length > 1 ? "s" : ""}`, status: "waiting" }));
+    setBusy(true);
+    setError("");
+    const log: Step[] = batches.map((b, i) => ({
+      label: `Transaction ${i + 1} · ${b.length} recipient${b.length > 1 ? "s" : ""}`,
+      status: "waiting",
+    }));
     setSteps([...log]);
+    let attempt: { index: number; txid: string } | null = null;
+    function reserveAttempt(index: number, txid: string, inputs: { txid: string; vout: number }[]) {
+      if (!progressKey) throw new Error("Could not save payment progress. Nothing was sent.");
+      const saved = recordBulkAttempt(
+        progressKey,
+        { asset, steps: log, savedAt: Date.now() },
+        index,
+        txid,
+        inputs,
+      );
+      log.splice(0, log.length, ...saved.steps);
+      setSteps([...log]);
+      reserveOutpoints(inputs);
+      attempt = { index, txid };
+    }
     try {
       if (!token) {
-        const outputs = parsed.rows.map((r) => ({ address: r.address, valueSats: Number(r.units) }));
+        const outputs = parsed.rows.map((r) => ({
+          address: r.address,
+          valueSats: Number(r.units),
+        }));
         const target = outputs.reduce((s, o) => s + o.valueSats, 0);
         const sorted = [...utxos].sort((a, b) => b.value - a.value);
-        const picked: AccountUtxo[] = []; let acc = 0; let fee = 0;
+        const picked: AccountUtxo[] = [];
+        let acc = 0;
+        let fee = 0;
         for (const u of sorted) {
-          picked.push(u); acc += u.value;
-          fee = Math.ceil((10 + picked.reduce((s, p) => s + VB[scriptKindOf(p.kind ?? unlocked.kind)], 0) + 34 * (outputs.length + 1)) * feeRate);
+          picked.push(u);
+          acc += u.value;
+          fee = Math.ceil(
+            (10 +
+              picked.reduce((s, p) => s + VB[scriptKindOf(p.kind ?? unlocked.kind)], 0) +
+              34 * (outputs.length + 1)) *
+              feeRate,
+          );
           if (acc >= target + fee) break;
         }
-        if (acc < target + fee) throw new Error("Not enough TXC for these payments and the network fee.");
+        if (acc < target + fee)
+          throw new Error("Not enough TXC for these payments and the network fee.");
         setStep(log, 0, { status: "pending" });
         const inputs = await Promise.all(picked.map(withHex));
-        const built = buildAndSignTx({ root, kind: unlocked.kind, inputs, outputs, changeAddress: account.data.nextChangeAddress, changeIndex: account.data.nextChangeIndex, feeSats: fee });
+        const built = buildAndSignTx({
+          root,
+          kind: unlocked.kind,
+          inputs,
+          outputs,
+          changeAddress: account.data.nextChangeAddress,
+          changeIndex: account.data.nextChangeIndex,
+          feeSats: fee,
+        });
+        reserveAttempt(0, built.txid, picked);
         const txid = await broadcastTx(built.hex);
         reserveOutpoints(picked.map((u) => ({ txid: u.txid, vout: u.vout })));
         setStep(log, 0, { status: "ok", txid });
+        attempt = null;
       } else {
         const tip = Number(await (await fetch(`${MEMPOOL_API}/blocks/tip/height`)).text());
-        if (!(tip >= STM_ACTIVATION_HEIGHT)) throw new Error("TEXITcoin's send-to-many feature isn't active yet, so nothing was sent.");
+        if (!(tip >= STM_ACTIVATION_HEIGHT))
+          throw new Error(
+            "TEXITcoin's send-to-many feature isn't active yet, so nothing was sent.",
+          );
         const h = holder!.a; // checked at the start of run()
         const script = scriptHexFor(h.pubkey, h.kind);
-        let pool: UtxoInput[] = await Promise.all([...fundingUtxos].sort((a, b) => b.value - a.value).map(withHex));
+        let pool: UtxoInput[] = await Promise.all(
+          [...fundingUtxos].sort((a, b) => b.value - a.value).map(withHex),
+        );
         for (let i = 0; i < batches.length; i++) {
           const b = batches[i];
           setStep(log, i, { status: "pending" });
           try {
             const outputs = b.map((r) => ({ address: r.address, valueSats: BULK_DUST_SATS }));
-            const payload = buildSendToManyPayload(token.id, b.map((r, j) => ({ vout: j + 1, units: r.units })));
+            const payload = buildSendToManyPayload(
+              token.id,
+              b.map((r, j) => ({ vout: j + 1, units: r.units })),
+            );
             const need = BULK_DUST_SATS * b.length;
-            const picked: UtxoInput[] = []; let acc = 0; let fee = 0;
+            const picked: UtxoInput[] = [];
+            let acc = 0;
+            let fee = 0;
             for (const u of pool) {
-              picked.push(u); acc += u.value;
-              fee = Math.ceil(estimateVsize(picked.length, b.length + 1, payload.length, VB[scriptKindOf(h.kind)]) * feeRate);
+              picked.push(u);
+              acc += u.value;
+              fee = Math.ceil(
+                estimateVsize(
+                  picked.length,
+                  b.length + 1,
+                  payload.length,
+                  VB[scriptKindOf(h.kind)],
+                ) * feeRate,
+              );
               if (acc >= need + fee) break;
             }
-            if (acc < need + fee) throw new Error(`Not enough TXC on the ${token.symbol} address for this batch's fee.`);
-            const built = buildAndSignTx({ root, kind: unlocked.kind, inputs: picked, outputs, changeAddress: h.address, changeIndex: h.index, feeSats: fee, opReturnData: payload });
+            if (acc < need + fee)
+              throw new Error(
+                `Not enough TXC on the ${token.symbol} address for this batch's fee.`,
+              );
+            const built = buildAndSignTx({
+              root,
+              kind: unlocked.kind,
+              inputs: picked,
+              outputs,
+              changeAddress: h.address,
+              changeIndex: h.index,
+              feeSats: fee,
+              opReturnData: payload,
+            });
+            reserveAttempt(i, built.txid, picked);
             const txid = await broadcastTx(built.hex);
             reserveOutpoints(picked.map((u) => ({ txid: u.txid, vout: u.vout })));
             const used = new Set(picked.map((u) => `${u.txid}:${u.vout}`));
             pool = pool.filter((u) => !used.has(`${u.txid}:${u.vout}`));
             // OP_RETURN is vout 0, recipients 1..n, change n+1.
-            if (built.changeSats > 0) pool.unshift({ txid, vout: b.length + 1, value: built.changeSats, change: h.change, index: h.index, kind: h.kind, witnessScriptHex: script, nonWitnessUtxoHex: scriptKindOf(h.kind) === "bip44" ? built.hex : undefined });
+            if (built.changeSats > 0)
+              pool.unshift({
+                txid,
+                vout: b.length + 1,
+                value: built.changeSats,
+                change: h.change,
+                index: h.index,
+                kind: h.kind,
+                witnessScriptHex: script,
+                nonWitnessUtxoHex: scriptKindOf(h.kind) === "bip44" ? built.hex : undefined,
+              });
             setStep(log, i, { status: "ok", txid, delivery: "checking" });
+            attempt = null;
           } catch (e) {
-            setStep(log, i, { status: "failed", error: friendlyBroadcastError(e) });
-            throw new Error(i > 0 ? `Stopped at transaction ${i + 1}. The ${i} earlier transaction${i > 1 ? "s were" : " was"} already sent; the rest were not.` : "Nothing was sent.");
+            if (!attempt) setStep(log, i, { status: "failed", error: friendlyBroadcastError(e) });
+            throw e;
           }
         }
       }
     } catch (e) {
-      setError(friendlyBroadcastError(e));
+      if (attempt) {
+        const uncertain = attempt as { index: number; txid: string };
+        setStep(log, uncertain.index, {
+          status: "uncertain",
+          txid: uncertain.txid,
+          error: "Sending was not confirmed. This payment may already have been sent.",
+        });
+        setError(
+          "Sending was not confirmed. Checking this transaction; do not pay these recipients again.",
+        );
+      } else {
+        const pending = log.findIndex((s) => s.status === "pending");
+        if (pending >= 0)
+          setStep(log, pending, { status: "failed", error: friendlyBroadcastError(e) });
+        setError(friendlyBroadcastError(e));
+      }
     } finally {
       setBusy(false);
       void qc.invalidateQueries({ queryKey: ["account"] });
@@ -233,56 +446,256 @@ function RegularBulkSend() {
     }
   }
 
-  async function onFile(f: File | undefined) { if (f) setText(await f.text()); }
+  async function onFile(f: File | undefined) {
+    if (f) setText(await f.text());
+  }
 
-  if (!regular) return <><h1 className="text-3xl font-semibold">Send to many</h1><p className="mt-4 text-sm text-muted-foreground">Bulk sending is available for regular wallets. Watch-only wallets can't send.</p></>;
+  if (!regular)
+    return (
+      <>
+        <h1 className="text-3xl font-semibold">Send to many</h1>
+        <p className="mt-4 text-sm text-muted-foreground">
+          Bulk sending is available for regular wallets. Watch-only wallets can't send.
+        </p>
+      </>
+    );
 
-  const fmt = (u: bigint) => token ? `${formatTokenAmount(u, token.divisible)} ${token.symbol}` : formatTxc(Number(u));
-  return <>
-    <h1 className="text-3xl font-semibold">Send to many</h1>
-    <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Pay up to 100 people at once on TEXITcoin. Paste or upload a list with one <code>address,amount</code> per line.</p>
-    <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(260px,2fr)]">
-      <section className="space-y-4">
-        <label className="block text-sm font-medium">Coin
-          <select className="mt-2 block h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={asset} onChange={(e) => setAsset(e.target.value)} disabled={busy || steps.length > 0}>
-            <option value="txc">TXC</option>
-            {tokens.map((t) => <option key={t.id} value={String(t.id)}>{t.symbol} (Omni #{t.id})</option>)}
-          </select>
-        </label>
-        <Textarea rows={12} className="font-mono text-xs" placeholder={"address,amount\nTst3dVnJbFrnx5ChmK6qj9F3M8YNsHWR44,0.8"} value={text} onChange={(e) => setText(e.target.value)} disabled={busy} />
-        <Button variant="outline" asChild><label className="cursor-pointer"><Upload className="h-4 w-4" />Upload CSV<input type="file" accept=".csv,text/csv,text/plain" className="hidden" onChange={(e) => void onFile(e.target.files?.[0])} /></label></Button>
-      </section>
-      <section className="rounded-lg border border-border bg-card p-5 text-sm">
-        <h2 className="font-semibold">Review</h2>
-        <dl className="mt-4 space-y-2">
-          <div className="flex justify-between"><dt className="text-muted-foreground">Recipients</dt><dd>{parsed.rows.length}</dd></div>
-          <div className="flex justify-between"><dt className="text-muted-foreground">Total</dt><dd className="tabular-nums">{fmt(parsed.total)}</dd></div>
-          <div className="flex justify-between"><dt className="text-muted-foreground">Transactions</dt><dd>{batches.length}</dd></div>
-          <div className="flex justify-between"><dt className="text-muted-foreground">Est. network cost</dt><dd className="tabular-nums">~{formatTxc(token ? BULK_DUST_SATS * parsed.rows.length + estFee : estFee)}</dd></div>
-          {token && holder && <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Sending from</dt><dd className="truncate font-mono text-xs">{holder.a.address}</dd></div>}
-        </dl>
-        {token && <p className="mt-4 text-xs text-muted-foreground">Tokens go out in batches of {STM_BATCH_SIZE}, one transaction each, and each recipient also gets {formatTxc(BULK_DUST_SATS)} as a required marker. If a batch fails, earlier batches have already been sent and the rest stop.</p>}
-        {parsed.duplicates.length > 0 && <p className="mt-3 text-xs text-muted-foreground">Listed more than once, amounts combined into one payment: {parsed.duplicates.join(", ")}</p>}
-        {problems.length > 0 && <ul className="mt-3 space-y-1 text-xs text-destructive">{problems.slice(0, 8).map((p) => <li key={p}>{p}</li>)}</ul>}
-        <RecipientListSafetyNotice safety={listSafety} linesFor={(a) => parsed.rows.filter((r) => r.address.trim() === a).map((r) => r.line)} />
-        <Button className="mt-5 w-full" disabled={!ready} onClick={() => setConfirmOpen(true)}>{busy ? "Sending…" : `Send to ${parsed.rows.length || ""} recipients`}</Button>
-        {error && <p role="alert" className="mt-3 break-words text-xs text-destructive">{error}</p>}
-        {steps.length > 0 && bulkRunSettled({ asset, steps, savedAt: 0 }) && !busy && <Button variant="outline" size="sm" className="mt-4" onClick={() => { setSteps([]); setError(""); }}>Clear results</Button>}
-        {steps.length > 0 && <ol className="mt-5 space-y-2">{steps.map((s, i) => <li key={i} className="flex items-center justify-between gap-2 text-xs"><span>{s.label} · {s.status === "ok" ? (s.delivery === "delivered" ? "Tokens delivered" : s.delivery === "rejected" ? `Tokens NOT delivered${s.reason ? ` (${s.reason})` : ""}` : s.delivery === "checking" ? "Sent · waiting for confirmation" : "Sent") : s.status === "pending" ? "Sending…" : s.status === "failed" ? "Failed" : "Not sent"}</span>{s.txid && <span className="inline-flex shrink-0 items-center gap-2"><button type="button" className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground" onClick={() => { void copyToClipboard(s.txid!); setCopied(i); setTimeout(() => setCopied((c) => (c === i ? null : c)), 1500); }}>{copied === i ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}{copied === i ? "Copied" : "Copy tx ID"}</button><a className="inline-flex items-center gap-1 underline" href={explorerTxUrl(s.txid)} target="_blank" rel="noreferrer">View<ExternalLink className="h-3 w-3" /></a></span>}{s.error && <span className="text-destructive">{s.error}</span>}</li>)}</ol>}
-      </section>
-    </div>
-    {parsed.rows.length > 0 && <table className="mt-8 w-full text-sm"><thead><tr className="text-left text-xs text-muted-foreground"><th className="py-2">Line</th><th>Address</th><th className="text-right">Amount</th></tr></thead><tbody>{parsed.rows.map((r) => { const flagged = flaggedAddrs.has(r.address.trim()); return <tr key={r.line} className={flagged ? "border-t border-border bg-destructive/10" : "border-t border-border"}><td className="py-2">{r.line}</td><td className={flagged ? "font-mono text-xs text-destructive" : "font-mono text-xs"}>{flagged && <AlertTriangle className="mr-1 inline h-3.5 w-3.5 align-text-bottom" aria-label="Suspicious address" />}{r.address}</td><td className="text-right tabular-nums">{fmt(r.units)}</td></tr>; })}</tbody></table>}
-    <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Send {confirmLabel}?</AlertDialogTitle>
-          <AlertDialogDescription>To {parsed.rows.length} recipients in {batches.length} transaction{batches.length > 1 ? "s" : ""}, about {formatTxc(token ? BULK_DUST_SATS * parsed.rows.length + estFee : estFee)} in network cost. This can't be undone.</AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={() => void run()}>Send</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  </>;
+  const fmt = (u: bigint) =>
+    token ? `${formatTokenAmount(u, token.divisible)} ${token.symbol}` : formatTxc(Number(u));
+  return (
+    <>
+      <h1 className="text-3xl font-semibold">Send to many</h1>
+      <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+        Pay up to 100 people at once on TEXITcoin. Paste or upload a list with one{" "}
+        <code>address,amount</code> per line.
+      </p>
+      <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(260px,2fr)]">
+        <section className="space-y-4">
+          <label className="block text-sm font-medium">
+            Coin
+            <select
+              className="mt-2 block h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={asset}
+              onChange={(e) => setAsset(e.target.value)}
+              disabled={busy || steps.length > 0}
+            >
+              <option value="txc">TXC</option>
+              {tokens.map((t) => (
+                <option key={t.id} value={String(t.id)}>
+                  {t.symbol} (Omni #{t.id})
+                </option>
+              ))}
+            </select>
+          </label>
+          <Textarea
+            rows={12}
+            className="font-mono text-xs"
+            placeholder={"address,amount\nTst3dVnJbFrnx5ChmK6qj9F3M8YNsHWR44,0.8"}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            disabled={busy}
+          />
+          <Button variant="outline" asChild>
+            <label className="cursor-pointer">
+              <Upload className="h-4 w-4" />
+              Upload CSV
+              <input
+                type="file"
+                accept=".csv,text/csv,text/plain"
+                className="hidden"
+                onChange={(e) => void onFile(e.target.files?.[0])}
+              />
+            </label>
+          </Button>
+        </section>
+        <section className="rounded-lg border border-border bg-card p-5 text-sm">
+          <h2 className="font-semibold">Review</h2>
+          <dl className="mt-4 space-y-2">
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">Recipients</dt>
+              <dd>{parsed.rows.length}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">Total</dt>
+              <dd className="tabular-nums">{fmt(parsed.total)}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">Transactions</dt>
+              <dd>{batches.length}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">Est. network cost</dt>
+              <dd className="tabular-nums">
+                ~{formatTxc(token ? BULK_DUST_SATS * parsed.rows.length + estFee : estFee)}
+              </dd>
+            </div>
+            {token && holder && (
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Sending from</dt>
+                <dd className="truncate font-mono text-xs">{holder.a.address}</dd>
+              </div>
+            )}
+          </dl>
+          {token && (
+            <p className="mt-4 text-xs text-muted-foreground">
+              Tokens go out in batches of {STM_BATCH_SIZE}, one transaction each, and each recipient
+              also gets {formatTxc(BULK_DUST_SATS)} as a required marker. If a batch fails, earlier
+              batches have already been sent and the rest stop.
+            </p>
+          )}
+          {parsed.duplicates.length > 0 && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Listed more than once, amounts combined into one payment:{" "}
+              {parsed.duplicates.join(", ")}
+            </p>
+          )}
+          {problems.length > 0 && (
+            <ul className="mt-3 space-y-1 text-xs text-destructive">
+              {problems.slice(0, 8).map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+          )}
+          <RecipientListSafetyNotice
+            safety={listSafety}
+            linesFor={(a) => parsed.rows.filter((r) => r.address.trim() === a).map((r) => r.line)}
+          />
+          <Button className="mt-5 w-full" disabled={!ready} onClick={() => setConfirmOpen(true)}>
+            {busy ? "Sending…" : `Send to ${parsed.rows.length || ""} recipients`}
+          </Button>
+          {error && (
+            <p role="alert" className="mt-3 break-words text-xs text-destructive">
+              {error}
+            </p>
+          )}
+          {steps.length > 0 && bulkRunSettled({ asset, steps, savedAt: 0 }) && !busy && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-4"
+              onClick={() => {
+                setSteps([]);
+                setError("");
+              }}
+            >
+              Clear results
+            </Button>
+          )}
+          {steps.length > 0 && (
+            <ol className="mt-5 space-y-2">
+              {steps.map((s, i) => (
+                <li key={i} className="flex items-center justify-between gap-2 text-xs">
+                  <span>
+                    {s.label} ·{" "}
+                    {s.status === "ok"
+                      ? s.delivery === "delivered"
+                        ? "Tokens delivered"
+                        : s.delivery === "rejected"
+                          ? `Tokens NOT delivered${s.reason ? ` (${s.reason})` : ""}`
+                          : s.delivery === "checking"
+                            ? "Sent · waiting for confirmation"
+                            : "Sent"
+                      : s.status === "uncertain"
+                        ? "Sending not confirmed · checking transaction"
+                        : s.status === "pending"
+                          ? "Sending…"
+                          : s.status === "failed"
+                            ? "Failed"
+                            : "Not sent"}
+                  </span>
+                  {s.txid && (
+                    <span className="inline-flex shrink-0 items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="link"
+                        size="sm"
+                        onClick={() => {
+                          if (!s.txid) return;
+                          void copyToClipboard(s.txid);
+                          setCopied(i);
+                          setTimeout(() => setCopied((c) => (c === i ? null : c)), 1500);
+                        }}
+                      >
+                        {copied === i ? (
+                          <Check className="h-3 w-3" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                        {copied === i ? "Copied" : "Copy tx ID"}
+                      </Button>
+                      <a
+                        className="inline-flex items-center gap-1 underline"
+                        href={explorerTxUrl(s.txid)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        View
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </span>
+                  )}
+                  {s.error && <span className="text-destructive">{s.error}</span>}
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+      </div>
+      {parsed.rows.length > 0 && (
+        <table className="mt-8 w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-muted-foreground">
+              <th className="py-2">Line</th>
+              <th>Address</th>
+              <th className="text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {parsed.rows.map((r) => {
+              const flagged = flaggedAddrs.has(r.address.trim());
+              return (
+                <tr
+                  key={r.line}
+                  className={
+                    flagged ? "border-t border-border bg-destructive/10" : "border-t border-border"
+                  }
+                >
+                  <td className="py-2">{r.line}</td>
+                  <td
+                    className={flagged ? "font-mono text-xs text-destructive" : "font-mono text-xs"}
+                  >
+                    {flagged && (
+                      <AlertTriangle
+                        className="mr-1 inline h-3.5 w-3.5 align-text-bottom"
+                        aria-label="Suspicious address"
+                      />
+                    )}
+                    {r.address}
+                  </td>
+                  <td className="text-right tabular-nums">{fmt(r.units)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Send {confirmLabel}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              To {parsed.rows.length} recipients in {batches.length} transaction
+              {batches.length > 1 ? "s" : ""}, about{" "}
+              {formatTxc(token ? BULK_DUST_SATS * parsed.rows.length + estFee : estFee)} in network
+              cost. This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void run()}>Send</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
 }

@@ -1,5 +1,15 @@
 # Roadmap
 
+## Approved Vault audit fixes (Nov 28)
+- [x] Read sibling TXC sends, consolidation/migration, WIF, Seeds, automatic top-up, cash-out and card/Telegram paths; shared transport/journal protects browser TXC sends, card uncertainty retains its existing reservation. Settled records/settings/permissions untouched.
+- [x] Persist uncertain bulk sends before broadcast, reserve inputs, verify local txid, and block retries across reloads until exact lookup succeeds.
+- [x] Use shared TXC fee rules for Vault bulk sending/gathering, single Vault sends, WIF sends and Seeds TXC sweeps.
+- [x] Queue only holders with confirmed TXC; visibly list skipped holders.
+- [x] Show minimum HME Vault 1.0.5 requirement.
+- [x] Changed backend URLs return identical latest public release rows to the configured backend; server/browser values match. Managed environment untouched; historical intent cannot be proven.
+- [x] 840 regression tests pass; changed-file lint clean; disposable unlocked Vault signs genuine test transactions through QR callbacks, lost response/reload blocks retry, exact readback + Omni validity settles without a second POST.
+- [ ] Auditor review and tiny real Vault device test before publishing/rebuilding phone and extension — waits on auditor/Bobby.
+
 ## Vault round-up extended address search (Nov 28)
 - [x] Add Check another 20 below the list, retain earlier results and the expanded range on refresh; 30 tests pass, unlocked synthetic Vault browser check finds Ethereum #67 and safely retries a failed page without signing/broadcast.
 - [ ] Auditor review before publishing — waits on auditor/Bobby.

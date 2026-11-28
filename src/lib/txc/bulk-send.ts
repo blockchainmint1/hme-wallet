@@ -11,6 +11,7 @@
 import { address as btcAddress } from "bitcoinjs-lib";
 import { TXC_NETWORK, SATS_PER_TXC } from "./network";
 import { isOmniCompatibleAddress, parseTokenAmount } from "./tokens";
+import { safeSetItem } from "@/lib/storage/safe-set";
 
 export const BULK_MAX_RECIPIENTS = 100;
 export const STM_BATCH_SIZE = 7;
@@ -69,7 +70,13 @@ export function parseBulkCsv(
       return;
     }
     const [addr, amount] = parts;
-    if (rows.length === 0 && errors.length === 0 && !isValidTxcAddress(addr) && /address/i.test(addr)) return; // header
+    if (
+      rows.length === 0 &&
+      errors.length === 0 &&
+      !isValidTxcAddress(addr) &&
+      /address/i.test(addr)
+    )
+      return; // header
     if (!isValidTxcAddress(addr)) {
       errors.push(`Line ${line}: "${addr}" is not a TEXITcoin address.`);
       return;
@@ -90,7 +97,9 @@ export function parseBulkCsv(
       return;
     }
     if (kind.type === "txc" && units < BigInt(BULK_DUST_SATS)) {
-      errors.push(`Line ${line}: TXC amounts must be at least ${BULK_DUST_SATS / SATS_PER_TXC} TXC.`);
+      errors.push(
+        `Line ${line}: TXC amounts must be at least ${BULK_DUST_SATS / SATS_PER_TXC} TXC.`,
+      );
       return;
     }
     total += units;
@@ -125,8 +134,10 @@ export function buildSendToManyPayload(
   propertyId: number,
   receivers: { vout: number; units: bigint }[],
 ): Uint8Array {
-  if (!Number.isInteger(propertyId) || propertyId <= 0 || propertyId > 0xffffffff) throw new Error("Invalid property id.");
-  if (receivers.length < 1 || receivers.length > STM_BATCH_SIZE) throw new Error(`A batch needs 1–${STM_BATCH_SIZE} receivers.`);
+  if (!Number.isInteger(propertyId) || propertyId <= 0 || propertyId > 0xffffffff)
+    throw new Error("Invalid property id.");
+  if (receivers.length < 1 || receivers.length > STM_BATCH_SIZE)
+    throw new Error(`A batch needs 1–${STM_BATCH_SIZE} receivers.`);
   const out = new Uint8Array(13 + 9 * receivers.length);
   out.set([0x6f, 0x6d, 0x6e, 0x69], 0);
   out[6] = 0;
@@ -134,7 +145,8 @@ export function buildSendToManyPayload(
   new DataView(out.buffer).setUint32(8, propertyId);
   out[12] = receivers.length;
   receivers.forEach((r, i) => {
-    if (!Number.isInteger(r.vout) || r.vout < 0 || r.vout > 255) throw new Error("Output index out of range.");
+    if (!Number.isInteger(r.vout) || r.vout < 0 || r.vout > 255)
+      throw new Error("Output index out of range.");
     if (r.units <= 0n || r.units > 0x7fffffffffffffffn) throw new Error("Invalid amount.");
     const at = 13 + 9 * i;
     out[at] = r.vout;
@@ -145,7 +157,12 @@ export function buildSendToManyPayload(
 }
 
 /** Estimated vsize. Inputs priced as legacy (worst case) unless told otherwise. */
-export function estimateVsize(inputs: number, outputs: number, opReturnBytes = 0, inputVbytes = 149): number {
+export function estimateVsize(
+  inputs: number,
+  outputs: number,
+  opReturnBytes = 0,
+  inputVbytes = 149,
+): number {
   return 10 + inputs * inputVbytes + outputs * 34 + (opReturnBytes ? 11 + opReturnBytes : 0);
 }
 
@@ -154,16 +171,34 @@ export function estimateVsize(inputs: number, outputs: number, opReturnBytes = 0
  * A token send can only start once the wallet knows, from a finished lookup for the
  * current address list, which address holds the token. Returns the reason to wait, or null.
  */
-export function tokenSourceProblem(p: { symbol: string; lookup: "loading" | "failed" | "done"; holderFound: boolean }): string | null {
+export function tokenSourceProblem(p: {
+  symbol: string;
+  lookup: "loading" | "failed" | "done";
+  holderFound: boolean;
+}): string | null {
   if (p.lookup === "loading") return `Checking which address holds your ${p.symbol}…`;
-  if (p.lookup === "failed") return `Couldn't check which address holds your ${p.symbol}. Try again in a moment.`;
+  if (p.lookup === "failed")
+    return `Couldn't check which address holds your ${p.symbol}. Try again in a moment.`;
   return p.holderFound ? null : `No ${p.symbol} found in this wallet.`;
 }
 
-export type BulkStepStatus = "pending" | "ok" | "failed" | "waiting";
+export type BulkStepStatus = "pending" | "uncertain" | "ok" | "failed" | "waiting";
 export type BulkDelivery = "checking" | "delivered" | "rejected";
-export interface BulkSavedStep { label: string; status: BulkStepStatus; txid?: string; error?: string; delivery?: BulkDelivery; reason?: string }
-export interface BulkSavedRun { asset: string; steps: BulkSavedStep[]; error?: string; savedAt: number }
+export interface BulkSavedStep {
+  label: string;
+  status: BulkStepStatus;
+  txid?: string;
+  spent?: string[];
+  error?: string;
+  delivery?: BulkDelivery;
+  reason?: string;
+}
+export interface BulkSavedRun {
+  asset: string;
+  steps: BulkSavedStep[];
+  error?: string;
+  savedAt: number;
+}
 
 export function bulkProgressKey(fingerprint: string): string {
   return `hm.desktop.bulk-send.progress.${fingerprint}`;
@@ -171,7 +206,51 @@ export function bulkProgressKey(fingerprint: string): string {
 
 /** True once nothing more can change: no batch is sending or awaiting a token verdict. */
 export function bulkRunSettled(run: BulkSavedRun): boolean {
-  return run.steps.every((s) => s.status !== "pending" && !(s.status === "ok" && s.delivery === "checking"));
+  return run.steps.every(
+    (s) =>
+      s.status !== "pending" &&
+      s.status !== "uncertain" &&
+      !(s.status === "ok" && s.delivery === "checking"),
+  );
+}
+
+/** Must succeed before a network submission; storage failure means no send. */
+export function recordBulkAttempt(
+  key: string,
+  run: BulkSavedRun,
+  index: number,
+  txid: string,
+  inputs: { txid: string; vout: number }[],
+  storage: Storage = window.localStorage,
+): BulkSavedRun {
+  if (!run.steps[index] || !/^[a-f0-9]{64}$/i.test(txid))
+    throw new Error("Invalid bulk payment attempt.");
+  const steps = run.steps.map((s, i) =>
+    i === index
+      ? { ...s, status: "pending" as const, txid, spent: inputs.map((u) => `${u.txid}:${u.vout}`) }
+      : s,
+  );
+  const next = { ...run, steps, savedAt: Date.now() };
+  safeSetItem(key, JSON.stringify(next), storage);
+  return next;
+}
+
+/** Only a positive exact-tx lookup resolves uncertainty; no automatic re-send. */
+export function recoverBulkSteps(
+  steps: BulkSavedStep[],
+  found: readonly string[],
+  asset: string,
+): BulkSavedStep[] {
+  return steps.map((s) =>
+    s.status === "uncertain" && s.txid && found.includes(s.txid)
+      ? {
+          ...s,
+          status: "ok",
+          error: undefined,
+          ...(asset === "txc" ? {} : { delivery: "checking" as const }),
+        }
+      : s,
+  );
 }
 
 export function parseSavedRun(raw: string | null): BulkSavedRun | null {
@@ -179,11 +258,35 @@ export function parseSavedRun(raw: string | null): BulkSavedRun | null {
   try {
     const v = JSON.parse(raw) as BulkSavedRun;
     if (!v || typeof v.asset !== "string" || !Array.isArray(v.steps)) return null;
-    const statuses = ["pending", "ok", "failed", "waiting"];
-    const steps = v.steps.filter((s) => s && typeof s.label === "string" && statuses.includes(s.status) && (s.txid === undefined || /^[0-9a-f]{64}$/i.test(s.txid)))
+    const statuses = ["pending", "uncertain", "ok", "failed", "waiting"];
+    const steps = v.steps
+      .filter(
+        (s) =>
+          s &&
+          typeof s.label === "string" &&
+          statuses.includes(s.status) &&
+          (s.txid === undefined || /^[0-9a-f]{64}$/i.test(s.txid)),
+      )
       // A reload interrupts any in-flight batch; we can't know if it went out.
-      .map((s) => (s.status === "pending" ? { ...s, status: "failed" as const, error: "Interrupted by a page reload — check your activity before retrying." } : s));
-    return { asset: v.asset, steps, error: typeof v.error === "string" ? v.error : undefined, savedAt: Number(v.savedAt) || 0 };
+      .map((s) =>
+        s.status === "pending" ||
+        (s.status === "failed" &&
+          /broadcast|Failed to fetch|network|Nothing was sent|Interrupted by a page reload/i.test(
+            s.error ?? "",
+          ))
+          ? {
+              ...s,
+              status: "uncertain" as const,
+              error: "Sending was interrupted — check this transaction before trying again.",
+            }
+          : s,
+      );
+    return {
+      asset: v.asset,
+      steps,
+      error: typeof v.error === "string" ? v.error : undefined,
+      savedAt: Number(v.savedAt) || 0,
+    };
   } catch {
     return null;
   }

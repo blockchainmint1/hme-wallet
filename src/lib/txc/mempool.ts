@@ -2,7 +2,14 @@
  * Minimal client for the mempool.texitcoin.org REST API.
  * Assumes the mempool.space-compatible endpoint shape used by the public instance.
  */
-import { cleanUpstreamBody } from "@/lib/broadcast-error";
+import { Transaction } from "bitcoinjs-lib";
+import {
+  conflictingTxcBroadcasts,
+  finishTxcBroadcast,
+  reserveTxcBroadcast,
+} from "./broadcast-journal";
+import { findBroadcastTx, submitTxcHex, TxcBroadcastUncertainError } from "./broadcast-submit";
+export { findBroadcastTx, TxcBroadcastUncertainError } from "./broadcast-submit";
 import { MEMPOOL_API, MEMPOOL_BASE } from "./network";
 
 export interface MempoolAddressStats {
@@ -123,10 +130,17 @@ export async function getOutspend(txid: string, vout: number): Promise<Outspend>
     if (!res.ok) throw new Error(`TXC service returned ${res.status}`);
     result = await res.json();
   } catch {
-    throw new Error("Could not check whether the TXC input is still unspent. Nothing was submitted. Try again when TXC is available.");
+    throw new Error(
+      "Could not check whether the TXC input is still unspent. Nothing was submitted. Try again when TXC is available.",
+    );
   }
   const output: unknown = Array.isArray(result) ? result[vout] : undefined;
-  if (!output || typeof output !== "object" || !("spent" in output) || typeof output.spent !== "boolean") {
+  if (
+    !output ||
+    typeof output !== "object" ||
+    !("spent" in output) ||
+    typeof output.spent !== "boolean"
+  ) {
     throw new Error("TXC returned an invalid spent-input check. Nothing was submitted.");
   }
   return output as Outspend;
@@ -144,14 +158,37 @@ export function getFeeEstimates(): Promise<FeeEstimates> {
 }
 
 export async function broadcastTx(hex: string): Promise<string> {
-  const res = await fetch(`${MEMPOOL_API}/tx`, {
-    method: "POST",
-    headers: { "content-type": "text/plain" },
-    body: hex,
-  });
-  const body = await res.text();
-  if (!res.ok) throw new Error(`broadcast failed: ${res.status} ${cleanUpstreamBody(body)}`);
-  return body.trim();
+  const bytes = hex.trim();
+  const tx = Transaction.fromHex(bytes);
+  const txid = tx.getId();
+  const inputs = tx.ins.map(
+    (i) =>
+      `${Array.from(i.hash)
+        .reverse()
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("")}:${i.index}`,
+  );
+  for (const prior of conflictingTxcBroadcasts(txid, inputs)) {
+    let found = false;
+    try {
+      found = await findBroadcastTx(prior.txid);
+    } catch {
+      /* fail closed */
+    }
+    if (!found) throw new TxcBroadcastUncertainError(prior.txid);
+    finishTxcBroadcast(prior.txid);
+    if (prior.txid === txid) return txid;
+    throw new Error(
+      "An earlier payment already spent these TXC coins. Refresh your balance before sending again.",
+    );
+  }
+  // Recheck after asynchronous reconciliation and persist before starting the POST.
+  const conflict = conflictingTxcBroadcasts(txid, inputs)[0];
+  if (conflict) throw new TxcBroadcastUncertainError(conflict.txid);
+  reserveTxcBroadcast({ txid, inputs });
+  const accepted = await submitTxcHex(bytes);
+  finishTxcBroadcast(txid);
+  return accepted;
 }
 
 export function explorerTxUrl(txid: string): string {

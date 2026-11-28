@@ -8,22 +8,44 @@ import { desktopHead } from "@/components/desktop/metadata";
 import { useDesktopData } from "@/components/desktop/DesktopData";
 import { Button } from "@/components/ui/button";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useWallet } from "@/lib/txc/wallet-context";
 import { seedFromMnemonic } from "@/lib/txc/wallet";
 import type { DelegateLinkRecord } from "@/lib/xpub-link/delegate";
 import { useSeedsPocket } from "@/components/desktop/useSeedsPocket";
-import { EXTRA_CHAIN_LABEL, EXTRA_CHAINS, isExtraChain, type ExtraChain } from "@/lib/xpub-link/delegate-keys";
+import {
+  EXTRA_CHAIN_LABEL,
+  EXTRA_CHAINS,
+  isExtraChain,
+  type ExtraChain,
+} from "@/lib/xpub-link/delegate-keys";
 import { EXTRA_DECIMALS, extraExplorerUrl, extraPocketAddress } from "@/lib/seeds/extra-addresses";
 import { getExtraPocketBalances } from "@/lib/seeds/extra-balances.functions";
 import {
-  evmPocketAccount, evmPocketBalances, mainReceiveAddress, pocketAddresses, sweepPocket,
-  utxoPocketAddressBalances, POCKET_CHAINS, type PocketChain, type UtxoChain,
+  evmPocketAccount,
+  evmPocketBalances,
+  mainReceiveAddress,
+  pocketAddresses,
+  sweepPocket,
+  utxoPocketAddressBalances,
+  POCKET_CHAINS,
+  type PocketChain,
+  type UtxoChain,
 } from "@/lib/seeds/pocket";
 import { evmExplorerUrl, moveBackBlockReason, utxoExplorerUrl } from "@/lib/seeds/pocket-view";
-import { getOmniTxValidity, getTxcTokenBalancesForAddresses, getTxcTokenBalancesPerAddress } from "@/lib/txc/tokens.functions";
+import {
+  getOmniTxValidity,
+  getTxcTokenBalancesForAddresses,
+  getTxcTokenBalancesPerAddress,
+} from "@/lib/txc/tokens.functions";
 import { movePocketTsd } from "@/lib/seeds/pocket-tsd";
 import { explorerTxUrl } from "@/lib/txc/mempool";
 import { TSD_PROPERTY_ID } from "@/lib/cashout/tsd";
@@ -31,12 +53,17 @@ import { EVM_CHAINS, type EvmChainId } from "@/lib/chains/evm";
 import { RevokeLinkControl, describe } from "@/components/wallet/TradingPocketCard";
 
 export const Route = createFileRoute("/desktop/seeds")({
-  head: () => desktopHead("Seeds Pocket", "See what's really in your Seeds trading pocket, straight from the blockchain, and move it back."),
+  head: () =>
+    desktopHead(
+      "Seeds Pocket",
+      "See what's really in your Seeds trading pocket, straight from the blockchain, and move it back.",
+    ),
   component: Page,
 });
 
 function fmt8(v: bigint): string {
-  const w = v / 100_000_000n, f = (v % 100_000_000n).toString().padStart(8, "0").replace(/0+$/, "");
+  const w = v / 100_000_000n,
+    f = (v % 100_000_000n).toString().padStart(8, "0").replace(/0+$/, "");
   return `${w.toLocaleString()}${f ? "." + f : ""}`;
 }
 
@@ -49,9 +76,22 @@ interface ChainView {
 
 function CopyBtn({ text, label }: { text: string; label: string }) {
   const [ok, setOk] = useState(false);
-  return <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" aria-label={label} title={label}
-    onClick={() => { void navigator.clipboard?.writeText(text); setOk(true); setTimeout(() => setOk(false), 1500); }}>
-    {ok ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}</Button>;
+  return (
+    <Button
+      size="icon"
+      variant="ghost"
+      className="h-7 w-7 shrink-0"
+      aria-label={label}
+      title={label}
+      onClick={() => {
+        void navigator.clipboard?.writeText(text);
+        setOk(true);
+        setTimeout(() => setOk(false), 1500);
+      }}
+    >
+      {ok ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+    </Button>
+  );
 }
 
 function Page() {
@@ -63,19 +103,37 @@ function Page() {
     ...found.map((a) => ({ account: a, chains: POCKET_CHAINS, record: null })),
   ];
 
-  return <>
-    <h1 className="flex items-center gap-3 text-3xl font-semibold"><Sprout className="h-7 w-7 text-primary" />Seeds Pocket</h1>
-    <p className="mt-2 max-w-3xl text-sm text-muted-foreground">Read straight from the blockchain by your wallet — not from Seeds. Compare these with your Seeds balance, or open any address on a public explorer.</p>
-    {d.isVault || !unlocked?.mnemonic
-      ? <p className="mt-8 text-sm text-muted-foreground">Cold Storage wallets don't link to Seeds.</p>
-      : pockets.length === 0
-        ? <p className="mt-8 text-sm text-muted-foreground">This wallet isn't linked to Seeds. Link it from Apps &amp; links.</p>
-        : pockets.map((p) => <PocketView key={p.record?.linkId ?? `found-${p.account}`} pocket={p} />)}
-  </>;
+  return (
+    <>
+      <h1 className="flex items-center gap-3 text-3xl font-semibold">
+        <Sprout className="h-7 w-7 text-primary" />
+        Seeds Pocket
+      </h1>
+      <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+        Read straight from the blockchain by your wallet — not from Seeds. Compare these with your
+        Seeds balance, or open any address on a public explorer.
+      </p>
+      {d.isVault || !unlocked?.mnemonic ? (
+        <p className="mt-8 text-sm text-muted-foreground">
+          Cold Storage wallets don't link to Seeds.
+        </p>
+      ) : pockets.length === 0 ? (
+        <p className="mt-8 text-sm text-muted-foreground">
+          This wallet isn't linked to Seeds. Link it from Apps &amp; links.
+        </p>
+      ) : (
+        pockets.map((p) => <PocketView key={p.record?.linkId ?? `found-${p.account}`} pocket={p} />)
+      )}
+    </>
+  );
 }
 
 /** A recorded link, or a pocket found on the blockchain at Seeds' reserved branch (record = null). */
-interface Pocket { account: number; chains: PocketChain[]; record: DelegateLinkRecord | null }
+interface Pocket {
+  account: number;
+  chains: PocketChain[];
+  record: DelegateLinkRecord | null;
+}
 
 function PocketView({ pocket }: { pocket: Pocket }) {
   const link = pocket.record;
@@ -84,7 +142,9 @@ function PocketView({ pocket }: { pocket: Pocket }) {
   const fetchPerAddress = useServerFn(getTxcTokenBalancesPerAddress);
   const fetchValidity = useServerFn(getOmniTxValidity);
   const [tsdConfirm, setTsdConfirm] = useState(false);
-  const [tsdSent, setTsdSent] = useState<{ txid: string; units: bigint; status: "pending" | "rejected"; reason?: string }[]>([]);
+  const [tsdSent, setTsdSent] = useState<
+    { txid: string; units: bigint; status: "pending" | "rejected"; reason?: string }[]
+  >([]);
   const [views, setViews] = useState<ChainView[] | null>(null);
   const [tsd, setTsd] = useState<bigint | null | undefined>(undefined);
   const [tick, setTick] = useState(0);
@@ -95,29 +155,69 @@ function PocketView({ pocket }: { pocket: Pocket }) {
   useEffect(() => {
     let live = true;
     (async () => {
-      setViews(null); setTsd(undefined);
+      setViews(null);
+      setTsd(undefined);
       const seed = await seedFromMnemonic(unlocked!.mnemonic!, unlocked!.passphrase ?? "");
       try {
         const base: ChainView[] = pocket.chains.map((c) => ({
-          chain: c, main: mainReceiveAddress(seed, c),
-          addresses: c === "EVM" ? [] : pocketAddresses(seed, c, pocket.account).map((a) => ({ address: a.address, path: a.path, sats: null })),
-          evm: c === "EVM" ? { address: evmPocketAccount(seed, pocket.account).address, balances: {} } : undefined,
+          chain: c,
+          main: mainReceiveAddress(seed, c),
+          addresses:
+            c === "EVM"
+              ? []
+              : pocketAddresses(seed, c, pocket.account).map((a) => ({
+                  address: a.address,
+                  path: a.path,
+                  sats: null,
+                })),
+          evm:
+            c === "EVM"
+              ? { address: evmPocketAccount(seed, pocket.account).address, balances: {} }
+              : undefined,
         }));
         if (live) setViews(base);
-        const filled = await Promise.all(base.map(async (v) => v.chain === "EVM"
-          ? { ...v, evm: { address: v.evm!.address, balances: await evmPocketBalances(seed, pocket.account) } }
-          : { ...v, addresses: await utxoPocketAddressBalances(seed, v.chain as UtxoChain, pocket.account) }));
+        const filled = await Promise.all(
+          base.map(async (v) =>
+            v.chain === "EVM"
+              ? {
+                  ...v,
+                  evm: {
+                    address: v.evm!.address,
+                    balances: await evmPocketBalances(seed, pocket.account),
+                  },
+                }
+              : {
+                  ...v,
+                  addresses: await utxoPocketAddressBalances(
+                    seed,
+                    v.chain as UtxoChain,
+                    pocket.account,
+                  ),
+                },
+          ),
+        );
         if (live) setViews(filled);
         const txc = base.find((v) => v.chain === "TXC");
         if (txc) {
           try {
-            const r = await fetchTokens({ data: { addresses: txc.addresses.map((a) => a.address), propertyIds: [TSD_PROPERTY_ID] } });
+            const r = await fetchTokens({
+              data: {
+                addresses: txc.addresses.map((a) => a.address),
+                propertyIds: [TSD_PROPERTY_ID],
+              },
+            });
             if (live) setTsd(BigInt(r[TSD_PROPERTY_ID] ?? "0"));
-          } catch { if (live) setTsd(null); }
+          } catch {
+            if (live) setTsd(null);
+          }
         } else if (live) setTsd(0n);
-      } finally { seed.fill(0); }
+      } finally {
+        seed.fill(0);
+      }
     })();
-    return () => { live = false; };
+    return () => {
+      live = false;
+    };
   }, [pocket.account, pocket.chains, unlocked, tick, fetchTokens]);
 
   // On each refresh, ask the TEXITcoin node whether the TSD moves we sent were accepted.
@@ -126,168 +226,396 @@ function PocketView({ pocket }: { pocket: Pocket }) {
     if (pending.length === 0) return;
     let live = true;
     fetchValidity({ data: { txids: pending } })
-      .then((r) => { if (live) setTsdSent((list) => list.map((t) => { const v = r[t.txid]; return v && v.valid === false && t.status === "pending" ? { ...t, status: "rejected", reason: v.reason } : t; })); })
+      .then((r) => {
+        if (live)
+          setTsdSent((list) =>
+            list.map((t) => {
+              const v = r[t.txid];
+              return v && v.valid === false && t.status === "pending"
+                ? { ...t, status: "rejected", reason: v.reason }
+                : t;
+            }),
+          );
+      })
       .catch(() => {});
-    return () => { live = false; };
+    return () => {
+      live = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick, fetchValidity]);
 
   async function moveTsdBack() {
-    setTsdConfirm(false); setBusy("TSD"); setResult(null);
+    setTsdConfirm(false);
+    setBusy("TSD");
+    setResult(null);
     const seed = await seedFromMnemonic(unlocked!.mnemonic!, unlocked!.passphrase ?? "");
     try {
       const addrs = pocketAddresses(seed, "TXC", pocket.account).map((a) => a.address);
-      const per = await fetchPerAddress({ data: { addresses: addrs, propertyIds: [TSD_PROPERTY_ID] } });
+      const per = await fetchPerAddress({
+        data: { addresses: addrs, propertyIds: [TSD_PROPERTY_ID] },
+      });
       const units: Record<string, bigint> = {};
       for (const a of addrs) units[a] = BigInt(per[a]?.[TSD_PROPERTY_ID] ?? "0");
       const res = await movePocketTsd(seed, pocket.account, units);
       const ok = res.filter((r) => r.txid);
       const failed = res.find((r) => r.error);
-      if (ok.length) setTsdSent((list) => [...list, ...ok.map((r) => ({ txid: r.txid!, units: r.units, status: "pending" as const }))]);
+      if (ok.length)
+        setTsdSent((list) => [
+          ...list,
+          ...ok.map((r) => ({ txid: r.txid!, units: r.units, status: "pending" as const })),
+        ]);
       const sentUnits = ok.reduce((s, r) => s + r.units, 0n);
-      const msg = res.length === 0
-        ? "No TSD found on the pocket's addresses just now. Refresh and try again."
-        : `${ok.length ? `Sent ${fmt8(sentUnits)} TSD to your main wallet. The pocket's TXC that paid the fee went with it. It shows in your main wallet once the transfer confirms (usually a few minutes).` : ""}${failed ? ` ${failed.error}` : ""}`.trim();
+      const msg =
+        res.length === 0
+          ? "No TSD found on the pocket's addresses just now. Refresh and try again."
+          : `${ok.length ? `Sent ${fmt8(sentUnits)} TSD to your main wallet. The pocket's TXC that paid the fee went with it. It shows in your main wallet once the transfer confirms (usually a few minutes).` : ""}${failed ? ` ${failed.error}` : ""}`.trim();
       setResult(msg);
-      if (failed && !ok.length) toast.error(msg, { duration: 12000 }); else toast.success(msg, { duration: 12000 });
+      if (failed && !ok.length) toast.error(msg, { duration: 12000 });
+      else toast.success(msg, { duration: 12000 });
     } catch (e) {
-      const msg = `Couldn't move the TSD: ${(e as Error).message}. Nothing was sent.`;
-      setResult(msg); toast.error(msg, { duration: 12000 });
-    } finally { seed.fill(0); setBusy(null); setTick((t) => t + 1); }
+      const msg = `Couldn't complete the TSD move: ${(e as Error).message}`;
+      setResult(msg);
+      toast.error(msg, { duration: 12000 });
+    } finally {
+      seed.fill(0);
+      setBusy(null);
+      setTick((t) => t + 1);
+    }
   }
 
   // A TSD move already sent and not rejected: don't offer a second one until the balance updates.
   const tsdInFlight = tsdSent.some((t) => t.status === "pending") && tsd !== 0n;
 
-  const extraChains: ExtraChain[] = link ? (link.extraChains ?? []).filter(isExtraChain) : [...EXTRA_CHAINS];
+  const extraChains: ExtraChain[] = link
+    ? (link.extraChains ?? []).filter(isExtraChain)
+    : [...EXTRA_CHAINS];
   const tsdKnown = tsd === undefined ? null : tsd;
   const movable = pocket.chains.filter((c) => !moveBackBlockReason(c, tsdKnown));
 
   async function moveBack(chains: PocketChain[]) {
-    setConfirm(null); setBusy(chains.join(",")); setResult(null);
+    setConfirm(null);
+    setBusy(chains.join(","));
+    setResult(null);
     const seed = await seedFromMnemonic(unlocked!.mnemonic!, unlocked!.passphrase ?? "");
     try {
       const msg = describe(await sweepPocket(seed, pocket.account, chains).catch(() => []));
-      setResult(msg); toast.success(msg, { duration: 12000 });
-    } finally { seed.fill(0); setBusy(null); setTick((t) => t + 1); }
+      setResult(msg);
+      toast.success(msg, { duration: 12000 });
+    } finally {
+      seed.fill(0);
+      setBusy(null);
+      setTick((t) => t + 1);
+    }
   }
 
-  return <section className="mt-8 space-y-6">
-    <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-card p-5">
-      <div>
-        <p className="text-lg font-semibold">Pocket #{pocket.account}</p>
-        {link
-          ? <p className="text-sm text-muted-foreground">Linked {new Date(link.linkedAt).toLocaleDateString()} · {link.mode === "access" ? "Seeds can trade instantly (it holds spending keys)" : "You approve each trade"}</p>
-          : <p className="max-w-xl text-sm text-muted-foreground">Found on the blockchain — this is the pocket honest.money reserves for Seeds, and it has activity. This wallet was linked on another device, so this computer can't revoke it. To manage the link here, link again from <Link to="/desktop/apps" className="text-primary underline">Apps &amp; links</Link> (same pocket, nothing moves), or revoke on the device that linked it.</p>}
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" onClick={() => setTick((t) => t + 1)} disabled={!!busy}>Refresh</Button>
-        <Button variant="outline" disabled={!!busy || movable.length === 0} onClick={() => setConfirm(movable)}>
-          {busy && busy.includes(",") && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}Move everything back</Button>
-        {link && <RevokeLinkControl link={link} disabled={!!busy} />}
-      </div>
-    </div>
-    {result && <p className="text-sm text-muted-foreground">{result}</p>}
-
-    <div className="divide-y divide-border rounded-lg border border-border bg-card">
-      {(views ?? []).map((v) => {
-        const block = moveBackBlockReason(v.chain, tsdKnown);
-        const total = v.chain === "EVM" ? null : v.addresses.reduce<bigint | null>((s, a) => (s === null || a.sats === null ? null : s + a.sats), 0n);
-        const loading = v.chain === "EVM" ? Object.keys(v.evm!.balances).length === 0 && !views : v.addresses.every((a) => a.sats === null);
-        return <div key={v.chain} className="space-y-3 p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="font-semibold">{v.chain === "EVM" ? "Ethereum, Base, BNB Chain, Zero Chill" : v.chain}</p>
-              {v.chain !== "EVM" && <p className="text-sm tabular-nums">{loading ? <Loader2 className="inline h-3 w-3 animate-spin" /> : total === null ? "Some addresses couldn't be checked" : `${fmt8(total)} ${v.chain}`}</p>}
-              {v.chain === "TXC" && <p className="text-sm tabular-nums">{tsd === undefined ? "Checking TSD…" : tsd === null ? "TSD: couldn't check" : `${fmt8(tsd)} TSD`}</p>}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {v.chain === "TXC" && typeof tsd === "bigint" && tsd > 0n && (
-                <Button size="sm" variant="outline" disabled={!!busy || tsdInFlight} title={tsdInFlight ? "Waiting for the TSD you already sent to confirm. Press Refresh in a few minutes." : undefined} onClick={() => setTsdConfirm(true)}>
-                  {busy === "TSD" && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}Move TSD back</Button>
-              )}
-              <Button size="sm" variant="outline" disabled={!!busy || !!block} title={block ?? undefined} onClick={() => setConfirm([v.chain])}>
-                {busy === v.chain && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}Move back</Button>
-            </div>
-          </div>
-          {v.chain === "TXC" && tsdSent.map((t) => (
-            <p key={t.txid} className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              {fmt8(t.units)} TSD sent to your main wallet —{" "}
-              {t.status === "rejected" ? `rejected by the network${t.reason ? ` (${t.reason})` : ""}; the TSD stayed in the pocket` : tsd === 0n ? "it has left the pocket" : "waiting for the network to confirm"}
-              <a href={explorerTxUrl(t.txid)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary">View<ExternalLink className="h-3 w-3" /></a>
+  return (
+    <section className="mt-8 space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-card p-5">
+        <div>
+          <p className="text-lg font-semibold">Pocket #{pocket.account}</p>
+          {link ? (
+            <p className="text-sm text-muted-foreground">
+              Linked {new Date(link.linkedAt).toLocaleDateString()} ·{" "}
+              {link.mode === "access"
+                ? "Seeds can trade instantly (it holds spending keys)"
+                : "You approve each trade"}
             </p>
-          ))}
-          {block && <p className="text-xs text-muted-foreground">{v.chain === "TXC" && typeof tsd === "bigint" && tsd > 0n ? "TSD is still in the pocket and needs this TXC to pay its fee. Use Move TSD back first (or withdraw the TSD on Seeds); then Move back the TXC that's left." : block}</p>}
-          {v.evm ? <>
-            <div className="flex items-center gap-2 text-xs"><span className="w-24 shrink-0 text-muted-foreground">Address #0</span><span className="min-w-0 flex-1 truncate font-mono">{v.evm.address}</span><CopyBtn text={v.evm.address} label="Copy pocket address" /></div>
-            <ul className="grid gap-2 sm:grid-cols-2">
-              {(["eth", "base", "bsc", "zcu"] as EvmChainId[]).map((id) => { const b = v.evm!.balances[id]; const url = evmExplorerUrl(id, v.evm!.address);
-                return <li key={id} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
-                  <span>{EVM_CHAINS[id].name}</span>
-                  <span className="flex items-center gap-2 tabular-nums">{b === undefined ? "—" : `${formatEther(b).slice(0, 12)} ${EVM_CHAINS[id].nativeSymbol ?? ""}`}
-                    {url && <a href={url} target="_blank" rel="noopener noreferrer" aria-label={`View on ${EVM_CHAINS[id].name} explorer`} className="text-primary"><ExternalLink className="h-3.5 w-3.5" /></a>}</span>
-                </li>; })}
-            </ul>
-            <p className="text-xs text-muted-foreground">Tokens like USDC show on the explorer. Move back moves the network coins only.</p>
-          </> : (() => {
-            const first = v.addresses[0]!;
-            const others = first && total !== null && first.sats !== null ? total - first.sats : 0n;
-            return <>
-              <div className="flex items-center gap-2 text-xs">
-                <span className="w-24 shrink-0 text-muted-foreground">Address #0</span>
-                <span className="min-w-0 flex-1 truncate font-mono">{first.address}</span>
-                <CopyBtn text={first.address} label={`Copy ${v.chain} pocket address`} />
-                <a href={utxoExplorerUrl(v.chain as UtxoChain, first.address)} target="_blank" rel="noopener noreferrer" aria-label={`View ${v.chain} pocket address on explorer`} className="text-primary"><ExternalLink className="h-3.5 w-3.5" /></a>
+          ) : (
+            <p className="max-w-xl text-sm text-muted-foreground">
+              Found on the blockchain — this is the pocket honest.money reserves for Seeds, and it
+              has activity. This wallet was linked on another device, so this computer can't revoke
+              it. To manage the link here, link again from{" "}
+              <Link to="/desktop/apps" className="text-primary underline">
+                Apps &amp; links
+              </Link>{" "}
+              (same pocket, nothing moves), or revoke on the device that linked it.
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setTick((t) => t + 1)} disabled={!!busy}>
+            Refresh
+          </Button>
+          <Button
+            variant="outline"
+            disabled={!!busy || movable.length === 0}
+            onClick={() => setConfirm(movable)}
+          >
+            {busy && busy.includes(",") && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}Move
+            everything back
+          </Button>
+          {link && <RevokeLinkControl link={link} disabled={!!busy} />}
+        </div>
+      </div>
+      {result && <p className="text-sm text-muted-foreground">{result}</p>}
+
+      <div className="divide-y divide-border rounded-lg border border-border bg-card">
+        {(views ?? []).map((v) => {
+          const block = moveBackBlockReason(v.chain, tsdKnown);
+          const total =
+            v.chain === "EVM"
+              ? null
+              : v.addresses.reduce<bigint | null>(
+                  (s, a) => (s === null || a.sats === null ? null : s + a.sats),
+                  0n,
+                );
+          const loading =
+            v.chain === "EVM"
+              ? Object.keys(v.evm!.balances).length === 0 && !views
+              : v.addresses.every((a) => a.sats === null);
+          return (
+            <div key={v.chain} className="space-y-3 p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-semibold">
+                    {v.chain === "EVM" ? "Ethereum, Base, BNB Chain, Zero Chill" : v.chain}
+                  </p>
+                  {v.chain !== "EVM" && (
+                    <p className="text-sm tabular-nums">
+                      {loading ? (
+                        <Loader2 className="inline h-3 w-3 animate-spin" />
+                      ) : total === null ? (
+                        "Some addresses couldn't be checked"
+                      ) : (
+                        `${fmt8(total)} ${v.chain}`
+                      )}
+                    </p>
+                  )}
+                  {v.chain === "TXC" && (
+                    <p className="text-sm tabular-nums">
+                      {tsd === undefined
+                        ? "Checking TSD…"
+                        : tsd === null
+                          ? "TSD: couldn't check"
+                          : `${fmt8(tsd)} TSD`}
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {v.chain === "TXC" && typeof tsd === "bigint" && tsd > 0n && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!!busy || tsdInFlight}
+                      title={
+                        tsdInFlight
+                          ? "Waiting for the TSD you already sent to confirm. Press Refresh in a few minutes."
+                          : undefined
+                      }
+                      onClick={() => setTsdConfirm(true)}
+                    >
+                      {busy === "TSD" && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}Move TSD
+                      back
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!!busy || !!block}
+                    title={block ?? undefined}
+                    onClick={() => setConfirm([v.chain])}
+                  >
+                    {busy === v.chain && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}Move back
+                  </Button>
+                </div>
               </div>
-              {others > 0n && <p className="text-xs text-muted-foreground">{fmt8(others)} {v.chain} of this sits on other pocket addresses (Seeds' change). Move back collects it all.</p>}
-            </>;
-          })()}
-        </div>;
-      })}
-      {!views && <p className="p-5 text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Reading the pocket…</p>}
-    </div>
+              {v.chain === "TXC" &&
+                tsdSent.map((t) => (
+                  <p
+                    key={t.txid}
+                    className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+                  >
+                    {fmt8(t.units)} TSD sent to your main wallet —{" "}
+                    {t.status === "rejected"
+                      ? `rejected by the network${t.reason ? ` (${t.reason})` : ""}; the TSD stayed in the pocket`
+                      : tsd === 0n
+                        ? "it has left the pocket"
+                        : "waiting for the network to confirm"}
+                    <a
+                      href={explorerTxUrl(t.txid)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-primary"
+                    >
+                      View
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </p>
+                ))}
+              {block && (
+                <p className="text-xs text-muted-foreground">
+                  {v.chain === "TXC" && typeof tsd === "bigint" && tsd > 0n
+                    ? "TSD is still in the pocket and needs this TXC to pay its fee. Use Move TSD back first (or withdraw the TSD on Seeds); then Move back the TXC that's left."
+                    : block}
+                </p>
+              )}
+              {v.evm ? (
+                <>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="w-24 shrink-0 text-muted-foreground">Address #0</span>
+                    <span className="min-w-0 flex-1 truncate font-mono">{v.evm.address}</span>
+                    <CopyBtn text={v.evm.address} label="Copy pocket address" />
+                  </div>
+                  <ul className="grid gap-2 sm:grid-cols-2">
+                    {(["eth", "base", "bsc", "zcu"] as EvmChainId[]).map((id) => {
+                      const b = v.evm!.balances[id];
+                      const url = evmExplorerUrl(id, v.evm!.address);
+                      return (
+                        <li
+                          key={id}
+                          className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
+                        >
+                          <span>{EVM_CHAINS[id].name}</span>
+                          <span className="flex items-center gap-2 tabular-nums">
+                            {b === undefined
+                              ? "—"
+                              : `${formatEther(b).slice(0, 12)} ${EVM_CHAINS[id].nativeSymbol ?? ""}`}
+                            {url && (
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label={`View on ${EVM_CHAINS[id].name} explorer`}
+                                className="text-primary"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </a>
+                            )}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <p className="text-xs text-muted-foreground">
+                    Tokens like USDC show on the explorer. Move back moves the network coins only.
+                  </p>
+                </>
+              ) : (
+                (() => {
+                  const first = v.addresses[0]!;
+                  const others =
+                    first && total !== null && first.sats !== null ? total - first.sats : 0n;
+                  return (
+                    <>
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="w-24 shrink-0 text-muted-foreground">Address #0</span>
+                        <span className="min-w-0 flex-1 truncate font-mono">{first.address}</span>
+                        <CopyBtn text={first.address} label={`Copy ${v.chain} pocket address`} />
+                        <a
+                          href={utxoExplorerUrl(v.chain as UtxoChain, first.address)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`View ${v.chain} pocket address on explorer`}
+                          className="text-primary"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      </div>
+                      {others > 0n && (
+                        <p className="text-xs text-muted-foreground">
+                          {fmt8(others)} {v.chain} of this sits on other pocket addresses (Seeds'
+                          change). Move back collects it all.
+                        </p>
+                      )}
+                    </>
+                  );
+                })()
+              )}
+            </div>
+          );
+        })}
+        {!views && (
+          <p className="p-5 text-sm text-muted-foreground">
+            <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+            Reading the pocket…
+          </p>
+        )}
+      </div>
 
-    {extraChains.length > 0 && <ExtraCoins account={pocket.account} chains={extraChains} found={!link} tick={tick} />}
+      {extraChains.length > 0 && (
+        <ExtraCoins account={pocket.account} chains={extraChains} found={!link} tick={tick} />
+      )}
 
-    <AlertDialog open={tsdConfirm} onOpenChange={(o) => !o && setTsdConfirm(false)}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Move {typeof tsd === "bigint" ? fmt8(tsd) : ""} TSD back to your main wallet?</AlertDialogTitle>
-          <AlertDialogDescription>
-            The TSD goes to your main wallet's TSD address ({views?.find((v) => v.chain === "TXC")?.main ?? "address #0"}). The pocket's own TXC pays the network fee, and the TXC used comes home with it.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <div className="flex gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />Cancel any open orders on Seeds first — moving coins out can make those trades fail.</div>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={(e) => { e.preventDefault(); void moveTsdBack(); }}>Move TSD back</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+      <AlertDialog open={tsdConfirm} onOpenChange={(o) => !o && setTsdConfirm(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Move {typeof tsd === "bigint" ? fmt8(tsd) : ""} TSD back to your main wallet?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              The TSD goes to your main wallet's TSD address (
+              {views?.find((v) => v.chain === "TXC")?.main ?? "address #0"}). The pocket's own TXC
+              pays the network fee, and the TXC used comes home with it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm">
+            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+            Cancel any open orders on Seeds first — moving coins out can make those trades fail.
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void moveTsdBack();
+              }}
+            >
+              Move TSD back
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-    <AlertDialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Move {confirm?.join(", ")} back to your main wallet?</AlertDialogTitle>
-          <AlertDialogDescription>Everything on these coins goes to your own address #0, minus the network fee.</AlertDialogDescription>
-        </AlertDialogHeader>
-        <div className="flex gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />Cancel any open orders on Seeds first — moving coins out can make those trades fail.</div>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={(e) => { e.preventDefault(); if (confirm) void moveBack(confirm); }}>Move back</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  </section>;
+      <AlertDialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Move {confirm?.join(", ")} back to your main wallet?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Everything on these coins goes to your own address #0, minus the network fee.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm">
+            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+            Cancel any open orders on Seeds first — moving coins out can make those trades fail.
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                if (confirm) void moveBack(confirm);
+              }}
+            >
+              Move back
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </section>
+  );
 }
 
 function fmtUnits(v: bigint, decimals: number): string {
-  const d = 10n ** BigInt(decimals), w = v / d, f = (v % d).toString().padStart(decimals, "0").replace(/0+$/, "");
+  const d = 10n ** BigInt(decimals),
+    w = v / d,
+    f = (v % d).toString().padStart(decimals, "0").replace(/0+$/, "");
   return `${w.toLocaleString()}${f ? "." + f : ""}`;
 }
 
 /** Seeds' extra coins: address, chain-read balance and explorer link only. Never keys, never sending. */
-function ExtraCoins({ account, chains, found, tick }: { account: number; chains: ExtraChain[]; found: boolean; tick: number }) {
+function ExtraCoins({
+  account,
+  chains,
+  found,
+  tick,
+}: {
+  account: number;
+  chains: ExtraChain[];
+  found: boolean;
+  tick: number;
+}) {
   const { unlocked } = useWallet();
   const fetchBalances = useServerFn(getExtraPocketBalances);
   const [rows, setRows] = useState<{ chain: ExtraChain; address: string }[] | null>(null);
@@ -302,44 +630,91 @@ function ExtraCoins({ account, chains, found, tick }: { account: number; chains:
       let list: { chain: ExtraChain; address: string }[] = [];
       try {
         list = chains.flatMap((chain) => {
-          try { return [{ chain, address: extraPocketAddress({ chain, account, seed, mnemonic: unlocked!.mnemonic!, passphrase: unlocked!.passphrase ?? "" }) }]; }
-          catch { return []; }
+          try {
+            return [
+              {
+                chain,
+                address: extraPocketAddress({
+                  chain,
+                  account,
+                  seed,
+                  mnemonic: unlocked!.mnemonic!,
+                  passphrase: unlocked!.passphrase ?? "",
+                }),
+              },
+            ];
+          } catch {
+            return [];
+          }
         });
-      } finally { seed.fill(0); }
+      } finally {
+        seed.fill(0);
+      }
       if (!live) return;
       setRows(list);
       const items = list.filter((r) => r.chain !== "XMR");
       const r = items.length ? await fetchBalances({ data: { items } }).catch(() => ({})) : {};
       if (live) setBal(r);
     })();
-    return () => { live = false; };
+    return () => {
+      live = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account, key, unlocked, tick, fetchBalances]);
 
-  return <section className="space-y-3">
-    <div>
-      <h2 className="text-lg font-semibold">More coins on Seeds</h2>
-      <p className="text-sm text-muted-foreground">{found ? "Seeds may hold keys for these coins in this pocket. " : "Shared with Seeds. "}View only — Honest Money doesn't send or move these. Withdraw them on Seeds.</p>
-    </div>
-    <ul className="divide-y divide-border rounded-lg border border-border bg-card">
-      {(rows ?? []).map(({ chain, address }) => {
-        const raw = bal?.[chain];
-        const url = extraExplorerUrl(chain, address);
-        const amount = chain === "XMR" ? "Private — check on Seeds"
-          : bal === null ? <Loader2 className="inline h-3 w-3 animate-spin" />
-          : raw == null ? "Couldn't check" : `${fmtUnits(BigInt(raw), EXTRA_DECIMALS[chain])} ${chain}`;
-        return <li key={chain} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3">
-          <span className="w-36 shrink-0 font-medium">{EXTRA_CHAIN_LABEL[chain]}</span>
-          <span className="w-44 shrink-0 text-sm tabular-nums">{amount}</span>
-          <span className="flex min-w-0 flex-1 items-center gap-2 text-xs">
-            <span className="text-muted-foreground">Address #0</span>
-            <span className="min-w-0 flex-1 truncate font-mono">{address}</span>
-            <CopyBtn text={address} label={`Copy ${EXTRA_CHAIN_LABEL[chain]} pocket address`} />
-            {url && <a href={url} target="_blank" rel="noopener noreferrer" aria-label={`View ${EXTRA_CHAIN_LABEL[chain]} pocket address on explorer`} className="text-primary"><ExternalLink className="h-3.5 w-3.5" /></a>}
-          </span>
-        </li>;
-      })}
-      {!rows && <li className="p-5 text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Working out addresses…</li>}
-    </ul>
-  </section>;
+  return (
+    <section className="space-y-3">
+      <div>
+        <h2 className="text-lg font-semibold">More coins on Seeds</h2>
+        <p className="text-sm text-muted-foreground">
+          {found ? "Seeds may hold keys for these coins in this pocket. " : "Shared with Seeds. "}
+          View only — Honest Money doesn't send or move these. Withdraw them on Seeds.
+        </p>
+      </div>
+      <ul className="divide-y divide-border rounded-lg border border-border bg-card">
+        {(rows ?? []).map(({ chain, address }) => {
+          const raw = bal?.[chain];
+          const url = extraExplorerUrl(chain, address);
+          const amount =
+            chain === "XMR" ? (
+              "Private — check on Seeds"
+            ) : bal === null ? (
+              <Loader2 className="inline h-3 w-3 animate-spin" />
+            ) : raw == null ? (
+              "Couldn't check"
+            ) : (
+              `${fmtUnits(BigInt(raw), EXTRA_DECIMALS[chain])} ${chain}`
+            );
+          return (
+            <li key={chain} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3">
+              <span className="w-36 shrink-0 font-medium">{EXTRA_CHAIN_LABEL[chain]}</span>
+              <span className="w-44 shrink-0 text-sm tabular-nums">{amount}</span>
+              <span className="flex min-w-0 flex-1 items-center gap-2 text-xs">
+                <span className="text-muted-foreground">Address #0</span>
+                <span className="min-w-0 flex-1 truncate font-mono">{address}</span>
+                <CopyBtn text={address} label={`Copy ${EXTRA_CHAIN_LABEL[chain]} pocket address`} />
+                {url && (
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`View ${EXTRA_CHAIN_LABEL[chain]} pocket address on explorer`}
+                    className="text-primary"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                )}
+              </span>
+            </li>
+          );
+        })}
+        {!rows && (
+          <li className="p-5 text-sm text-muted-foreground">
+            <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+            Working out addresses…
+          </li>
+        )}
+      </ul>
+    </section>
+  );
 }

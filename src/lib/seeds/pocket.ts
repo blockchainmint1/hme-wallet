@@ -26,10 +26,16 @@ import * as btcApi from "@/lib/btc/mempool";
 import * as ltcApi from "@/lib/ltc/mempool";
 import { scopedKey } from "@/lib/profiles";
 import { TXC_MAX_FEE_RATE } from "@/lib/txc/wallet";
+import { txcFeeRate } from "@/lib/txc/fees";
 
 const bip32 = BIP32Factory(ecc);
 
-export { POCKET_BASE_ACCOUNT, POCKET_MAX_ACCOUNT, isPocketAccount, isDelegableAccount } from "./branch-rules";
+export {
+  POCKET_BASE_ACCOUNT,
+  POCKET_MAX_ACCOUNT,
+  isPocketAccount,
+  isDelegableAccount,
+} from "./branch-rules";
 import { isPocketAccount, POCKET_BASE_ACCOUNT } from "./branch-rules";
 export const POCKET_SCAN = 10;
 
@@ -48,10 +54,42 @@ interface UtxoMeta {
 }
 
 export const UTXO_META: Record<UtxoChain, UtxoMeta> = {
-  TXC: { purpose: 44, coin: 696969, net: TXC_NETWORK, api: txcApi, minFeeRate: 1, dust: 10_000, ticker: "TXC" },
-  ISK: { purpose: 44, coin: 969696, net: ISK_NETWORK, api: iskApi, minFeeRate: 1, dust: 10_000, ticker: "ISK" },
-  BTC: { purpose: 84, coin: 0, net: BTC_NETWORK, api: btcApi, minFeeRate: 1, dust: 546, ticker: "BTC" },
-  LTC: { purpose: 44, coin: 2, net: LTC_NETWORK, api: ltcApi, minFeeRate: 1, dust: 5_460, ticker: "LTC" },
+  TXC: {
+    purpose: 44,
+    coin: 696969,
+    net: TXC_NETWORK,
+    api: txcApi,
+    minFeeRate: 1,
+    dust: 10_000,
+    ticker: "TXC",
+  },
+  ISK: {
+    purpose: 44,
+    coin: 969696,
+    net: ISK_NETWORK,
+    api: iskApi,
+    minFeeRate: 1,
+    dust: 10_000,
+    ticker: "ISK",
+  },
+  BTC: {
+    purpose: 84,
+    coin: 0,
+    net: BTC_NETWORK,
+    api: btcApi,
+    minFeeRate: 1,
+    dust: 546,
+    ticker: "BTC",
+  },
+  LTC: {
+    purpose: 44,
+    coin: 2,
+    net: LTC_NETWORK,
+    api: ltcApi,
+    minFeeRate: 1,
+    dust: 5_460,
+    ticker: "LTC",
+  },
 };
 
 export const EVM_COIN = 60;
@@ -100,19 +138,31 @@ export interface PocketAddress {
   node: BIP32Interface;
 }
 
-export function pocketAddresses(seed: Uint8Array, chain: UtxoChain, account: number): PocketAddress[] {
+export function pocketAddresses(
+  seed: Uint8Array,
+  chain: UtxoChain,
+  account: number,
+): PocketAddress[] {
   const acct = chainRoot(seed, chain).derivePath(accountPath(chain, account));
   const out: PocketAddress[] = [];
   for (const change of [0, 1]) {
     for (let i = 0; i < POCKET_SCAN; i++) {
       const node = acct.derive(change).derive(i);
-      out.push({ address: addressFor(chain, node.publicKey), path: `${accountPath(chain, account)}/${change}/${i}`, node });
+      out.push({
+        address: addressFor(chain, node.publicKey),
+        path: `${accountPath(chain, account)}/${change}/${i}`,
+        node,
+      });
     }
   }
   return out;
 }
 
-export function pocketReceiveAddress(seed: Uint8Array, chain: PocketChain, account: number): string {
+export function pocketReceiveAddress(
+  seed: Uint8Array,
+  chain: PocketChain,
+  account: number,
+): string {
   if (chain === "EVM") return evmPocketAccount(seed, account).address;
   return pocketAddresses(seed, chain, account)[0]!.address;
 }
@@ -145,17 +195,25 @@ export interface PocketBalance {
   evm?: Partial<Record<EvmChainId, bigint>>;
 }
 
-export async function utxoPocketBalance(seed: Uint8Array, chain: UtxoChain, account: number): Promise<bigint> {
+export async function utxoPocketBalance(
+  seed: Uint8Array,
+  chain: UtxoChain,
+  account: number,
+): Promise<bigint> {
   const api = UTXO_META[chain].api;
   const stats = await Promise.all(
-    pocketAddresses(seed, chain, account).map((a) => api.getAddressStats(a.address).catch(() => null)),
+    pocketAddresses(seed, chain, account).map((a) =>
+      api.getAddressStats(a.address).catch(() => null),
+    ),
   );
   let total = 0n;
   for (const s of stats) {
     if (!s) continue;
     total += BigInt(
-      s.chain_stats.funded_txo_sum - s.chain_stats.spent_txo_sum +
-        s.mempool_stats.funded_txo_sum - s.mempool_stats.spent_txo_sum,
+      s.chain_stats.funded_txo_sum -
+        s.chain_stats.spent_txo_sum +
+        s.mempool_stats.funded_txo_sum -
+        s.mempool_stats.spent_txo_sum,
     );
   }
   return total;
@@ -163,7 +221,10 @@ export async function utxoPocketBalance(seed: Uint8Array, chain: UtxoChain, acco
 
 const EVM_SWEEP_CHAINS: EvmChainId[] = ["eth", "base", "bsc", "zcu"];
 
-export async function evmPocketBalances(seed: Uint8Array, account: number): Promise<Partial<Record<EvmChainId, bigint>>> {
+export async function evmPocketBalances(
+  seed: Uint8Array,
+  account: number,
+): Promise<Partial<Record<EvmChainId, bigint>>> {
   const address = evmPocketAccount(seed, account).address;
   const out: Partial<Record<EvmChainId, bigint>> = {};
   await Promise.all(
@@ -204,7 +265,10 @@ export function inputValue(psbt: Psbt, i: number): bigint | null {
 
 export function scriptHex(chain: UtxoChain, address: string): string {
   const m = UTXO_META[chain];
-  const p = m.purpose === 84 ? payments.p2wpkh({ address, network: m.net }) : payments.p2pkh({ address, network: m.net });
+  const p =
+    m.purpose === 84
+      ? payments.p2wpkh({ address, network: m.net })
+      : payments.p2pkh({ address, network: m.net });
   return Array.from(p.output!, (x) => x.toString(16).padStart(2, "0")).join("");
 }
 
@@ -217,7 +281,11 @@ export function signPocketInput(psbt: Psbt, i: number, node: BIP32Interface) {
 }
 
 /** Map of output-script hex → derived key, for every pocket address. */
-export function pocketScriptMap(seed: Uint8Array, chain: UtxoChain, account: number): Map<string, PocketAddress> {
+export function pocketScriptMap(
+  seed: Uint8Array,
+  chain: UtxoChain,
+  account: number,
+): Map<string, PocketAddress> {
   const map = new Map<string, PocketAddress>();
   for (const a of pocketAddresses(seed, chain, account)) map.set(scriptHex(chain, a.address), a);
   return map;
@@ -233,11 +301,17 @@ export interface SweepResult {
   skipped?: string;
 }
 
-async function sweepUtxo(seed: Uint8Array, chain: UtxoChain, account: number): Promise<SweepResult> {
+async function sweepUtxo(
+  seed: Uint8Array,
+  chain: UtxoChain,
+  account: number,
+): Promise<SweepResult> {
   const m = UTXO_META[chain];
   const to = mainReceiveAddress(seed, chain);
   const addrs = pocketAddresses(seed, chain, account);
-  const lists = await Promise.all(addrs.map((a) => m.api.getAddressUtxos(a.address).catch(() => [])));
+  const lists = await Promise.all(
+    addrs.map((a) => m.api.getAddressUtxos(a.address).catch(() => [])),
+  );
   const inputs: { a: PocketAddress; txid: string; vout: number; value: number }[] = [];
   lists.forEach((list, idx) => list.forEach((u) => inputs.push({ a: addrs[idx]!, ...u })));
   if (inputs.length === 0) return { chain, skipped: "empty" };
@@ -248,7 +322,10 @@ async function sweepUtxo(seed: Uint8Array, chain: UtxoChain, account: number): P
       psbt.addInput({
         hash: u.txid,
         index: u.vout,
-        witnessUtxo: { script: payments.p2wpkh({ pubkey: u.a.node.publicKey, network: m.net }).output!, value: BigInt(u.value) },
+        witnessUtxo: {
+          script: payments.p2wpkh({ pubkey: u.a.node.publicKey, network: m.net }).output!,
+          value: BigInt(u.value),
+        },
       });
     } else {
       const rawHex = await m.api.getTxHex(u.txid);
@@ -257,7 +334,12 @@ async function sweepUtxo(seed: Uint8Array, chain: UtxoChain, account: number): P
     }
   }
   const fees = await m.api.getFeeEstimates().catch(() => null);
-  const rate = fees ? Math.max(m.minFeeRate, Math.ceil(fees.halfHourFee), Math.ceil(fees.minimumFee ?? 0)) : Math.max(m.minFeeRate, m.ticker === "TXC" || m.ticker === "ISK" ? 10 : 1);
+  const rate =
+    m.ticker === "TXC"
+      ? txcFeeRate(fees)
+      : fees
+        ? Math.max(m.minFeeRate, Math.ceil(fees.halfHourFee), Math.ceil(fees.minimumFee ?? 0))
+        : Math.max(m.minFeeRate, m.ticker === "ISK" ? 10 : 1);
   const vbytes = 11 + inputs.length * (m.purpose === 84 ? 68 : 149) + 34;
   const total = inputs.reduce((s, u) => s + u.value, 0);
   const send = total - vbytes * rate;
@@ -280,9 +362,12 @@ async function sweepUtxo(seed: Uint8Array, chain: UtxoChain, account: number): P
  * every TXC payment shares, and below 1 sat/vB (the relay minimum).
  */
 export function pocketSweepFeeProblem(feeSats: number, vsize: number): string | null {
-  if (!Number.isFinite(feeSats) || !Number.isFinite(vsize) || vsize <= 0) return "the network fee couldn't be worked out, so nothing was sent";
-  if (feeSats / vsize >= TXC_MAX_FEE_RATE) return "the network fee is unusually high right now, so nothing was sent";
-  if (feeSats < Math.ceil(vsize)) return "the network fee came out below the network minimum, so nothing was sent";
+  if (!Number.isFinite(feeSats) || !Number.isFinite(vsize) || vsize <= 0)
+    return "the network fee couldn't be worked out, so nothing was sent";
+  if (feeSats / vsize >= TXC_MAX_FEE_RATE)
+    return "the network fee is unusually high right now, so nothing was sent";
+  if (feeSats < Math.ceil(vsize))
+    return "the network fee came out below the network minimum, so nothing was sent";
   return null;
 }
 
@@ -301,8 +386,18 @@ async function sweepEvm(seed: Uint8Array, account: number): Promise<SweepResult[
         results.push({ chain: EVM_CHAINS[id].name, skipped: "too small to cover the fee" });
         continue;
       }
-      const wallet = createWalletClient({ account: acct, chain: EVM_CHAINS[id].viemChain, transport: http(`/api/evm/${id}`) });
-      const txid = await wallet.sendTransaction({ to, value, gas: 21_000n, gasPrice, chain: EVM_CHAINS[id].viemChain });
+      const wallet = createWalletClient({
+        account: acct,
+        chain: EVM_CHAINS[id].viemChain,
+        transport: http(`/api/evm/${id}`),
+      });
+      const txid = await wallet.sendTransaction({
+        to,
+        value,
+        gas: 21_000n,
+        gasPrice,
+        chain: EVM_CHAINS[id].viemChain,
+      });
       results.push({ chain: EVM_CHAINS[id].name, txid });
     } catch (e) {
       results.push({ chain: EVM_CHAINS[id].name, skipped: (e as Error).message.slice(0, 120) });
@@ -312,7 +407,11 @@ async function sweepEvm(seed: Uint8Array, account: number): Promise<SweepResult[
 }
 
 /** Move every coin in the pocket back to the main wallet. Tokens (TSD, USDC) are not moved. */
-export async function sweepPocket(seed: Uint8Array, account: number, chains: PocketChain[] = POCKET_CHAINS): Promise<SweepResult[]> {
+export async function sweepPocket(
+  seed: Uint8Array,
+  account: number,
+  chains: PocketChain[] = POCKET_CHAINS,
+): Promise<SweepResult[]> {
   const out: SweepResult[] = [];
   for (const c of chains) {
     if (c === "EVM") out.push(...(await sweepEvm(seed, account)));
@@ -342,7 +441,10 @@ export async function utxoPocketAddressBalances(
       try {
         const s = await api.getAddressStats(a.address);
         const sats = BigInt(
-          s.chain_stats.funded_txo_sum - s.chain_stats.spent_txo_sum + s.mempool_stats.funded_txo_sum - s.mempool_stats.spent_txo_sum,
+          s.chain_stats.funded_txo_sum -
+            s.chain_stats.spent_txo_sum +
+            s.mempool_stats.funded_txo_sum -
+            s.mempool_stats.spent_txo_sum,
         );
         return { address: a.address, path: a.path, sats };
       } catch {

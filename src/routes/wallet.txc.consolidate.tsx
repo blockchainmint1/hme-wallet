@@ -24,7 +24,14 @@ import {
   scriptKindOf,
   type DerivationKind,
 } from "@/lib/txc/network";
-import { broadcastTx, explorerTxUrl, getFeeEstimates, getTxHex, type FeeEstimates } from "@/lib/txc/mempool";
+import {
+  broadcastTx,
+  explorerTxUrl,
+  getFeeEstimates,
+  getTxHex,
+  TxcBroadcastUncertainError,
+  type FeeEstimates,
+} from "@/lib/txc/mempool";
 import { reserveOutpoints } from "@/lib/txc/spent-outpoints";
 import { formatTxc } from "@/lib/txc/units";
 import { rootFingerprintHex } from "@/lib/txc/fingerprint";
@@ -101,7 +108,9 @@ function scriptHexFor(pubkey: Uint8Array, kind: DerivationKind): string | undefi
   if (script === "bip44") return undefined;
   const inner = payments.p2wpkh({ pubkey, network: TXC_NETWORK });
   const out =
-    script === "bip84" ? inner.output : payments.p2sh({ redeem: inner, network: TXC_NETWORK }).output;
+    script === "bip84"
+      ? inner.output
+      : payments.p2sh({ redeem: inner, network: TXC_NETWORK }).output;
   if (!out) return undefined;
   return Array.from(out, (b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -125,7 +134,12 @@ interface Holder {
   fundSats: number;
 }
 
-type Step = { label: string; txid?: string; error?: string; status: "pending" | "ok" | "failed" };
+type Step = {
+  label: string;
+  txid?: string;
+  error?: string;
+  status: "pending" | "uncertain" | "ok" | "failed";
+};
 
 function ConsolidatePage() {
   const { root, unlocked } = useWallet();
@@ -150,8 +164,7 @@ function ConsolidatePage() {
     const n = Number(search.token);
     return Number.isInteger(n) && n > 0 ? n : null;
   });
-  const token: TxcTokenMeta | null =
-    tokens.find((t) => t.id === tokenId) ?? tokens[0] ?? null;
+  const token: TxcTokenMeta | null = tokens.find((t) => t.id === tokenId) ?? tokens[0] ?? null;
 
   const addressInfos = useMemo(() => {
     const list = [...(account.data?.external ?? []), ...(account.data?.internal ?? [])];
@@ -200,7 +213,6 @@ function ConsolidatePage() {
     return candidates.find(isOmniCompatibleAddress) ?? null;
   }, [root, addressInfos, unlocked, account.data]);
 
-
   const holders: Holder[] = useMemo(() => {
     if (!token || !perAddr.data || !destination) return [];
     const utxos = account.data?.utxos ?? [];
@@ -241,6 +253,7 @@ function ConsolidatePage() {
   const [done, setDone] = useState(false);
 
   async function run() {
+    if (steps.some((s) => s.status === "uncertain")) return;
     if (!root || !unlocked || !account.data || !token || !destination) return;
     if (holders.length === 0) return;
     const ok = await confirmWithBiometric(`Consolidate ${token.symbol}`);
@@ -325,8 +338,7 @@ function ConsolidatePage() {
             kind: h.kind,
             witnessScriptHex: scriptHexFor(h.pubkey, h.kind),
             // Legacy inputs need the full parent tx — we just built it.
-            nonWitnessUtxoHex:
-              scriptKindOf(h.kind) === "bip44" ? built.hex : undefined,
+            nonWitnessUtxoHex: scriptKindOf(h.kind) === "bip44" ? built.hex : undefined,
           });
         });
       }
@@ -352,7 +364,7 @@ function ConsolidatePage() {
               witnessScriptHex: u.witnessScriptHex ?? scriptHexFor(h.pubkey, h.kind),
               nonWitnessUtxoHex:
                 scriptKindOf(h.kind) === "bip44"
-                  ? u.nonWitnessUtxoHex ?? (await getTxHex(u.txid))
+                  ? (u.nonWitnessUtxoHex ?? (await getTxHex(u.txid)))
                   : undefined,
             };
           }
@@ -383,6 +395,10 @@ function ConsolidatePage() {
           reserveOutpoints([{ txid: input.txid, vout: input.vout }]);
           update(idx, { status: "ok", txid });
         } catch (err) {
+          if (err instanceof TxcBroadcastUncertainError) {
+            update(idx, { status: "uncertain", txid: err.txid, error: err.message });
+            throw err; // stop, do not prepare another holder after an uncertain send
+          }
           update(idx, {
             status: "failed",
             error: friendlyBroadcastError(err),
@@ -415,8 +431,8 @@ function ConsolidatePage() {
         <Layers className="h-6 w-6" /> Consolidate tokens
       </h1>
       <p className="text-sm text-muted-foreground">
-        Omni sends the whole amount from a single address. This sweeps a token
-        held across your derived addresses into one place so you can spend it.
+        Omni sends the whole amount from a single address. This sweeps a token held across your
+        derived addresses into one place so you can spend it.
       </p>
 
       <Card className="mt-5">
@@ -447,8 +463,8 @@ function ConsolidatePage() {
 
           {!loading && token && holders.length === 0 && (
             <p className="text-sm text-muted-foreground">
-              Nothing to consolidate — all your {token.symbol} is already on your
-              main receive address.
+              Nothing to consolidate — all your {token.symbol} is already on your main receive
+              address.
             </p>
           )}
 
@@ -501,7 +517,9 @@ function ConsolidatePage() {
           <Button
             className="w-full"
             onClick={run}
-            disabled={busy || loading || holders.length === 0}
+            disabled={
+              busy || loading || holders.length === 0 || steps.some((s) => s.status === "uncertain")
+            }
           >
             {busy ? "Consolidating…" : `Consolidate ${token?.symbol ?? "token"}`}
           </Button>
@@ -527,7 +545,13 @@ function ConsolidatePage() {
                           : "text-muted-foreground text-xs"
                     }
                   >
-                    {s.status === "ok" ? "sent" : s.status === "failed" ? "failed" : "…"}
+                    {s.status === "ok"
+                      ? "sent"
+                      : s.status === "uncertain"
+                        ? "sending not confirmed"
+                        : s.status === "failed"
+                          ? "failed"
+                          : "…"}
                   </span>
                 </div>
                 {s.txid && (
@@ -545,8 +569,8 @@ function ConsolidatePage() {
             ))}
             {done && (
               <p className="text-xs text-muted-foreground">
-                Balances update once these confirm. Omni transfers spending a
-                just-broadcast funding output can take a block to show up.
+                Balances update once these confirm. Omni transfers spending a just-broadcast funding
+                output can take a block to show up.
               </p>
             )}
           </CardContent>

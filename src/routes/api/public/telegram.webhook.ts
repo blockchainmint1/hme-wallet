@@ -6,7 +6,11 @@ import { createFileRoute } from "@tanstack/react-router";
 
 interface Update {
   message?: { chat: { id: number }; text?: string };
-  callback_query?: { id: string; data?: string; message?: { chat: { id: number }; message_id: number; text?: string } };
+  callback_query?: {
+    id: string;
+    data?: string;
+    message?: { chat: { id: number }; message_id: number; text?: string };
+  };
 }
 
 export const Route = createFileRoute("/api/public/telegram/webhook")({
@@ -14,12 +18,20 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
     handlers: {
       POST: async ({ request }) => {
         const s = await import("@/lib/card/card.server");
-        if (!s.safeEq(request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "", s.telegramWebhookSecret()))
+        if (
+          !s.safeEq(
+            request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "",
+            s.telegramWebhookSecret(),
+          )
+        )
           return new Response("Unauthorized", { status: 401 });
         const { readBoundedText } = await import("@/lib/security/json-proxy.server");
         let u: Update;
-        try { u = JSON.parse(await readBoundedText(request)) as Update; }
-        catch { return Response.json({ error: "Invalid update" }, { status: 400 }); }
+        try {
+          u = JSON.parse(await readBoundedText(request)) as Update;
+        } catch {
+          return Response.json({ error: "Invalid update" }, { status: 400 });
+        }
         const db = await s.admin();
 
         if (u.message?.text) {
@@ -28,15 +40,36 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
           if (!m) return Response.json({ ok: true });
           const code = m[1];
           if (!code) return Response.json({ ok: true });
-          const { data: card } = await db.from("nfc_cards").select("id, label, approver_chat_ids").eq("telegram_code", code.toUpperCase()).maybeSingle();
+          const { data: card } = await db
+            .from("nfc_cards")
+            .select("id, label, approver_chat_ids")
+            .eq("telegram_code", code.toUpperCase())
+            .maybeSingle();
           if (!card) {
-            await s.tg("sendMessage", { chat_id: chat, text: "That code isn't valid any more. Get a fresh one in the wallet under Settings → Tap card." }).catch(() => null);
+            await s
+              .tg("sendMessage", {
+                chat_id: chat,
+                text: "That code isn't valid any more. Get a fresh one in the wallet under Settings → Tap card.",
+              })
+              .catch(() => null);
             return Response.json({ ok: true });
           }
-          const ids = Array.from(new Set([...(card.approver_chat_ids ?? []).map(Number), chat])).slice(-3);
-          const { data: consumed } = await db.from("nfc_cards").update({ approver_chat_ids: ids, telegram_code: null }).eq("id", card.id).eq("telegram_code", code.toUpperCase()).select("id");
+          const ids = Array.from(
+            new Set([...(card.approver_chat_ids ?? []).map(Number), chat]),
+          ).slice(-3);
+          const { data: consumed } = await db
+            .from("nfc_cards")
+            .update({ approver_chat_ids: ids, telegram_code: null })
+            .eq("id", card.id)
+            .eq("telegram_code", code.toUpperCase())
+            .select("id");
           if (!consumed?.length) return Response.json({ ok: true });
-          await s.tg("sendMessage", { chat_id: chat, text: `✅ You'll approve over-limit taps for "${card.label}" here.` }).catch(() => null);
+          await s
+            .tg("sendMessage", {
+              chat_id: chat,
+              text: `✅ You'll approve over-limit taps for "${card.label}" here.`,
+            })
+            .catch(() => null);
           return Response.json({ ok: true });
         }
 
@@ -46,29 +79,63 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
         const chat = cq.message.chat.id;
         const paymentId = m[2];
         if (!paymentId) return Response.json({ ok: true });
-        const { data: p } = await db.from("nfc_card_payments").select("id, card_id, status, usd, merchant, created_at").eq("id", paymentId).maybeSingle();
-        const { data: card } = p ? await db.from("nfc_cards").select("approver_chat_ids, status").eq("id", p.card_id).single() : { data: null };
+        const { data: p } = await db
+          .from("nfc_card_payments")
+          .select("id, card_id, status, usd, merchant, created_at")
+          .eq("id", paymentId)
+          .maybeSingle();
+        const { data: card } = p
+          ? await db
+              .from("nfc_cards")
+              .select("approver_chat_ids, status")
+              .eq("id", p.card_id)
+              .single()
+          : { data: null };
         const allowed = !!card && (card.approver_chat_ids ?? []).map(Number).includes(chat);
         let reply = "This request is no longer open.";
         if (p && allowed && p.status === "approval") {
           if (Date.now() - new Date(p.created_at).getTime() > s.CARD_APPROVAL_TTL_MS) {
-            await db.from("nfc_card_payments").update({ status: "declined", reason: "Approval timed out" }).eq("id", p.id).eq("status", "approval");
+            await db
+              .from("nfc_card_payments")
+              .update({ status: "declined", reason: "Approval timed out" })
+              .eq("id", p.id)
+              .eq("status", "approval");
             reply = "Too late — this request expired.";
           } else if (m[1] === "d") {
-            await db.from("nfc_card_payments").update({ status: "declined", reason: "Declined on Telegram", decided_at: new Date().toISOString() }).eq("id", p.id).eq("status", "approval");
+            await db
+              .from("nfc_card_payments")
+              .update({
+                status: "declined",
+                reason: "Declined on Telegram",
+                decided_at: new Date().toISOString(),
+              })
+              .eq("id", p.id)
+              .eq("status", "approval");
             reply = `❌ Declined ${s.fmtUsd(Number(p.usd))} at ${p.merchant}.`;
           } else if (card?.status !== "active") {
             reply = "The card is no longer active.";
           } else {
-            const { data: claimed } = await db.from("nfc_card_payments").update({ status: "pending" }).eq("id", p.id).eq("status", "approval").select("id");
+            const { data: claimed } = await db
+              .from("nfc_card_payments")
+              .update({ status: "pending" })
+              .eq("id", p.id)
+              .eq("status", "approval")
+              .select("id");
             if (claimed?.length) {
               const r = await s.executePayment(p.id);
-              reply = r.status === "paid" ? `✅ Paid ${s.fmtUsd(Number(p.usd))} at ${p.merchant}.` : `⚠️ Approved, but sending failed: ${r.reason}`;
+              reply =
+                r.status === "paid"
+                  ? `✅ Paid ${s.fmtUsd(Number(p.usd))} at ${p.merchant}.`
+                  : r.status === "sending"
+                    ? `⚠️ Sending not confirmed. Do not pay this invoice again. ${r.reason ?? ""}`
+                    : `⚠️ Approved, but sending failed: ${r.reason}`;
             }
           }
         }
         await s.tg("answerCallbackQuery", { callback_query_id: cq.id }).catch(() => null);
-        await s.tg("editMessageText", { chat_id: chat, message_id: cq.message.message_id, text: reply }).catch(() => null);
+        await s
+          .tg("editMessageText", { chat_id: chat, message_id: cq.message.message_id, text: reply })
+          .catch(() => null);
         return Response.json({ ok: true });
       },
     },

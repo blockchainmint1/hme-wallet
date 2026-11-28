@@ -20,6 +20,7 @@ import {
 import { useTxcTokenProps } from "@/lib/txc/token-props";
 import { getTxcTokenBalancesForAddresses } from "@/lib/txc/tokens.functions";
 import { TXC_NETWORK } from "@/lib/txc/network";
+import { txcFeeRate } from "@/lib/txc/fees";
 import { ISK_NETWORK } from "@/lib/isk/network";
 import { address as addrLib } from "bitcoinjs-lib";
 import { Button } from "@/components/ui/button";
@@ -58,7 +59,22 @@ const OMNI_DUST_SATS = 10_000;
 const OP_RETURN_VBYTES = 32;
 
 export const Route = createFileRoute("/wallet/wif/$id/send")({
-  head: () => ({ meta: [{ title: "Send — HME Wallet" }] }),
+  head: () => ({
+    meta: [
+      { title: "Send from an imported key — HME Wallet" },
+      {
+        name: "description",
+        content: "Review and send TXC, ISK or supported tokens from your imported-key wallet.",
+      },
+      { property: "og:title", content: "Send from an imported key — HME Wallet" },
+      {
+        property: "og:description",
+        content: "Review and send TXC, ISK or supported tokens from your imported-key wallet.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
   validateSearch: (raw) => searchSchema.parse(raw),
   component: WifSendPage,
 });
@@ -79,8 +95,7 @@ function WifSendPage() {
   const tokenId = search.token ? Number(search.token) : null;
   const localTokens = useEnabledTxcTokens();
   const { resolved: knownTokens } = useTxcTokenProps(localTokens);
-  const activeToken =
-    tokenId != null ? (knownTokens.find((t) => t.id === tokenId) ?? null) : null;
+  const activeToken = tokenId != null ? (knownTokens.find((t) => t.id === tokenId) ?? null) : null;
   const isTokenSend = !!activeToken && entry?.chain === "txc";
   const fetchTokenBalances = useServerFn(getTxcTokenBalancesForAddresses);
 
@@ -146,13 +161,19 @@ function WifSendPage() {
       return false;
     }
   })();
-  const safety = useRecipientSafety({ family: "utxo", coin: entry?.chain === "isk" ? "isk" : "txc" }, to, safetyValid);
+  const safety = useRecipientSafety(
+    { family: "utxo", coin: entry?.chain === "isk" ? "isk" : "txc" },
+    to,
+    safetyValid,
+  );
 
   if (!entry) {
     return (
       <main className="mx-auto max-w-xl px-4 py-10">
         <p className="text-sm text-muted-foreground">Wallet not found.</p>
-        <Link className="underline text-sm" to="/wallet">← Back</Link>
+        <Link className="underline text-sm" to="/wallet">
+          ← Back
+        </Link>
       </main>
     );
   }
@@ -160,7 +181,8 @@ function WifSendPage() {
   const utxos = utxosQ.data ?? [];
   const totalAvailable = utxos.reduce((s, u) => s + u.value, 0);
   const amountSats = txcToSats(amount || "0"); // same 8 decimals for ISK
-  const feeRate = feesQ.data?.[feeTier] ?? 1;
+  const feeRate =
+    entry.chain === "txc" ? txcFeeRate(feesQ.data, feeTier) : (feesQ.data?.[feeTier] ?? 1);
   const chainLabel = entry.chain.toUpperCase();
   const unitLabel = isTokenSend ? activeToken!.symbol : chainLabel;
   const tokenUnits = BigInt(
@@ -405,7 +427,9 @@ function WifSendPage() {
                   <QrScanButton onScan={applyUri} />
                   <AddressBookButton chain={entry.chain} onPick={(a) => setTo(a)} />
                 </div>
-                <div className="mt-2"><RecipientSafetyNotice safety={safety} /></div>
+                <div className="mt-2">
+                  <RecipientSafetyNotice safety={safety} />
+                </div>
               </div>
               <div>
                 <div className="flex items-center justify-between">
@@ -482,7 +506,9 @@ function WifSendPage() {
             <CardTitle>Review and send</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <Row label="To"><code className="font-mono break-all">{to.trim()}</code></Row>
+            <Row label="To">
+              <code className="font-mono break-all">{to.trim()}</code>
+            </Row>
             <Row label="Amount">
               {isTokenSend ? (
                 `${amount} ${activeToken!.symbol}`
