@@ -7,16 +7,16 @@
  */
 import { useRef, useState, type ReactNode } from "react";
 import { formatUnits, keccak256, type Address, type Hex } from "viem";
-import { Check, Copy, ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { Check, Copy, ExternalLink, Loader2, RefreshCw, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { QrScanButton } from "@/components/wallet/QrScanButton";
 import { VaultAnimatedQr } from "@/components/wallet/VaultAnimatedQr";
 import { PartCollector } from "@/lib/vault-link/qr-parts";
 import { loadPairing, mergeRefreshedPairing, parsePairing, savePairing, vaultCan, type VaultPairing } from "@/lib/vault-link/pairing";
-import { vaultEvmAccount } from "@/lib/vault-link/evm-accounts";
+import { vaultEvmAccount, VAULT_EVM_MAX_INDEX } from "@/lib/vault-link/evm-accounts";
 import {
-  ROUNDUP_CHAINS, ROUNDUP_CHAIN_NAME, ROUNDUP_GAP, assertDisperseCode, buildDisperseIntent, buildSweepBatchRequest,
+  ROUNDUP_CHAINS, ROUNDUP_CHAIN_NAME, ROUNDUP_GAP, ROUNDUP_PAGE_SIZE, assertDisperseCode, buildDisperseIntent, buildSweepBatchRequest,
   estimateDisperseGas, estimateTokenGas, externalTopUpList, externalTopUpText, planRoundup, planTopUp, readAddress, readFees, roundupTokens, scanVaultEvm,
   topUpAmount, verifySweepBatchReply, verifyVaultDisperse,
   type ExternalTopUp, type Fees, type TokenGasEstimate, type RoundupChain, type RoundupItem, type RoundupPlan, type ScannedAddress, type TopUpPlan,
@@ -67,15 +67,30 @@ export function VaultRoundUp({ profileId, onBuy }: {
     }
   }
 
-  async function scan(c: RoundupChain = chain) {
+  async function scan(c: RoundupChain = chain, minChecked: number = checked) {
     setBusy("scan"); setError(null); setPlan(null); setChecked(0);
     try {
-      const { used, checked: n } = await scanVaultEvm(p, c, { onProgress: setChecked });
+      const { used, checked: n } = await scanVaultEvm(p, c, { minChecked, onProgress: setChecked });
       setRows(used); setChecked(n);
       await makePlan(c, used);
     } catch (e) {
       setRows(null);
+      setChecked(minChecked);
       setError(`Couldn't finish checking ${ROUNDUP_CHAIN_NAME[c]} addresses: ${(e as Error).message}`);
+    } finally { setBusy(null); }
+  }
+
+  async function checkAnotherPage() {
+    if (!rows || busy || sent?.waiting || checked > VAULT_EVM_MAX_INDEX) return;
+    const previousChecked = checked;
+    setBusy("more"); setError(null); setPlan(null);
+    try {
+      const result = await scanVaultEvm(p, chain, { startIndex: previousChecked, count: ROUNDUP_PAGE_SIZE });
+      const combined = [...rows, ...result.used];
+      setRows(combined); setChecked(result.checked);
+      await makePlan(chain, combined);
+    } catch (e) {
+      setError(`Couldn't finish the additional check: ${(e as Error).message}`);
     } finally { setBusy(null); }
   }
 
@@ -220,8 +235,8 @@ export function VaultRoundUp({ profileId, onBuy }: {
 
   return (
     <Panel>
-      <div className="flex items-start justify-between gap-4">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1 basis-64">
           <h3 className="text-lg font-semibold">Round up stablecoins to TSD</h3>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             Finds USDC, USDT, PYUSD and ETH on every address of this Vault (including store sale addresses), brings it to
@@ -231,7 +246,7 @@ export function VaultRoundUp({ profileId, onBuy }: {
         <div className="flex gap-2">
           {ROUNDUP_CHAINS.map((c) => (
             <Button key={c} size="sm" variant={c === chain ? "default" : "outline"} disabled={!!busy}
-              onClick={() => { setChain(c); setRows(null); setPlan(null); setSent(null); void scan(c); }}>{ROUNDUP_CHAIN_NAME[c]}</Button>
+              onClick={() => { setChain(c); setRows(null); setPlan(null); setSent(null); void scan(c, 0); }}>{ROUNDUP_CHAIN_NAME[c]}</Button>
           ))}
           <Button size="sm" variant="outline" disabled={!!busy} onClick={() => void scan()} aria-label="Check again">
             <RefreshCw className={busy === "scan" ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
@@ -258,7 +273,8 @@ export function VaultRoundUp({ profileId, onBuy }: {
 
       {rows && (
         <>
-          <table className="mt-5 w-full text-sm">
+          <div className="mt-5 overflow-x-auto">
+          <table className="w-full min-w-[32rem] text-sm">
             <thead className="text-left text-xs text-muted-foreground">
               <tr><th className="py-2">Address</th><th>{EVM_CHAINS[chain].nativeSymbol}</th>{tokens.map((t) => <th key={t.contract}>{t.symbol}</th>)}</tr>
             </thead>
@@ -272,7 +288,19 @@ export function VaultRoundUp({ profileId, onBuy }: {
               ))}
             </tbody>
           </table>
-          <p className="mt-2 text-xs text-muted-foreground">{checked} addresses checked; only addresses ever used are listed.</p>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            {checked <= VAULT_EVM_MAX_INDEX && (
+              <Button type="button" size="sm" variant="outline" disabled={!!busy || !!sent?.waiting} onClick={() => void checkAnotherPage()}>
+                {busy === "more" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+                {busy === "more" ? "Checking…" : "Check another 20"}
+              </Button>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {checked} addresses checked (#{0}–#{Math.max(0, checked - 1)}); only addresses with a balance or outgoing activity are listed.
+              {checked > VAULT_EVM_MAX_INDEX && " Vault address limit reached."}
+            </p>
+          </div>
 
           {plan && (
             <div className="mt-6 space-y-4">

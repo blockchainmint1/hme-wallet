@@ -1,5 +1,9 @@
 # Roadmap
 
+## Vault round-up extended address search (Nov 28)
+- [x] Add Check another 20 below the list, retain earlier results and the expanded range on refresh; 30 tests pass, unlocked synthetic Vault browser check finds Ethereum #67 and safely retries a failed page without signing/broadcast.
+- [ ] Auditor review before publishing — waits on auditor/Bobby.
+
 ## Vault Send to many consolidation (Nov 28)
 - [x] Add Consolidate all with sequential Vault signings, progress, stopping on failure, and no reuse of spent fee coins; 160 Vault tests pass and synthetic funded browser flows verify completion, stopping and failed next preparation; auditor handoff prepared.
 - [x] Add Consolidate TSD beside the available balance, using the existing Vault QR gather flow; preserve the recipient list and refresh balance on return.

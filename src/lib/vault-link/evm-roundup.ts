@@ -41,6 +41,7 @@ export const TOKEN_GAS_MIN = 30_000n;
 export const TOKEN_GAS_MAX = 200_000n;
 /** Stop scanning after this many unused addresses in a row. */
 export const ROUNDUP_GAP = 20;
+export const ROUNDUP_PAGE_SIZE = 20;
 
 /** Disperse.app, pinned by HME Vault on Ethereum and Base (release-time eth_getCode hashes). */
 export const DISPERSE_ADDRESS: Address = "0xD152f549545093347A162Dce210e7293f1452150";
@@ -384,14 +385,31 @@ export async function readAddress(pairing: VaultPairing, chain: RoundupChain, in
  * limit). Without `evm.xpub` only #0 can be read. A failed read throws —
  * a partial scan must never look like "nothing left".
  */
-export async function scanVaultEvm(pairing: VaultPairing, chain: RoundupChain, opts: { gap?: number; onProgress?: (checked: number) => void } = {}): Promise<{ used: ScannedAddress[]; checked: number }> {
+export async function scanVaultEvm(pairing: VaultPairing, chain: RoundupChain, opts: {
+  gap?: number;
+  /** Continue from the first address not yet checked. */
+  startIndex?: number;
+  /** Explicit pages ignore the unused-address gap and read exactly this many (within the Vault limit). */
+  count?: number;
+  /** Refreshes must retain the user's expanded search range. */
+  minChecked?: number;
+  onProgress?: (checked: number) => void;
+} = {}): Promise<{ used: ScannedAddress[]; checked: number }> {
   const gap = opts.gap ?? ROUNDUP_GAP;
   const maxIndex = pairing.evm?.xpub ? VAULT_EVM_MAX_INDEX : 0;
+  const start = opts.startIndex ?? 0;
+  const minChecked = opts.minChecked ?? 0;
+  if (!Number.isInteger(start) || start < 0 || start > maxIndex + 1 ||
+      !Number.isInteger(gap) || gap < 1 ||
+      !Number.isInteger(minChecked) || minChecked < 0 || minChecked > maxIndex + 1 ||
+      (opts.count !== undefined && (!Number.isInteger(opts.count) || opts.count < 1 || opts.count > ROUNDUP_PAGE_SIZE)))
+    throw new Error("Invalid Vault address search range.");
+  const end = opts.count === undefined ? maxIndex + 1 : Math.min(start + opts.count, maxIndex + 1);
   const used: ScannedAddress[] = [];
   let empty = 0;
-  let next = 0;
-  while (next <= maxIndex && empty < gap) {
-    const batch = Array.from({ length: Math.min(10, maxIndex - next + 1) }, (_, k) => next + k);
+  let next = start;
+  while (next < end && (opts.count !== undefined || next < minChecked || empty < gap)) {
+    const batch = Array.from({ length: Math.min(10, end - next) }, (_, k) => next + k);
     const rows = await Promise.all(batch.map((i) => readAddress(pairing, chain, i)));
     for (const r of rows) {
       if (r.index === 0 || addressUsed(r)) { used.push(r); empty = addressUsed(r) ? 0 : empty + 1; }

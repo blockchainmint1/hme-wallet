@@ -51,6 +51,7 @@ Registry/Hub use ecosystem-credential.server (current per-site HME convention); 
 - Swap history retains key/profile ownership (legacy: payout address). Review records instant orders opened/not-sent with expiry; broadcast upgrades matching profile/provider/order; only txid rows poll. Why: no invented payments or cross-wallet records.
 - Vault Send to many reuses VaultTsdGather in an exclusive in-page consolidation view, preserves the recipient list, and refreshes the sending balance on broadcast/return. Why: avoid concurrent spending flows and duplicate signing logic.
 - Vault Consolidate all queues one existing gather per holder; advances only after verified broadcast, reserves attempted inputs locally, and uses fresh confirmed fee coins without chaining pending outputs. Why: avoid duplicate spends and stop visibly when remaining confirmed fee money is insufficient.
+- Vault EVM round-up continuation reads the next 20 addresses regardless of gaps, appends only complete pages, and refreshes the expanded range within the paired index limit. Why: sparse holdings must stay discoverable without changing signing rules.
 
 ## Security boundaries
 - LI.FI shares immutable intent/bytes and session/deployment/server signing checks; nested semantic review is mandatory, no fallback. Single-block hop allowlisting adds compatibility only; distinct spenders use the approval-only sentinel. Omit integrator config; remain paused until independent route/release/device acceptance. Why: permitted entrypoints cannot authorize opaque instructions.
