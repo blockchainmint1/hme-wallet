@@ -3,6 +3,10 @@
  * One Vault signature per address: holder coin first, #0 pays the fee.
  * Prepares unsigned requests only; HME Vault signs by QR.
  */
+import { CheckAgainButton } from "@/components/wallet/TxcCheckAgain";
+import { TxcBroadcastRejectedError } from "@/lib/txc/mempool";
+import { recheckTxcAttempt } from "@/lib/txc/broadcast-recheck";
+import { finishTxcBroadcast } from "@/lib/txc/broadcast-journal";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Layers, Loader2, RefreshCw, Square } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
@@ -89,6 +93,36 @@ export function VaultTsdGather({
   const [queue, setQueue] = useState<GatherQueue | null>(null);
   const queueRef = useRef<GatherQueue | null>(null);
   const spentInputs = useRef(new Set<string>());
+  const attemptInputs = useRef<string[]>([]);
+  const [rechecking, setRechecking] = useState(false);
+  async function checkAgain() {
+    const id = uncertainTxid;
+    if (!id) return;
+    setRechecking(true);
+    try {
+      const r = await recheckTxcAttempt(id, attemptInputs.current);
+      if (r === "unknown") {
+        setError("Still can't tell whether this payment went out. Try Check again later.");
+        return;
+      }
+      try {
+        finishTxcBroadcast(id);
+      } catch {
+        /* journal unavailable */
+      }
+      if (r === "not-sent") for (const k of attemptInputs.current) spentInputs.current.delete(k);
+      setError(
+        r === "sent"
+          ? "Checked again: that payment was sent. Refresh to see the remaining addresses."
+          : "Checked again: that payment was not sent. You can prepare it again.",
+      );
+      setUncertainTxid(null);
+      setSigning(null);
+      if (queueRef.current?.active) stopAll("Stopped after checking an unconfirmed payment.");
+    } finally {
+      setRechecking(false);
+    }
+  }
   const sentIndexes = useRef(new Set<number>());
   const [uncertainTxid, setUncertainTxid] = useState<string | null>(null);
   const [receipts, setReceipts] = useState<{ index: number; txid: string }[]>([]);
@@ -295,15 +329,27 @@ export function VaultTsdGather({
         }
         await assertSession();
         // Reserve locally before sending: an uncertain response must not allow reuse.
-        for (const i of psbt.txInputs)
-          spentInputs.current.add(
+        const attemptKeys = psbt.txInputs.map(
+          (i) =>
             `${Array.from(i.hash)
               .reverse()
               .map((b) => b.toString(16).padStart(2, "0"))
               .join("")}:${i.index}`,
-          );
+        );
+        for (const k of attemptKeys) spentInputs.current.add(k);
+        attemptInputs.current = attemptKeys;
         setUncertainTxid(txid);
-        const real = await chainIo("txc").broadcast(full.trim());
+        let real: string;
+        try {
+          real = await chainIo("txc").broadcast(full.trim());
+        } catch (err) {
+          if (err instanceof TxcBroadcastRejectedError) {
+            // Definite refusal, tx absent: nothing was sent, so release the coins.
+            for (const k of attemptKeys) spentInputs.current.delete(k);
+            setUncertainTxid(null);
+          }
+          throw err;
+        }
         if (real !== txid) throw new Error("The sending reply did not match this payment.");
         setUncertainTxid(null);
         sentIndexes.current.add(signing.intent.fromIndex);
@@ -517,6 +563,7 @@ export function VaultTsdGather({
             Sending was not confirmed. Check this transaction before trying again.
           </p>
           <TxidCard txid={uncertainTxid} />
+          <CheckAgainButton checking={rechecking} onCheck={checkAgain} />
         </div>
       )}
       {loading && !rows && (

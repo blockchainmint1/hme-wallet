@@ -7,6 +7,9 @@ const state = vi.hoisted(() => ({
   payment: {} as Record<string, unknown>,
   key: "",
   failClaim: false,
+  claimCode: "" as string,
+  reject: false,
+  unspent: false,
 }));
 vi.mock("@/integrations/supabase/client.server", () => ({
   supabaseAdmin: {
@@ -17,7 +20,13 @@ vi.mock("@/integrations/supabase/client.server", () => ({
         if (table === "nfc_cards") return { data: { status: "active" } };
         if (table === "nfc_card_keys") return { data: { enc_key: state.key } };
         if (patch && state.failClaim && "txid" in patch && !("status" in patch))
-          return { data: null, error: new Error("claim refused") };
+          return {
+            data: null,
+            error: Object.assign(
+              new Error("claim refused"),
+              state.claimCode ? { code: state.claimCode } : {},
+            ),
+          };
         if (patch && filters.every(([key, value]) => state.payment[key] === value))
           Object.assign(state.payment, patch);
         return { data: { ...state.payment }, error: null };
@@ -70,6 +79,9 @@ beforeEach(async () => {
     amount_units: 100000000,
   };
   state.failClaim = false;
+  state.claimCode = "";
+  state.reject = false;
+  state.unspent = false;
   signedHex = "";
 });
 afterEach(() => {
@@ -86,8 +98,11 @@ function network(found = false) {
     if (init?.method === "POST") {
       signedHex = String(init.body);
       expect(state.payment["txid"]).toBe(Transaction.fromHex(signedHex).getId());
-      return new Response("Unavailable", { status: 503 });
+      return state.reject
+        ? new Response("min relay fee not met", { status: 400 })
+        : new Response("Unavailable", { status: 503 });
     }
+    if (url.endsWith("/outspends") && state.unspent) return Response.json([{ spent: false }]);
     return found && signedHex
       ? new Response(signedHex)
       : new Response("Not found", { status: 404 });
@@ -131,5 +146,32 @@ describe("card uncertain-payment reservation", () => {
     await executePayment("test-payment");
     expect(JSON.stringify(state.payment)).toBe(before);
     expect(fetcher).not.toHaveBeenCalled();
+  });
+  it("a definite node rejection fails the payment and releases the invoice and limit", async () => {
+    state.reject = true;
+    network();
+    const r = await executePayment("test-payment");
+    expect(r.status).toBe("failed");
+    expect(state.payment["status"]).toBe("failed");
+    expect(String(state.payment["reason"])).toContain("min relay fee not met");
+  });
+  it("a stuck pending row is released only when the tx is absent and its coins are unspent", async () => {
+    network();
+    await executePayment("test-payment");
+    expect(state.payment["status"]).toBe("pending");
+    expect(state.payment["attempt_inputs"]).toEqual([`${prev.getId()}:0`]);
+    state.unspent = true;
+    const fetcher = network();
+    const r = await executePayment("test-payment");
+    expect(r.status).toBe("failed");
+    expect(state.payment["status"]).toBe("failed");
+    expect(fetcher.mock.calls.filter((call) => call[1]?.method === "POST")).toHaveLength(0);
+  });
+  it("a definite claim error returns failed, not sending", async () => {
+    state.failClaim = true;
+    state.claimCode = "23505";
+    const fetcher = network();
+    expect((await executePayment("test-payment")).status).toBe("failed");
+    expect(fetcher.mock.calls.filter((call) => call[1]?.method === "POST")).toHaveLength(0);
   });
 });

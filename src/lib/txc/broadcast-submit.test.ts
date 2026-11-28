@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Transaction } from "bitcoinjs-lib";
 import { broadcastTx } from "./mempool";
 import { findBroadcastTx, submitTxcHex, TxcBroadcastUncertainError } from "./broadcast-submit";
-import { pendingTxcBroadcasts } from "./broadcast-journal";
+import { pendingTxcBroadcasts, reserveTxcBroadcast } from "./broadcast-journal";
+import { recheckTxcAttempt } from "./broadcast-recheck";
 
 class MemoryStorage implements Storage {
   data = new Map<string, string>();
@@ -139,5 +140,85 @@ describe("TXC server/card transport", () => {
   it("does not mistake HTML or another transaction for a positive lookup", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("<html>Unavailable</html>")));
     await expect(findBroadcastTx(id)).rejects.toThrow("different transaction");
+  });
+});
+
+describe("TXC definite rejections and Check again (audit 88d4dec)", () => {
+  it("a node 4xx rejection plus an exact 404 is a failure with the reason, and frees the coins", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response("sendrawtransaction RPC error: min relay fee not met", { status: 400 }),
+      )
+      .mockResolvedValueOnce(new Response("Not found", { status: 404 }));
+    vi.stubGlobal("fetch", fetcher);
+    await expect(broadcastTx(hex)).rejects.toMatchObject({
+      name: "TxcBroadcastRejectedError",
+      message: expect.stringContaining("min relay fee not met"),
+    });
+    expect(pendingTxcBroadcasts(storage)).toEqual([]);
+  });
+  it("a 4xx rejection whose lookup fails stays uncertain", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response("bad-txns-inputs-missingorspent", { status: 400 }))
+        .mockResolvedValueOnce(new Response("down", { status: 503 })),
+    );
+    await expect(broadcastTx(hex)).rejects.toBeInstanceOf(TxcBroadcastUncertainError);
+    expect(pendingTxcBroadcasts(storage)[0]?.txid).toBe(id);
+  });
+  it("timeouts (408), rate limits (429) and 5xx stay uncertain", async () => {
+    for (const status of [408, 429, 500]) {
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce(new Response("try later", { status }))
+          .mockResolvedValueOnce(new Response("Not found", { status: 404 })),
+      );
+      await expect(submitTxcHex(hex)).rejects.toBeInstanceOf(TxcBroadcastUncertainError);
+    }
+  });
+  it("one malformed journal entry is skipped and does not block a valid send", async () => {
+    storage.setItem("hme.txc.broadcast-pending.garbage", "{not json");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(id)),
+    );
+    expect(await broadcastTx(hex)).toBe(id);
+  });
+  it("Check again says not-sent only when the tx is 404 and every input is unspent", async () => {
+    const input = `${"09".repeat(32)}:0`;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.endsWith("/outspends")
+          ? Response.json([{ spent: false }])
+          : new Response("Not found", { status: 404 }),
+      ),
+    );
+    expect(await recheckTxcAttempt(id, [input])).toBe("not-sent");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.endsWith("/outspends")
+          ? Response.json([{ spent: true, txid: "b".repeat(64) }])
+          : new Response("Not found", { status: 404 }),
+      ),
+    );
+    expect(await recheckTxcAttempt(id, [input])).toBe("unknown");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.endsWith("/outspends")
+          ? new Response("down", { status: 503 })
+          : new Response("Not found", { status: 404 }),
+      ),
+    );
+    expect(await recheckTxcAttempt(id, [input])).toBe("unknown");
+    expect(await recheckTxcAttempt(id, [])).toBe("unknown");
+    reserveTxcBroadcast({ txid: id, inputs: [input] }, storage);
   });
 });

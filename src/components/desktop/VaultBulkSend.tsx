@@ -49,6 +49,8 @@ import {
 import { txcFeeRate } from "@/lib/txc/fees";
 import { safeSetItem } from "@/lib/storage/safe-set";
 import { useBulkRecovery } from "@/hooks/use-bulk-recovery";
+import { CheckAgainButton } from "@/components/wallet/TxcCheckAgain";
+import { TxcBroadcastRejectedError } from "@/lib/txc/mempool";
 import { MEMPOOL_API } from "@/lib/txc/network";
 import { explorerTxUrl, getAddressUtxos, getFeeEstimates, getOutspend } from "@/lib/txc/mempool";
 import { formatTokenAmount } from "@/lib/txc/tokens";
@@ -122,7 +124,7 @@ export function VaultBulkSend() {
     } else window.localStorage.removeItem(progressKey);
   }, [restored, steps, error, progressKey]);
 
-  useBulkRecovery(progressKey, "39", steps, setSteps, setError);
+  const recovery = useBulkRecovery(progressKey, "39", steps, setSteps, setError);
   const checking = steps.flatMap((s) =>
     s.status === "ok" && s.delivery === "checking" && s.txid ? [s.txid] : [],
   );
@@ -376,7 +378,19 @@ export function VaultBulkSend() {
       setBusy(false);
       processing.current = false;
       const msg = friendlyBroadcastError(e);
-      if (attemptedTxid) {
+      if (attemptedTxid && e instanceof TxcBroadcastRejectedError) {
+        const refused = attemptedTxid;
+        setSteps((prev) =>
+          prev.map((s, j) =>
+            j === batch
+              ? { ...s, status: "failed", txid: refused, notSent: true, error: e.message }
+              : s,
+          ),
+        );
+        setError(e.message);
+        setPlan(null);
+        setShown(null);
+      } else if (attemptedTxid) {
         setSteps((prev) =>
           prev.map((s, j) =>
             j === batch
@@ -618,6 +632,9 @@ export function VaultBulkSend() {
             <p role="alert" className="mt-3 break-words text-xs text-destructive">
               {error}
             </p>
+          )}
+          {recovery.hasUncertain && (
+            <CheckAgainButton checking={recovery.checking} onCheck={recovery.checkAgain} />
           )}
           {steps.length > 0 && (
             <ul className="mt-4 space-y-2 text-xs">

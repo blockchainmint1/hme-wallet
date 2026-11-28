@@ -1,4 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
+import { TxcPendingPayments } from "@/components/wallet/TxcCheckAgain";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { friendlyBroadcastError } from "@/lib/broadcast-error";
 import { useEffect, useMemo, useState } from "react";
@@ -84,13 +85,10 @@ import { CashoutOrderTracker } from "@/components/wallet/CashoutOrderTracker";
 import { broadcastRecordedCashout } from "@/lib/cashout/cashout-history";
 import { TSD_PROPERTY_ID, formatUsd, payoutFor } from "@/lib/cashout/tsd";
 
-
 import {
   getTxcTokenBalancesForAddresses,
   getTxcTokenBalancesPerAddress,
 } from "@/lib/txc/tokens.functions";
-
-
 
 function isValidTxcAddress(addr: string): boolean {
   try {
@@ -182,15 +180,23 @@ type Stage =
 // "txc" or an Omni property id encoded as string.
 type Asset = "txc" | number;
 
-
-export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: string; amount?: string; token?: string; asset?: string }; backTo?: "/wallet" | "/desktop" }) {
+export function SendPage({
+  search = {},
+  backTo = "/wallet",
+}: {
+  search?: { to?: string; amount?: string; token?: string; asset?: string };
+  backTo?: "/wallet" | "/desktop";
+}) {
   const navigate = useNavigate();
   const { root, unlocked } = useWallet();
   const qc = useQueryClient();
   const account = useQuery({
     queryKey: ["account", unlocked?.kind, root ? rootFingerprintHex(root) : null],
     enabled: !!root && !!unlocked,
-    queryFn: () => { if (!root || !unlocked) throw new Error("Wallet locked"); return scanAccount(root, unlocked.kind); },
+    queryFn: () => {
+      if (!root || !unlocked) throw new Error("Wallet locked");
+      return scanAccount(root, unlocked.kind);
+    },
     staleTime: 30_000,
     // Warm the coin set while the user is still typing the amount, so the tap
     // on Send only has to verify, sign and broadcast.
@@ -238,10 +244,13 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
   const isTokenSend = activeToken !== null;
   const [cashoutApiKey] = useCashoutApiKey();
   // A TSD Bridge cash-out deposit address is checked against the bridge order itself.
-  const safety = useRecipientSafety({ family: "utxo", coin: "txc" }, to, !cashout && isValidTxcAddress(to.trim()));
+  const safety = useRecipientSafety(
+    { family: "utxo", coin: "txc" },
+    to,
+    !cashout && isValidTxcAddress(to.trim()),
+  );
   // The off-ramp only exists once the user has linked their TSD Swap account.
-  const canCashOut =
-    exchangeAllowed && !!cashoutApiKey && activeToken?.id === TSD_PROPERTY_ID;
+  const canCashOut = exchangeAllowed && !!cashoutApiKey && activeToken?.id === TSD_PROPERTY_ID;
 
   /**
    * A cash-out order belongs to the wallet and TSD Swap key it was created
@@ -272,7 +281,9 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
       return false;
     }
     if (ownAddresses.includes(cashout.depositAddress)) {
-      refuseChangedCashout("The cash-out deposit address belongs to this wallet. Nothing was sent.");
+      refuseChangedCashout(
+        "The cash-out deposit address belongs to this wallet. Nothing was sent.",
+      );
       return false;
     }
     const typed = tsdUnits(amount);
@@ -957,7 +968,11 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
                   <QrScanButton onScan={applyUri} />
                   <AddressBookButton chain="txc" onPick={(a) => setTo(a)} />
                 </div>
-                {!cashout && <div className="mt-2"><RecipientSafetyNotice safety={safety} /></div>}
+                {!cashout && (
+                  <div className="mt-2">
+                    <RecipientSafetyNotice safety={safety} />
+                  </div>
+                )}
                 {isTokenSend && (
                   <p className="mt-1.5 text-xs text-muted-foreground">
                     {activeToken?.symbol} rides the Omni layer, which can't read segwit — the
@@ -1037,8 +1052,7 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
                     <div className="flex-1">
                       <p className="font-medium">Cashing out to USDC on Ethereum</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {cashout.amount} TSD →{" "}
-                        {formatUsd(cashout.payoutAmount)} USDC to{" "}
+                        {cashout.amount} TSD → {formatUsd(cashout.payoutAmount)} USDC to{" "}
                         <span className="font-mono break-all">{cashout.payoutAddress}</span>
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
@@ -1047,9 +1061,10 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
                           : "The recipient above is your TSD Swap deposit address. It pays your saved cash-out address."}
                         {cashout.kind === "one-time-order" && cashout.refundAddress && (
                           <>
-                            {" "}If TSD Swap ever has to return this TSD, it goes back to{" "}
-                            <span className="font-mono break-all">{cashout.refundAddress}</span>, the
-                            address it's sent from.
+                            {" "}
+                            If TSD Swap ever has to return this TSD, it goes back to{" "}
+                            <span className="font-mono break-all">{cashout.refundAddress}</span>,
+                            the address it's sent from.
                           </>
                         )}
                       </p>
@@ -1096,6 +1111,7 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
                   ))}
                 </div>
               </div>
+              <TxcPendingPayments />
               {error && (
                 <div className="space-y-1">
                   <div className="flex items-start gap-2 text-sm text-destructive">
@@ -1116,7 +1132,9 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
               <Button
                 type="submit"
                 className="w-full"
-                disabled={!to || (!sendAll && !amount) || account.isLoading || (!cashout && safety.blocked)}
+                disabled={
+                  !to || (!sendAll && !amount) || account.isLoading || (!cashout && safety.blocked)
+                }
               >
                 Review
               </Button>
@@ -1189,6 +1207,7 @@ export function SendPage({ search = {}, backTo = "/wallet" }: { search?: { to?: 
             )}
 
             {!isTokenSend && <Row label="Total">{formatTxc(reviewedOutSats + stage.feeSats)}</Row>}
+            <TxcPendingPayments />
             {error && (
               <div className="flex items-start gap-2 text-sm text-destructive">
                 <AlertTriangle className="h-4 w-4 mt-0.5" /> {error}

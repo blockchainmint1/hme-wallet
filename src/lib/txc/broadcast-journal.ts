@@ -9,12 +9,18 @@ export interface TxcPendingBroadcast {
 /** Public transaction metadata only; no expiry can turn uncertainty into safety. */
 export function pendingTxcBroadcasts(
   storage: Storage = window.localStorage,
+  onMalformed?: (key: string) => void,
 ): TxcPendingBroadcast[] {
   const out: TxcPendingBroadcast[] = [];
   for (let i = 0; i < storage.length; i++) {
     const key = storage.key(i);
     if (!key?.startsWith(PREFIX)) continue;
-    const item = JSON.parse(storage.getItem(key) ?? "null") as TxcPendingBroadcast | null;
+    let item: TxcPendingBroadcast | null = null;
+    try {
+      item = JSON.parse(storage.getItem(key) ?? "null") as TxcPendingBroadcast | null;
+    } catch {
+      item = null;
+    }
     if (
       !item ||
       !/^[a-f0-9]{64}$/i.test(item.txid) ||
@@ -22,9 +28,9 @@ export function pendingTxcBroadcasts(
       !Array.isArray(item.inputs) ||
       item.inputs.some((input) => typeof input !== "string" || !/^[a-f0-9]{64}:\d+$/i.test(input))
     ) {
-      throw new Error(
-        "Could not read an unfinished TXC payment. Check your activity before sending again.",
-      );
+      // Skip and report; one unreadable entry must never block every valid send.
+      onMalformed?.(key);
+      continue;
     }
     out.push(item);
   }
@@ -51,4 +57,11 @@ export function conflictingTxcBroadcasts(
   return pendingTxcBroadcasts(storage).filter(
     (item) => item.txid === txid || item.inputs.some((key) => keys.has(key)),
   );
+}
+
+/** Keys of unreadable entries, so the UI can report them without blocking sends. */
+export function malformedTxcBroadcastKeys(storage: Storage = window.localStorage): string[] {
+  const bad: string[] = [];
+  pendingTxcBroadcasts(storage, (k) => bad.push(k));
+  return bad;
 }

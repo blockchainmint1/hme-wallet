@@ -166,6 +166,7 @@ export type Database = {
       nfc_card_payments: {
         Row: {
           amount_units: number
+          attempt_inputs: string[] | null
           card_id: string
           created_at: string
           decided_at: string | null
@@ -180,6 +181,7 @@ export type Database = {
         }
         Insert: {
           amount_units: number
+          attempt_inputs?: string[] | null
           card_id: string
           created_at?: string
           decided_at?: string | null
@@ -194,6 +196,7 @@ export type Database = {
         }
         Update: {
           amount_units?: number
+          attempt_inputs?: string[] | null
           card_id?: string
           created_at?: string
           decided_at?: string | null

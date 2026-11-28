@@ -16,8 +16,10 @@ import { validateCardAmount } from "./payment-policy";
 import {
   findBroadcastTx,
   submitTxcHex,
+  TxcBroadcastRejectedError,
   TxcBroadcastUncertainError,
 } from "@/lib/txc/broadcast-submit";
+import { recheckTxcAttempt } from "@/lib/txc/broadcast-recheck";
 
 export const CARD_MAX_WRONG_PINS = 5;
 export const CARD_APPROVAL_TTL_MS = 15 * 60 * 1000;
@@ -215,7 +217,7 @@ export async function sendFromPocket(
   to: string,
   units: bigint,
   sweepAll = false,
-  beforeBroadcast?: (txid: string) => Promise<void>,
+  beforeBroadcast?: (txid: string, inputs: string[]) => Promise<void>,
 ): Promise<string> {
   if (/^txc1/i.test(to)) throw new Error("Token payments need a T… address");
   const priv = await decryptKey(encKey);
@@ -260,7 +262,10 @@ export async function sendFromPocket(
     }
     psbt.finalizeAllInputs();
     const tx = psbt.extractTransaction();
-    await beforeBroadcast?.(tx.getId());
+    await beforeBroadcast?.(
+      tx.getId(),
+      list.map((u) => `${u.txid}:${u.vout}`),
+    );
     return await broadcast(tx.toHex());
   } finally {
     priv.fill(0);
@@ -378,6 +383,19 @@ export async function executePayment(
     } catch {
       /* keep the existing spending reservation */
     }
+    // Safe exit: release only when the exact tx is absent AND every coin it
+    // used is still unspent (mempool-aware). Any doubt keeps the reservation.
+    const inputs = (p as { attempt_inputs?: string[] | null }).attempt_inputs ?? [];
+    if (inputs.length > 0 && (await recheckTxcAttempt(p.txid, inputs)) === "not-sent") {
+      const reason = "TXC did not accept this payment; nothing was sent.";
+      await db
+        .from("nfc_card_payments")
+        .update({ status: "failed", reason, decided_at: new Date().toISOString() })
+        .eq("id", p.id)
+        .eq("status", "pending")
+        .eq("txid", p.txid);
+      return { status: "failed", txid: p.txid, reason };
+    }
     return {
       status: "sending",
       txid: p.txid,
@@ -410,16 +428,21 @@ export async function executePayment(
       p.pay_to,
       BigInt(p.amount_units),
       false,
-      async (localTxid) => {
+      async (localTxid, inputs) => {
         savingAttempt = true;
         const { data: claimed, error } = await db
           .from("nfc_card_payments")
-          .update({ txid: localTxid })
+          .update({ txid: localTxid, attempt_inputs: inputs })
           .eq("id", p.id)
           .eq("status", "pending")
           .is("txid", null)
           .select("id")
           .maybeSingle();
+        if (error && (error as { code?: string }).code) {
+          // A definite database error: the row was not claimed and nothing was submitted.
+          savingAttempt = false;
+          throw new Error("Could not save this payment attempt. Nothing was submitted.");
+        }
         if (error || !claimed)
           throw new Error("Could not save this payment attempt. Nothing was submitted.");
         attemptedTxid = localTxid;
@@ -433,6 +456,17 @@ export async function executePayment(
       .eq("status", "pending");
     return { status: "paid", txid };
   } catch (e) {
+    if (e instanceof TxcBroadcastRejectedError) {
+      // Node refused it and the exact tx is absent: release invoice and daily limit.
+      const reason = e.message.slice(0, 200);
+      await db
+        .from("nfc_card_payments")
+        .update({ status: "failed", reason, decided_at: new Date().toISOString() })
+        .eq("id", p.id)
+        .eq("status", "pending")
+        .eq("txid", e.txid);
+      return { status: "failed", txid: e.txid, reason };
+    }
     if (e instanceof TxcBroadcastUncertainError) {
       // 'pending' already counts toward limits and prevents paying this invoice again.
       return {

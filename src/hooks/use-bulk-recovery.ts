@@ -1,7 +1,16 @@
-import { useEffect, useMemo, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import { findBroadcastTx } from "@/lib/txc/mempool";
-import { recoverBulkSteps, type BulkSavedStep } from "@/lib/txc/bulk-send";
+import { finishTxcBroadcast } from "@/lib/txc/broadcast-journal";
+import { recheckTxcAttempt } from "@/lib/txc/broadcast-recheck";
+import { recoverBulkSteps, releaseNotSentSteps, type BulkSavedStep } from "@/lib/txc/bulk-send";
 
 /** Recovery only reads the network. Unknown/missing IDs keep the run blocked. */
 export function useBulkRecovery(
@@ -40,4 +49,36 @@ export function useBulkRecovery(
       }
     }
   }, [query.data, setSteps, setError, asset, ids]);
+  const [checking, setChecking] = useState(false);
+  /** User-triggered: frees a step only on txid 404 AND every reserved input unspent. */
+  const checkAgain = useCallback(async () => {
+    setChecking(true);
+    try {
+      const targets = steps.filter((s) => s.status === "uncertain" && s.txid);
+      const sent: string[] = [];
+      const notSent: string[] = [];
+      for (const s of targets) {
+        const r = await recheckTxcAttempt(s.txid!, s.spent ?? []);
+        if (r === "sent") sent.push(s.txid!);
+        if (r === "not-sent") {
+          notSent.push(s.txid!);
+          try {
+            finishTxcBroadcast(s.txid!);
+          } catch {
+            /* journal unavailable */
+          }
+        }
+      }
+      setSteps((prev) => releaseNotSentSteps(recoverBulkSteps(prev, sent, asset), notSent));
+      if (sent.length + notSent.length === targets.length)
+        setError((prev) => (prev.startsWith("Sending was not confirmed.") ? "" : prev));
+      else
+        setError(
+          "Sending was not confirmed. Still can't tell whether this payment went out; try Check again later.",
+        );
+    } finally {
+      setChecking(false);
+    }
+  }, [steps, setSteps, setError, asset]);
+  return { checkAgain, checking, hasUncertain: ids.length > 0 };
 }

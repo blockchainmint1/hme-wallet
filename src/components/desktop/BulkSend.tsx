@@ -41,6 +41,8 @@ import {
 } from "@/lib/txc/bulk-send";
 import { safeSetItem } from "@/lib/storage/safe-set";
 import { useBulkRecovery } from "@/hooks/use-bulk-recovery";
+import { CheckAgainButton } from "@/components/wallet/TxcCheckAgain";
+import { TxcBroadcastRejectedError } from "@/lib/txc/mempool";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -128,7 +130,7 @@ function RegularBulkSend() {
 
   // After each token batch confirms, ask the TXC node whether the tokens actually moved.
   const fetchValidity = useServerFn(getOmniTxValidity);
-  useBulkRecovery(progressKey, asset, steps, setSteps, setError);
+  const recovery = useBulkRecovery(progressKey, asset, steps, setSteps, setError);
   const checking = steps.flatMap((s) =>
     s.status === "ok" && s.delivery === "checking" && s.txid ? [s.txid] : [],
   );
@@ -422,7 +424,16 @@ function RegularBulkSend() {
         }
       }
     } catch (e) {
-      if (attempt) {
+      if (attempt && e instanceof TxcBroadcastRejectedError) {
+        const refused = attempt as { index: number; txid: string };
+        setStep(log, refused.index, {
+          status: "failed",
+          txid: refused.txid,
+          notSent: true,
+          error: e.message,
+        });
+        setError(e.message);
+      } else if (attempt) {
         const uncertain = attempt as { index: number; txid: string };
         setStep(log, uncertain.index, {
           status: "uncertain",
@@ -581,6 +592,9 @@ function RegularBulkSend() {
               Clear results
             </Button>
           )}
+          {recovery.hasUncertain && (
+            <CheckAgainButton checking={recovery.checking} onCheck={recovery.checkAgain} />
+          )}
           {steps.length > 0 && (
             <ol className="mt-5 space-y-2">
               {steps.map((s, i) => (
@@ -600,7 +614,9 @@ function RegularBulkSend() {
                         : s.status === "pending"
                           ? "Sending…"
                           : s.status === "failed"
-                            ? "Failed"
+                            ? s.notSent
+                              ? "Not sent"
+                              : "Failed"
                             : "Not sent"}
                   </span>
                   {s.txid && (

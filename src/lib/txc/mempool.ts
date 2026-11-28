@@ -8,8 +8,17 @@ import {
   finishTxcBroadcast,
   reserveTxcBroadcast,
 } from "./broadcast-journal";
-import { findBroadcastTx, submitTxcHex, TxcBroadcastUncertainError } from "./broadcast-submit";
-export { findBroadcastTx, TxcBroadcastUncertainError } from "./broadcast-submit";
+import {
+  findBroadcastTx,
+  submitTxcHex,
+  TxcBroadcastRejectedError,
+  TxcBroadcastUncertainError,
+} from "./broadcast-submit";
+export {
+  findBroadcastTx,
+  TxcBroadcastRejectedError,
+  TxcBroadcastUncertainError,
+} from "./broadcast-submit";
 import { MEMPOOL_API, MEMPOOL_BASE } from "./network";
 
 export interface MempoolAddressStats {
@@ -186,7 +195,14 @@ export async function broadcastTx(hex: string): Promise<string> {
   const conflict = conflictingTxcBroadcasts(txid, inputs)[0];
   if (conflict) throw new TxcBroadcastUncertainError(conflict.txid);
   reserveTxcBroadcast({ txid, inputs });
-  const accepted = await submitTxcHex(bytes);
+  let accepted: string;
+  try {
+    accepted = await submitTxcHex(bytes);
+  } catch (e) {
+    // A definite node refusal with no such tx releases the reservation.
+    if (e instanceof TxcBroadcastRejectedError) finishTxcBroadcast(txid);
+    throw e;
+  }
   finishTxcBroadcast(txid);
   return accepted;
 }

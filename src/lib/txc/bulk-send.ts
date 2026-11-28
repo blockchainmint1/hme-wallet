@@ -192,6 +192,8 @@ export interface BulkSavedStep {
   error?: string;
   delivery?: BulkDelivery;
   reason?: string;
+  /** Definitely not sent (node refusal, or Check again proved absence); never re-marked uncertain. */
+  notSent?: boolean;
 }
 export interface BulkSavedRun {
   asset: string;
@@ -253,6 +255,23 @@ export function recoverBulkSteps(
   );
 }
 
+/** Apply a user-triggered recheck: only proven absence (txid 404 + inputs unspent) frees a step. */
+export function releaseNotSentSteps(
+  steps: BulkSavedStep[],
+  notSent: readonly string[],
+): BulkSavedStep[] {
+  return steps.map((s) =>
+    s.status === "uncertain" && s.txid && notSent.includes(s.txid)
+      ? {
+          ...s,
+          status: "failed",
+          notSent: true,
+          error: "Checked again: this payment was not sent. Its coins are free to use.",
+        }
+      : s,
+  );
+}
+
 export function parseSavedRun(raw: string | null): BulkSavedRun | null {
   if (!raw) return null;
   try {
@@ -269,7 +288,9 @@ export function parseSavedRun(raw: string | null): BulkSavedRun | null {
       )
       // A reload interrupts any in-flight batch; we can't know if it went out.
       .map((s) =>
-        s.status === "pending" ||
+        s.notSent
+          ? { ...s, status: "failed" as const }
+          : s.status === "pending" ||
         (s.status === "failed" &&
           /broadcast|Failed to fetch|network|Nothing was sent|Interrupted by a page reload/i.test(
             s.error ?? "",

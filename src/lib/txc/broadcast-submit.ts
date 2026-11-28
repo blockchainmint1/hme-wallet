@@ -1,4 +1,5 @@
 import { Transaction } from "bitcoinjs-lib";
+import { cleanUpstreamBody } from "@/lib/broadcast-error";
 import { MEMPOOL_API } from "./network";
 
 export class TxcBroadcastUncertainError extends Error {
@@ -7,6 +8,17 @@ export class TxcBroadcastUncertainError extends Error {
       `Sending was not confirmed. Check transaction ${txid} before trying again; it may already have been sent.`,
     );
     this.name = "TxcBroadcastUncertainError";
+  }
+}
+
+/** The node definitely refused the bytes and the exact txid is absent: nothing was sent. */
+export class TxcBroadcastRejectedError extends Error {
+  constructor(
+    public readonly txid: string,
+    public readonly reason: string,
+  ) {
+    super(`TXC refused this payment, so it was not sent: ${reason}`);
+    this.name = "TxcBroadcastRejectedError";
   }
 }
 
@@ -22,24 +34,41 @@ export async function findBroadcastTx(txid: string): Promise<boolean> {
   return true;
 }
 
-/** Exactly one submission, then an exact-ID lookup if its reply is uncertain. */
+/**
+ * Only 400/422 with text is the node's own verdict (Esplora relays RPC errors
+ * that way). 404/401/403/408/429 come from routing or limits, not the node.
+ */
+export function isNodeRejection(status: number, body: string): boolean {
+  return (status === 400 || status === 422) && body.trim() !== "" && !/<html/i.test(body);
+}
+
+/**
+ * Exactly one submission. A matching OK reply = sent. A node rejection plus an
+ * exact 404 lookup = refused (nothing sent). Everything else stays uncertain.
+ */
 export async function submitTxcHex(hex: string): Promise<string> {
   const bytes = hex.trim();
   const txid = Transaction.fromHex(bytes).getId();
+  let rejection: string | null = null;
   try {
     const res = await fetch(`${MEMPOOL_API}/tx`, {
       method: "POST",
       headers: { "content-type": "text/plain" },
       body: bytes,
     });
-    if (res.ok && (await res.text()).trim().toLowerCase() === txid) return txid;
+    const body = await res.text();
+    if (res.ok && body.trim().toLowerCase() === txid) return txid;
+    if (isNodeRejection(res.status, body)) rejection = cleanUpstreamBody(body, 200) || "rejected";
   } catch {
     /* a missing response does not prove a missing payment */
   }
+  let found: boolean | null = null;
   try {
-    if (await findBroadcastTx(txid)) return txid;
+    found = await findBroadcastTx(txid);
   } catch {
     /* keep uncertain */
   }
+  if (found) return txid;
+  if (found === false && rejection) throw new TxcBroadcastRejectedError(txid, rejection);
   throw new TxcBroadcastUncertainError(txid);
 }
