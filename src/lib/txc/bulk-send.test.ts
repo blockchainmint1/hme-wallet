@@ -118,7 +118,20 @@ describe("bulk send audit fixes", () => {
       status: "uncertain",
       txid: id,
       spent: [`${"c".repeat(64)}:2`],
+      attemptedAt: expect.any(Number),
     });
+  });
+  it("gives a legacy uncertain bulk step one persistent fresh wait", () => {
+    const id = "b".repeat(64);
+    const raw = JSON.stringify({
+      asset: "39",
+      savedAt: 1,
+      steps: [{ label: "T1", status: "uncertain", txid: id }],
+    });
+    const first = parseSavedRun(raw, 1_800_000_000_000);
+    const second = parseSavedRun(JSON.stringify(first), 1_800_000_000_100);
+    expect(first?.steps[0]?.attemptedAt).toBe(1_800_000_000_000);
+    expect(second?.steps[0]?.attemptedAt).toBe(1_800_000_000_000);
   });
   it("cannot proceed when the attempt cannot be saved", () => {
     const storage = {

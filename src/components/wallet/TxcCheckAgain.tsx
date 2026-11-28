@@ -52,7 +52,7 @@ export function TxcPendingPayments() {
     let unknown = 0;
     try {
       for (const it of items) {
-        const r = await recheckTxcAttempt(it.txid, it.inputs);
+        const r = await recheckTxcAttempt(it.txid, it.inputs, it.attemptedAt);
         if (r === "unknown") unknown++;
         else finishTxcBroadcast(it.txid);
       }

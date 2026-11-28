@@ -77,6 +77,7 @@ beforeEach(async () => {
     card_id: "test-card",
     pay_to: from,
     amount_units: 100000000,
+    created_at: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
   };
   state.failClaim = false;
   state.claimCode = "";
@@ -166,6 +167,18 @@ describe("card uncertain-payment reservation", () => {
     expect(r.status).toBe("failed");
     expect(state.payment["status"]).toBe("failed");
     expect(fetcher.mock.calls.filter((call) => call[1]?.method === "POST")).toHaveLength(0);
+  });
+  it("does not release a card payment whose attempt is younger than two minutes", async () => {
+    network();
+    await executePayment("test-payment");
+    state.payment["created_at"] = new Date().toISOString();
+    state.unspent = true;
+    const fetcher = network();
+    const r = await executePayment("test-payment");
+    expect(r.status).toBe("sending");
+    expect(state.payment["status"]).toBe("pending");
+    expect(fetcher.mock.calls.filter((call) => call[1]?.method === "POST")).toHaveLength(0);
+    expect(fetcher.mock.calls.some((call) => String(call[0]).endsWith("/outspends"))).toBe(false);
   });
   it("a definite claim error returns failed, not sending", async () => {
     state.failClaim = true;

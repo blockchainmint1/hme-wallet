@@ -194,7 +194,7 @@ export async function broadcastTx(hex: string): Promise<string> {
   // Recheck after asynchronous reconciliation and persist before starting the POST.
   const conflict = conflictingTxcBroadcasts(txid, inputs)[0];
   if (conflict) throw new TxcBroadcastUncertainError(conflict.txid);
-  reserveTxcBroadcast({ txid, inputs });
+  reserveTxcBroadcast({ txid, inputs, attemptedAt: Date.now() });
   let accepted: string;
   try {
     accepted = await submitTxcHex(bytes);

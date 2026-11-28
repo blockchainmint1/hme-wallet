@@ -7,8 +7,9 @@
 - [x] Queue only holders with confirmed TXC; visibly list skipped holders.
 - [x] Show minimum HME Vault 1.0.5 requirement.
 - [x] Changed backend URLs return identical latest public release rows to the configured backend; server/browser values match. Managed environment untouched; historical intent cannot be proven.
-- [x] 840 regression tests pass; changed-file lint clean; disposable unlocked Vault signs genuine test transactions through QR callbacks, lost response/reload blocks retry, exact readback + Omni validity settles without a second POST.
-- [ ] Auditor review and tiny real Vault device test before publishing/rebuilding phone and extension — waits on auditor/Bobby.
+- [x] 852 regression tests pass; type-check and changed-file lint clean; disposable unlocked Vault signs genuine test transactions through QR callbacks, lost response/reload blocks retry, exact readback + Omni validity settles without a second POST.
+- [x] Auditor rejection follow-ups signed off at c8eac06; required two-minute minimum age added to every Check again/card release path, including legacy-record waits.
+- [ ] Tiny real Vault device test (one gather and one two-batch Send to many), then APK and extension rebuilds — waits on Bobby.
 
 ## Vault round-up extended address search (Nov 28)
 - [x] Add Check another 20 below the list, retain earlier results and the expanded range on refresh; 30 tests pass, unlocked synthetic Vault browser check finds Ethereum #67 and safely retries a failed page without signing/broadcast.

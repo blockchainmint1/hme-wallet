@@ -58,7 +58,7 @@ export function useBulkRecovery(
       const sent: string[] = [];
       const notSent: string[] = [];
       for (const s of targets) {
-        const r = await recheckTxcAttempt(s.txid!, s.spent ?? []);
+        const r = await recheckTxcAttempt(s.txid!, s.spent ?? [], s.attemptedAt);
         if (r === "sent") sent.push(s.txid!);
         if (r === "not-sent") {
           notSent.push(s.txid!);

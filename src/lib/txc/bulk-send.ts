@@ -194,6 +194,8 @@ export interface BulkSavedStep {
   reason?: string;
   /** Definitely not sent (node refusal, or Check again proved absence); never re-marked uncertain. */
   notSent?: boolean;
+  /** Saved before submission; absent only on legacy records, which get a fresh safety wait. */
+  attemptedAt?: number;
 }
 export interface BulkSavedRun {
   asset: string;
@@ -229,7 +231,13 @@ export function recordBulkAttempt(
     throw new Error("Invalid bulk payment attempt.");
   const steps = run.steps.map((s, i) =>
     i === index
-      ? { ...s, status: "pending" as const, txid, spent: inputs.map((u) => `${u.txid}:${u.vout}`) }
+      ? {
+          ...s,
+          status: "pending" as const,
+          txid,
+          spent: inputs.map((u) => `${u.txid}:${u.vout}`),
+          attemptedAt: Date.now(),
+        }
       : s,
   );
   const next = { ...run, steps, savedAt: Date.now() };
@@ -272,7 +280,7 @@ export function releaseNotSentSteps(
   );
 }
 
-export function parseSavedRun(raw: string | null): BulkSavedRun | null {
+export function parseSavedRun(raw: string | null, now = Date.now()): BulkSavedRun | null {
   if (!raw) return null;
   try {
     const v = JSON.parse(raw) as BulkSavedRun;
@@ -287,21 +295,27 @@ export function parseSavedRun(raw: string | null): BulkSavedRun | null {
           (s.txid === undefined || /^[0-9a-f]{64}$/i.test(s.txid)),
       )
       // A reload interrupts any in-flight batch; we can't know if it went out.
-      .map((s) =>
-        s.notSent
+      .map((s) => {
+        const recovered = s.notSent
           ? { ...s, status: "failed" as const }
           : s.status === "pending" ||
-        (s.status === "failed" &&
-          /broadcast|Failed to fetch|network|Nothing was sent|Interrupted by a page reload/i.test(
-            s.error ?? "",
-          ))
-          ? {
-              ...s,
-              status: "uncertain" as const,
-              error: "Sending was interrupted — check this transaction before trying again.",
-            }
-          : s,
-      );
+              (s.status === "failed" &&
+                /broadcast|Failed to fetch|network|Nothing was sent|Interrupted by a page reload/i.test(
+                  s.error ?? "",
+                ))
+            ? {
+                ...s,
+                status: "uncertain" as const,
+                error: "Sending was interrupted — check this transaction before trying again.",
+              }
+            : s;
+        // Old records get one fresh wait, persisted by the normal progress save.
+        return recovered.status === "uncertain" &&
+          recovered.txid &&
+          (!Number.isFinite(recovered.attemptedAt) || (recovered.attemptedAt ?? 0) <= 0)
+          ? { ...recovered, attemptedAt: now }
+          : recovered;
+      });
     return {
       asset: v.asset,
       steps,

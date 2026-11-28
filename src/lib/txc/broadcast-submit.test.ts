@@ -42,7 +42,7 @@ describe("TXC uncertain broadcast protection, shared by web/APK/extension", () =
   it("saves the txid and input before submitting, and accepts only the local txid", async () => {
     const fetcher = vi.fn(async () => {
       expect(pendingTxcBroadcasts(storage)).toEqual([
-        { txid: id, inputs: [`${"09".repeat(32)}:0`] },
+        { txid: id, inputs: [`${"09".repeat(32)}:0`], attemptedAt: expect.any(Number) },
       ]);
       return new Response(id);
     });
@@ -199,7 +199,7 @@ describe("TXC definite rejections and Check again (audit 88d4dec)", () => {
           : new Response("Not found", { status: 404 }),
       ),
     );
-    expect(await recheckTxcAttempt(id, [input])).toBe("not-sent");
+    expect(await recheckTxcAttempt(id, [input], Date.now() - 120_000)).toBe("not-sent");
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) =>
@@ -208,7 +208,7 @@ describe("TXC definite rejections and Check again (audit 88d4dec)", () => {
           : new Response("Not found", { status: 404 }),
       ),
     );
-    expect(await recheckTxcAttempt(id, [input])).toBe("unknown");
+    expect(await recheckTxcAttempt(id, [input], Date.now() - 120_000)).toBe("unknown");
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) =>
@@ -217,8 +217,36 @@ describe("TXC definite rejections and Check again (audit 88d4dec)", () => {
           : new Response("Not found", { status: 404 }),
       ),
     );
-    expect(await recheckTxcAttempt(id, [input])).toBe("unknown");
-    expect(await recheckTxcAttempt(id, [])).toBe("unknown");
-    reserveTxcBroadcast({ txid: id, inputs: [input] }, storage);
+    expect(await recheckTxcAttempt(id, [input], Date.now() - 120_000)).toBe("unknown");
+    expect(await recheckTxcAttempt(id, [], Date.now() - 120_000)).toBe("unknown");
+    reserveTxcBroadcast({ txid: id, inputs: [input], attemptedAt: Date.now() }, storage);
+  });
+  it("returns unknown before two minutes and permits the release check at exactly two minutes", async () => {
+    const input = `${"09".repeat(32)}:0`;
+    const now = 1_800_000_000_000;
+    const fetcher = vi.fn(async (url: string) =>
+      url.endsWith("/outspends")
+        ? Response.json([{ spent: false }])
+        : new Response("Not found", { status: 404 }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    expect(await recheckTxcAttempt(id, [input], now - 119_999, now)).toBe("unknown");
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(await recheckTxcAttempt(id, [input], now - 120_000, now)).toBe("not-sent");
+  });
+  it("stamps a legacy journal attempt once instead of releasing it without an age", async () => {
+    const input = `${"09".repeat(32)}:0`;
+    storage.setItem(
+      `hme.txc.broadcast-pending.${id}`,
+      JSON.stringify({ txid: id, inputs: [input] }),
+    );
+    const first = pendingTxcBroadcasts(storage)[0];
+    const second = pendingTxcBroadcasts(storage)[0];
+    expect(first?.attemptedAt).toEqual(expect.any(Number));
+    expect(second?.attemptedAt).toBe(first?.attemptedAt);
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    expect(await recheckTxcAttempt(id, [input], undefined, first!.attemptedAt + 1)).toBe("unknown");
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });

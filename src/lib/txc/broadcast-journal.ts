@@ -4,6 +4,8 @@ const PREFIX = "hme.txc.broadcast-pending.";
 export interface TxcPendingBroadcast {
   txid: string;
   inputs: string[];
+  /** Saved before submission; Check again cannot free a fresh attempt. */
+  attemptedAt: number;
 }
 
 /** Public transaction metadata only; no expiry can turn uncertainty into safety. */
@@ -32,7 +34,23 @@ export function pendingTxcBroadcasts(
       onMalformed?.(key);
       continue;
     }
-    out.push(item);
+    // Legacy entries have no trustworthy age. Stamp them once and make them wait
+    // too; if storage is unavailable, every reload starts that wait again.
+    const attemptedAt =
+      typeof item.attemptedAt === "number" &&
+      Number.isFinite(item.attemptedAt) &&
+      item.attemptedAt > 0
+        ? item.attemptedAt
+        : Date.now();
+    const normalized = { ...item, attemptedAt };
+    if (normalized.attemptedAt !== item.attemptedAt) {
+      try {
+        storage.setItem(key, JSON.stringify(normalized));
+      } catch {
+        /* keep the in-memory wait; never drop the conflict record */
+      }
+    }
+    out.push(normalized);
   }
   return out;
 }

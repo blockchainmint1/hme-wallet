@@ -386,7 +386,10 @@ export async function executePayment(
     // Safe exit: release only when the exact tx is absent AND every coin it
     // used is still unspent (mempool-aware). Any doubt keeps the reservation.
     const inputs = (p as { attempt_inputs?: string[] | null }).attempt_inputs ?? [];
-    if (inputs.length > 0 && (await recheckTxcAttempt(p.txid, inputs)) === "not-sent") {
+    if (
+      inputs.length > 0 &&
+      (await recheckTxcAttempt(p.txid, inputs, Date.parse(p.created_at))) === "not-sent"
+    ) {
       const reason = "TXC did not accept this payment; nothing was sent.";
       await db
         .from("nfc_card_payments")
