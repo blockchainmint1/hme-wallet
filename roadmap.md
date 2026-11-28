@@ -1,6 +1,7 @@
 # Roadmap
 
 ## Vault Send to many consolidation (Nov 28)
+- [x] Add Consolidate all with sequential Vault signings, progress, stopping on failure, and no reuse of spent fee coins; 160 Vault tests pass and synthetic funded browser flows verify completion, stopping and failed next preparation; auditor handoff prepared.
 - [x] Add Consolidate TSD beside the available balance, using the existing Vault QR gather flow; preserve the recipient list and refresh balance on return.
 - [x] Verified in an unlocked disposable paired Vault: button opens gather view, Back preserves CSV, no page errors; 7 Vault gather/bulk tests pass, preview build clean.
 - [ ] Auditor review and tiny real Vault consolidation before release — waits on auditor/Bobby.

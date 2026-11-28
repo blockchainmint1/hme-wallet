@@ -4,7 +4,7 @@
  * Prepares unsigned requests only; HME Vault signs by QR.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Layers, Loader2, RefreshCw, Square } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { Psbt } from "bitcoinjs-lib";
 import { Button } from "@/components/ui/button";
@@ -16,13 +16,14 @@ import { chainIo } from "@/lib/vault-link/scan";
 import { loadPairing, type VaultPairing } from "@/lib/vault-link/pairing";
 import { getActiveProfileId } from "@/lib/txc/storage";
 import { loadSession } from "@/lib/txc/session-cache";
-import { getAddressStats, getAddressUtxos, getFeeEstimates, getOutspend } from "@/lib/txc/mempool";
+import { explorerTxUrl, getAddressStats, getAddressUtxos, getFeeEstimates, getOutspend } from "@/lib/txc/mempool";
 import { getTxcTokenBalance, getTxcTokenProperties } from "@/lib/txc/tokens.functions";
 import { tsdBalanceUnits, vaultTsdHolder } from "@/lib/vault-link/tsd-send";
 import {
   buildTsdGatherPsbt, selectTsdGatherFeeInputs, verifyTsdGatherSigned,
   vaultTsdReceiveHolder, TSD_GATHER_GAP, TSD_GATHER_MAX_INDEX, type TsdGatherIntent,
 } from "@/lib/vault-link/tsd-gather";
+import { advanceGatherQueue, createGatherQueue, stopGatherQueue, unspentGatherInputs, type GatherQueue } from "@/lib/vault-link/tsd-gather-queue";
 
 const SATS = 100_000_000;
 const fmt = (sats: number) => (sats / SATS).toLocaleString(undefined, { maximumFractionDigits: 8 });
@@ -50,8 +51,21 @@ export function VaultTsdGather({ pairing, onBusyChange, onBroadcast }: {
   const [scanProgress, setScanProgress] = useState<{ have: number; total: number; received?: number[] } | null>(null);
   const [scanComplete, setScanComplete] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [queue, setQueue] = useState<GatherQueue | null>(null);
+  const queueRef = useRef<GatherQueue | null>(null);
+  const spentInputs = useRef(new Set<string>());
+  const sentIndexes = useRef(new Set<number>());
+  const [uncertainTxid, setUncertainTxid] = useState<string | null>(null);
+  const [receipts, setReceipts] = useState<{ index: number; txid: string }[]>([]);
 
-  useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
+  useEffect(() => { onBusyChange?.(busy || !!queue?.active); }, [busy, queue?.active, onBusyChange]);
+
+  function updateQueue(next: GatherQueue) { queueRef.current = next; setQueue(next); }
+  function stopAll(message: string) {
+    const current = queueRef.current;
+    if (current?.active) updateQueue(stopGatherQueue(current));
+    setSigning(null); setError(message);
+  }
 
   async function assertSession() {
     const s = await loadSession();
@@ -75,7 +89,7 @@ export function VaultTsdGather({ pairing, onBusyChange, onBroadcast }: {
         const res = await Promise.all(batch.map(async a => {
           const [bal, stats] = await Promise.all([fetchBalance({ data: { address: a.address, propertyId: 39 } }), getAddressStats(a.address)]);
           const used = stats.chain_stats.tx_count + stats.mempool_stats.tx_count > 0;
-          if (tsdBalanceUnits(bal.balance) === 0n) return { used, row: null };
+          if (tsdBalanceUnits(bal.balance) === 0n || sentIndexes.current.has(a.index)) return { used, row: null };
           const coins = await getAddressUtxos(a.address);
           return { used: true, row: { index: a.index, address: a.address, tsd: bal.balance,
             confirmedSats: coins.filter(c => c.status.confirmed).reduce((s, c) => s + c.value, 0),
@@ -93,7 +107,7 @@ export function VaultTsdGather({ pairing, onBusyChange, onBroadcast }: {
   async function confirmedInputs(index: number) {
     const a = index === 0 ? vaultTsdHolder(pairing) : vaultTsdReceiveHolder(pairing, index);
     const coins = (await getAddressUtxos(a.address)).filter(c => c.status.confirmed);
-    return coins.map(c => ({ ...a, txid: c.txid, vout: c.vout, value: c.value }));
+    return unspentGatherInputs(coins.map(c => ({ ...a, txid: c.txid, vout: c.vout, value: c.value })), spentInputs.current);
   }
   async function prevHex(inputs: { txid: string; vout: number }[]) {
     const out: Record<string, string> = {};
@@ -121,7 +135,20 @@ export function VaultTsdGather({ pairing, onBusyChange, onBroadcast }: {
       const built = buildTsdGatherPsbt({ pairing, index: row.index, balance: bal.balance, feeRate: rate, holderInputs, feeInputs, prevTxHex: await prevHex([...holderInputs, ...feeInputs]) });
       await assertSession();
       start(built.psbtBase64, built.intent);
-    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    } catch (e) {
+      const message = (e as Error).message;
+      if (queueRef.current?.active) stopAll(message);
+      else setError(message);
+    } finally { setBusy(false); }
+  }
+
+  async function consolidateAll() {
+    if (!rows?.length || loading || busy || queueRef.current?.active) return;
+    // Include every funded holder; never silently skip a holder lacking confirmed fee money.
+    const next = createGatherQueue(rows.map(r => r.index));
+    updateQueue(next);
+    const first = rows[0];
+    if (first) await prepareGather(first);
   }
 
   async function onScanned(code: string) {
@@ -144,10 +171,32 @@ export function VaultTsdGather({ pairing, onBusyChange, onBroadcast }: {
           if (tsdBalanceUnits(bal.balance) !== tsdBalanceUnits(signing.intent.amount)) throw new Error("The TSD balance on that address changed. Prepare this step again.");
         }
         await assertSession();
+        // Reserve locally before sending: an uncertain response must not allow reuse.
+        for (const i of psbt.txInputs) spentInputs.current.add(`${Array.from(i.hash).reverse().map(b => b.toString(16).padStart(2, "0")).join("")}:${i.index}`);
+        setUncertainTxid(txid);
         const real = await chainIo("txc").broadcast(full.trim());
+        setUncertainTxid(null);
+        sentIndexes.current.add(signing.intent.fromIndex);
+        setReceipts(prev => [...prev, { index: signing.intent.fromIndex, txid: real || txid }]);
+        setRows(prev => prev?.filter(r => r.index !== signing.intent.fromIndex) ?? null);
         setSigning({ txid: real || txid, intent: signing.intent });
         onBroadcast?.();
-      } catch (e) { processing.current = false; setError((e as Error).message); } finally { setBusy(false); }
+        const current = queueRef.current;
+        if (current?.active) {
+          const next = advanceGatherQueue(current, signing.intent.fromIndex, real || txid);
+          updateQueue(next);
+          const index = next.indexes[next.cursor];
+          const row = rows?.find(r => r.index === index);
+          if (next.active && row) {
+            setSigning(null);
+            await prepareGather(row);
+          } else if (next.active) stopAll("The next address could not be found. Earlier payments were already sent.");
+        }
+      } catch (e) {
+        processing.current = false;
+        if (queueRef.current?.active) stopAll((e as Error).message);
+        else setError((e as Error).message);
+      } finally { setBusy(false); }
     } catch (e) {
       collector.current = new PartCollector(); setScanProgress(null); setScanComplete(false);
       setScanError(e instanceof Error ? e.message : "Could not read that QR frame.");
@@ -155,11 +204,18 @@ export function VaultTsdGather({ pairing, onBusyChange, onBroadcast }: {
   }
 
 
+  const progress = queue && <div className="mt-4 space-y-2 text-sm" aria-live="polite">
+    <p className="font-medium">{queue.active ? `Address ${queue.cursor + 1} of ${queue.indexes.length}` : queue.cursor === queue.indexes.length ? "All payments sent · awaiting confirmation" : "Consolidation stopped"} · {queue.sent.length} of {queue.indexes.length} sent</p>
+    {receipts.length > 0 && <ul className="space-y-1 text-xs text-muted-foreground">{receipts.map(s => <li key={s.txid}>Address #{s.index} · sent <a className="underline" href={explorerTxUrl(s.txid)} target="_blank" rel="noreferrer">{s.txid.slice(0, 12)}…</a></li>)}</ul>}
+    {!queue.active && queue.cursor < queue.indexes.length && <p className="text-xs text-muted-foreground">Earlier payments cannot be undone. {queue.indexes.length - queue.cursor} address{queue.indexes.length - queue.cursor === 1 ? " remains" : "es remain"} unfinished; if the last attempt had a sending error, check it on the explorer before trying again.</p>}
+  </div>;
+
   if (signing) {
     const i = signing.intent;
     return (
       <section className="mt-10 rounded-lg border border-border p-5">
         <h3 className="text-lg font-semibold">{`Gather TSD from address #${i.fromIndex}`}</h3>
+        {progress}
         <dl className="mt-4 space-y-2 text-sm">
             <div><dt className="text-muted-foreground">TSD · TXC Omni #39</dt><dd className="font-semibold">{i.amount} TSD (whole balance)</dd></div>
             <div><dt className="text-muted-foreground">From · address #{i.fromIndex}</dt><dd className="break-all font-mono text-xs">{i.from}</dd></div>
@@ -181,7 +237,10 @@ export function VaultTsdGather({ pairing, onBusyChange, onBroadcast }: {
             {busy && <Loader2 className="h-4 w-4 animate-spin" />}
           </div>
           {error && <p className="text-xs text-destructive">{error}</p>}
-          <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setSigning(null); setError(null); }}>Back</Button>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => {
+            if (queueRef.current?.active) stopAll("Stopped before signing this address. Earlier payments remain sent.");
+            else { setSigning(null); setError(null); }
+          }}>{queue?.active ? <><Square className="h-4 w-4" />Stop here</> : "Back"}</Button>
         </div> : <div className="mt-5 space-y-3">
           <p className="text-sm">Sent. The TSD will show on address #0 after it confirms.</p>
           <TxidCard txid={signing.txid} />
@@ -200,10 +259,13 @@ export function VaultTsdGather({ pairing, onBusyChange, onBroadcast }: {
         </div>
         <Button variant="outline" size="sm" onClick={() => void scan()} disabled={loading || busy}><RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} /></Button>
       </div>
+      {progress}
+      {uncertainTxid && <div className="mt-4 space-y-2"><p role="alert" className="text-sm text-destructive">Sending was not confirmed. Check this transaction before trying again.</p><TxidCard txid={uncertainTxid} /></div>}
       {loading && !rows && <p className="mt-4 text-sm text-muted-foreground">Checking addresses…</p>}
-      {rows && rows.length === 0 && <p className="mt-4 text-sm text-muted-foreground">No TSD found on other addresses. Everything is already on #0.</p>}
+      {rows && rows.length === 0 && <p className="mt-4 text-sm text-muted-foreground">{sentIndexes.current.size ? "No remaining addresses to consolidate. Sent TSD appears on #0 after confirmation." : "No TSD found on other addresses. Everything is already on #0."}</p>}
       {rows && rows.length > 0 && <>
-        <table className="mt-4 w-full text-sm">
+        <Button type="button" className="mt-4" disabled={loading || busy || !!queue?.active || !!uncertainTxid} onClick={() => void consolidateAll()}><Layers className="h-4 w-4" />Consolidate all · {rows.length} address{rows.length === 1 ? "" : "es"}</Button>
+        <div className="overflow-x-auto"><table className="mt-4 w-full text-sm">
           <thead className="text-left text-xs text-muted-foreground"><tr><th className="py-2">Address</th><th>TSD</th><th>TXC on address</th><th /></tr></thead>
           <tbody>{rows.map(r => {
             const ready = r.confirmedSats > 0;
@@ -212,11 +274,11 @@ export function VaultTsdGather({ pairing, onBusyChange, onBroadcast }: {
               <td>{r.tsd}</td>
               <td>{fmt(r.confirmedSats)}{r.pendingSats > 0 && <span className="text-xs text-muted-foreground"> (+{fmt(r.pendingSats)} confirming)</span>}</td>
               <td className="text-right">{ready
-                ? <Button size="sm" disabled={busy} onClick={() => void prepareGather(r)}>Gather to #0</Button>
+                ? <Button size="sm" disabled={busy || loading || !!queue?.active || !!uncertainTxid} onClick={() => void prepareGather(r)}>Gather to #0</Button>
                 : <span className="text-xs text-muted-foreground">Waiting for confirmation</span>}</td>
             </tr>;
           })}</tbody>
-        </table>
+        </table></div>
       </>}
       {error && <p className="mt-3 text-xs text-destructive">{error}</p>}
     </section>
